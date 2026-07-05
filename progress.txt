@@ -25,4 +25,34 @@ Env note: the outer sandbox makes ~/.cargo/registry unwritable (EPERM). Builds
 here require CARGO_HOME pointed at a writable dir, e.g.
   CARGO_HOME=/tmp/loopfleet-cargo cargo build --workspace
 
-Next highest-priority task: M0 — SQLite store with migrations for the data model.
+2026-07-06 — M0: SQLite store with migrations for the data model
+- Added rusqlite 0.32 (feature "bundled" — vendors SQLite, no system dep) to the
+  workspace deps and the loopfleet-store crate.
+- crates/store/src/migrations/0001_init.sql: full initial schema matching the PRD
+  data model — projects, plans, tasks (PK = plan_id + anchor normalized_text,
+  line_hint as tiebreaker), runs (Model B: plan_id + task_anchor FK to tasks),
+  iterations, sessions (M5 schema defined now), events (single append-only log,
+  AUTOINCREMENT seq). Derived TaskStatus is intentionally NOT stored. Indexes on
+  events(owner,seq), runs(plan_id,task_anchor), plans(project_id).
+- crates/store/src/lib.rs: migration runner. MIGRATIONS is an ordered
+  (name, include_str! sql) list; migrate() creates schema_migrations, applies
+  each pending migration in its own BEGIN/COMMIT with ROLLBACK on error, skips
+  already-applied ones (idempotent). open(path) opens a connection, enables
+  foreign_keys pragma, and migrates. ":memory:" supported for tests.
+- Tests (4, all passing): full schema present after open, migrate idempotent,
+  foreign keys enforced (plan -> missing project rejected), events.seq
+  autoincrements.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test -p loopfleet-store — 4 passed.
+- cargo clippy -p loopfleet-store — clean.
+- cargo build --workspace — Finished (store + Tauri app compile).
+
+Design notes:
+- Migrations are append-only and keyed by name; never edit or reorder a shipped
+  entry. Next migration is 0002_*.sql appended to MIGRATIONS.
+- foreign_keys pragma is per-connection, so open() sets it every time; migrate()
+  alone does not (callers using migrate() directly must set the pragma).
+
+Next highest-priority task: M0 — Project registration (pick a folder, validate
+it is a git repo, persist).
