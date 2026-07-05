@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/adapters",
+    "crates/sandbox",
+    "crates/gitx",
+    "crates/store",
+    "src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Matija Munjaković"]
+
+[workspace.dependencies]
+loopfleet-core = { path = "crates/core" }
+loopfleet-adapters = { path = "crates/adapters" }
+loopfleet-sandbox = { path = "crates/sandbox" }
+loopfleet-gitx = { path = "crates/gitx" }
+loopfleet-store = { path = "crates/store" }

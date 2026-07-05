@@ -139,7 +139,7 @@ Build order for the first usable-for-me build: **M0 → M1 → M2 → M3 → M4 
 Each task below is sized for one agent iteration. Run with ralph-sandbox-exec or, once M3 lands, with the app itself.
 
 ### M0 — Skeleton
-- [ ] Scaffold Tauri v2 app, Rust workspace with crates: `core`, `adapters`, `sandbox`, `gitx`, `store`
+- [x] Scaffold Tauri v2 app, Rust workspace with crates: `core`, `adapters`, `sandbox`, `gitx`, `store`
 - [ ] SQLite store with migrations for the data model above
 - [ ] Project registration: pick a folder, validate it is a git repo, persist
 
