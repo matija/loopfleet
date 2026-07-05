@@ -21,3 +21,5 @@ loopfleet-adapters = { path = "crates/adapters" }
 loopfleet-sandbox = { path = "crates/sandbox" }
 loopfleet-gitx = { path = "crates/gitx" }
 loopfleet-store = { path = "crates/store" }
+
+rusqlite = { version = "0.32", features = ["bundled"] }
