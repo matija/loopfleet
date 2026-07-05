@@ -1,0 +1,4 @@
+/target
+/src-tauri/gen
+Cargo.lock.bak
+.DS_Store

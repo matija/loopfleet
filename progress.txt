@@ -1,0 +1,28 @@
+loopfleet — progress log
+
+2026-07-05 — M0: Scaffold Tauri v2 app + Rust workspace
+- Created Cargo workspace (resolver 2) with shared workspace.package + workspace.dependencies.
+- Five library crates under crates/: loopfleet-core, loopfleet-adapters,
+  loopfleet-sandbox, loopfleet-gitx, loopfleet-store (dir names match PRD: core,
+  adapters, sandbox, gitx, store). Each is a minimal lib.rs with a doc comment
+  stating its role and target milestone. No dependencies yet — kept intentionally
+  empty to be filled in M1/M2.
+- Tauri v2 app crate at src-tauri/ (package `loopfleet`): Cargo.toml (tauri 2,
+  serde, serde_json + the five internal crates), build.rs (tauri_build::build),
+  src/main.rs, src/lib.rs (tauri::Builder default run), tauri.conf.json (v2
+  schema, static frontendDist ../dist, single "main" window 1200x800),
+  capabilities/default.json (core:default), generated RGBA icons/icon.png.
+- Minimal static frontend at dist/index.html (no bundler; Tauri serves the
+  static dir, so no npm build step needed for the scaffold).
+- .gitignore for /target and /src-tauri/gen. Cargo.lock committed (app).
+
+Verification:
+- `cargo build --workspace` — Finished, compiles all 5 crates + Tauri app.
+- `cargo test --workspace` — ok (0 tests, expected for scaffold).
+- `cargo clippy --workspace` — clean, no warnings.
+
+Env note: the outer sandbox makes ~/.cargo/registry unwritable (EPERM). Builds
+here require CARGO_HOME pointed at a writable dir, e.g.
+  CARGO_HOME=/tmp/loopfleet-cargo cargo build --workspace
+
+Next highest-priority task: M0 — SQLite store with migrations for the data model.
