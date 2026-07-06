@@ -1,0 +1,15 @@
+{"type":"session","version":3,"id":"019f3659-e2f0-7eba-a213-675ca580af06","timestamp":"2026-07-06T07:34:48.304Z","cwd":"/private/tmp/pi-capture"}
+{"type":"agent_start"}
+{"type":"turn_start"}
+{"type":"message_end","message":{"role":"user","content":[{"type":"text","text":"Read README.md and tell me what it says. Then run 'echo hi' in bash."}],"timestamp":1783323288429}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_start","contentIndex":0}}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"thinking","thinking":"The user wants me to read README.md and run echo hi. These are independent, so I'll do both in parallel.","thinkingSignature":"reasoning_content"},{"type":"toolCall","id":"chatcmpl-tool-bfd1ebd69ab67b41","name":"read","arguments":{"path":"README.md"}},{"type":"toolCall","id":"chatcmpl-tool-a19c67e322bdcd66","name":"bash","arguments":{"command":"echo hi"}}],"provider":"fireworks","model":"accounts/fireworks/models/glm-5p2","usage":{"input":5545,"output":47},"stopReason":"toolUse","timestamp":1783323288465}}
+{"type":"tool_execution_start","toolCallId":"chatcmpl-tool-bfd1ebd69ab67b41","toolName":"read","args":{"path":"README.md"}}
+{"type":"tool_execution_start","toolCallId":"chatcmpl-tool-a19c67e322bdcd66","toolName":"bash","args":{"command":"echo hi"}}
+{"type":"tool_execution_end","toolCallId":"chatcmpl-tool-bfd1ebd69ab67b41","toolName":"read","result":{"content":[{"type":"text","text":"hello world\n"}]},"isError":false}
+{"type":"tool_execution_end","toolCallId":"chatcmpl-tool-a19c67e322bdcd66","toolName":"bash","result":{"content":[{"type":"text","text":"hi\n"}]},"isError":false}
+{"type":"turn_end","message":{"role":"assistant","stopReason":"toolUse","usage":{"input":5545,"output":47}},"toolResults":[{"role":"toolResult","toolCallId":"chatcmpl-tool-bfd1ebd69ab67b41","toolName":"read","content":[{"type":"text","text":"hello world\n"}],"isError":false}]}
+{"type":"turn_start"}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"## README.md\n\nThe file simply contains:\n\n```\nhello world\n```\n\n## bash `echo hi`\n\nOutput:\n```\nhi\n```"}],"provider":"fireworks","model":"accounts/fireworks/models/glm-5p2","usage":{"input":59,"output":31},"stopReason":"stop","timestamp":1783323289977}}
+{"type":"turn_end","message":{"role":"assistant","stopReason":"stop","usage":{"input":59,"output":31}},"toolResults":[]}
+{"type":"agent_end","willRetry":false}

@@ -238,3 +238,79 @@ Design notes:
 Next highest-priority task: M1 — pi adapter, headless: spawn `pi --mode json`,
 map AgentEvent JSONL to the enum, integration test. (Or the event-log writer
 task, pickable independently.)
+
+2026-07-06 — M1: pi adapter, headless
+- Captured ground truth first: ran the real `pi 0.80.3` binary with
+  `-p --mode json` in a throwaway git repo to see the actual line shapes. The
+  default (google) provider succeeded; the anthropic route was billing-blocked,
+  but that capture still confirmed the error-envelope shape (turn_end.message
+  with stopReason:"error" + errorMessage). Line types observed: session,
+  agent_start, turn_start, message_start/message_update(delta)/message_end,
+  tool_execution_start/update/end, turn_end, agent_end.
+- crates/adapters/src/pi.rs: PiAdapter (stateless) + PiMapper (stateful over one
+  run's stream). Same structure as ClaudeAdapter (drive() read-loop, bounded
+  mpsc(64) RunHandle, receiver-drop → start_kill, EOF-without-terminal →
+  synthesize Failed+Ended).
+  - start_run spawns `pi -p --mode json <prompt>` in spec.cwd, stdin null,
+    stdout/stderr piped. No per-agent permission-bypass flag: in headless `-p`
+    mode pi auto-resolves permission prompts (PRD sandbox note), and the M2
+    Seatbelt profile is the real boundary. The live test confirmed the bash tool
+    executes without hanging.
+  - Mapping (source of truth = the *complete* events, streaming deltas are
+    noise): turn_start → TurnStarted. message_end (role=="assistant" only) →
+    per content block: text → AssistantText, thinking → Reasoning (both skip
+    empty); toolCall blocks are NOT mapped here (tool activity comes from
+    tool_execution_*, so mapping them here would double-emit). Non-assistant
+    message_end (the echoed user prompt, toolResult messages) → ignored.
+    tool_execution_start → CommandRun{cmd,exit:None} when toolName=="bash" (id
+    recorded) else ToolCall{call_id=toolCallId,name=toolName,input_excerpt=args}.
+    tool_execution_end → ToolResult{call_id,ok=!isError,output_excerpt} EXCEPT
+    bash ends are dropped (already CommandRun). turn_end →
+    TurnCompleted{usage:{input,output}} or Failed{reason:errorMessage} when the
+    turn's stopReason=="error". agent_end → Ended. session/agent_start/
+    message_start/message_update/tool_execution_update + unknown/blank → ignored.
+  - A pi headless run has multiple agent turns, so it emits multiple
+    TurnStarted/TurnCompleted pairs (per-turn usage) before the single Ended —
+    unlike Claude's single-result headless shape. Downstream consumes the enum
+    turn-count-agnostically.
+  - Excerpts truncated to 2000 bytes on a char boundary; tool result content
+    flattened whether string or array of text blocks. Helpers (excerpt/compact/
+    stringify_content/parse_usage/read_stderr) are file-local, mirroring
+    claude.rs's self-contained structure (each adapter owns its formatting).
+- crates/adapters/fixtures/pi_stream.jsonl: 15-line fixture distilled from the
+  real capture (session/agent_start/turn_start noise, a user-prompt echo and a
+  message_update delta to exercise skipping, the assistant thinking+toolCall
+  message, real tool_execution start/end pairs for read+bash, both turn_ends
+  with real usage, agent_end).
+- Cargo.toml: no new deps (adapters already had tokio process/io-util,
+  serde_json, async-trait; dev-deps tempfile + tokio rt-multi-thread from the
+  Claude adapter).
+- Tests (13 mapper/unit + 1 ignored live): captured-stream mapping (two turns
+  with per-turn usage, Reasoning first, read pair correlates, bash→CommandRun
+  with its end dropped, exactly one ToolResult, two TurnStarted), thinking→
+  Reasoning & text→AssistantText, non-assistant message_end ignored, empty
+  blocks skipped, toolCall-in-message not mapped, non-bash tool_start excerpt,
+  bash CommandRun + end dropped, error tool_end → ok:false, errored turn →
+  Failed, agent_end → Ended, noise/blank ignored, invalid JSON → Protocol error,
+  excerpt char-boundary truncation. Plus live_run_against_fixture_repo (#[ignore])
+  spawning the real CLI.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test -p loopfleet-adapters — 28 passed,
+  2 ignored.
+- cargo test -p loopfleet-adapters -- --ignored pi::tests::live_run — 1 passed
+  (real pi 0.80.3, ~4s, drove spawn→stream→Ended, saw TurnCompleted).
+- cargo clippy -p loopfleet-adapters --all-targets — clean.
+- cargo build --workspace — Finished (Tauri app included).
+
+Design notes:
+- CommandRun for bash carries exit:None on purpose: pi's bash tool_execution_end
+  exposes isError (bool) but no numeric exit code, matching the Claude adapter's
+  decision and the enum's process-exit semantics.
+- Tools are sourced from tool_execution_start/end rather than the assistant
+  message's toolCall blocks: the execution events carry the results and isError
+  in one place, and using the message blocks too would double-emit calls.
+
+Next highest-priority task: M1 — cursor-agent adapter, headless: spawn
+`cursor-agent -p --output-format stream-json`, map its stream to the enum,
+integration test. (Or the event-log writer task, pickable independently.)
