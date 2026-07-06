@@ -10,6 +10,9 @@ use std::path::Path;
 use loopfleet_store::Project;
 use rusqlite::Connection;
 
+pub mod event;
+pub use event::{Lane, NormalizedEvent, Usage};
+
 /// Why a project could not be registered.
 #[derive(Debug)]
 pub enum RegisterError {

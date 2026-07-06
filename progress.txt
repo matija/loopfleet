@@ -91,5 +91,47 @@ Design notes:
 - The store stays git-agnostic (raw UNIQUE error); core owns the mapping to a
   user-facing AlreadyRegistered. Keeps the sandbox/git boundary out of store.
 
-Next highest-priority task: M1 — Define the normalized event enum (adapter-sourced
-vs app-sourced lanes; correlated ToolCall/ToolResult) + serde round-trip tests.
+2026-07-06 — M1: Normalized event enum (adapter-sourced vs app-sourced lanes)
+- crates/core/src/event.rs: NormalizedEvent, the single vocabulary every
+  downstream consumer speaks. Variants match the PRD exactly: adapter-sourced
+  lane (TurnStarted, AssistantText { text }, Reasoning { text }, ToolCall
+  { call_id, name, input_excerpt }, ToolResult { call_id, ok, output_excerpt },
+  CommandRun { cmd, exit: Option<i32> }, TurnCompleted { usage }, NeedsApproval,
+  Failed { reason }, Ended) and the app-sourced lane (FileChanged { path }).
+  ToolCall/ToolResult correlate by call_id (a shared String field on both).
+- Lane enum { Adapter, App } + NormalizedEvent::lane(): only FileChanged is
+  App; everything else is Adapter. The lane distinction is expressed as a method
+  rather than splitting the type, so downstream still consumes one enum.
+- Usage { input_tokens, output_tokens }: u64, Default, unreported counts = 0.
+- Serde: internally tagged `#[serde(tag = "kind", rename_all = "snake_case")]`,
+  so the store's normalized_event_json column holds e.g.
+  {"kind":"tool_call","call_id":"…",…} and unit variants {"kind":"ended"}.
+  All variants are unit or struct (no tuple variants), which internal tagging
+  requires.
+- NeedsApproval kept fieldless per PRD (only fires in M5 interactive sessions;
+  headless never surfaces it — the sandbox is the boundary). No speculative
+  fields added; revisit if M5 needs correlation.
+- Placement: core, per core/lib.rs's own doc comment ("the normalized event
+  enum" lands here). Re-exported from lib.rs (Lane, NormalizedEvent, Usage).
+  store stays agnostic — it persists opaque JSON text, not the Rust type.
+- Added serde dep to core, serde_json to core dev-deps + workspace deps
+  (adapters will need serde_json for their stream mapping in the next M1 tasks).
+- Tests (4, all passing): round_trips_every_variant (every variant survives
+  JSON round-trip), kind_tag_shape_is_stable (the snake_case discriminator),
+  tool_call_and_result_correlate_by_call_id, lanes_classify_correctly.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test -p loopfleet-core — 7 passed
+  (4 event + 3 project registration).
+- cargo clippy -p loopfleet-core --all-targets — clean.
+- cargo build --workspace — Finished (Tauri app included).
+
+Design notes:
+- This enum is the most load-bearing decision in the app; changing it later
+  touches everything. Get additions right the first time.
+- CommandRun.exit is Option<i32>: a killed command (SIGTERM at an iteration
+  boundary) produces no exit code.
+
+Next highest-priority task: M1 — AgentAdapter trait with start_run/open_session
+(open_session unimplemented in v1) + a stub adapter that replays a fixture event
+log (used by all UI work).
