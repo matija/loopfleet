@@ -5,6 +5,9 @@
 
 use std::path::Path;
 
+pub mod worktree;
+pub use worktree::{Worktree, WorktreeError};
+
 /// True if `path` is (or is contained by) a git repository. Uses `git2` in
 /// read-only mode; opens the repo at `path`, so both a working directory with a
 /// `.git` and a bare repository count. Never mutates anything.
