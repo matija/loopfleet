@@ -132,6 +132,50 @@ Design notes:
 - CommandRun.exit is Option<i32>: a killed command (SIGTERM at an iteration
   boundary) produces no exit code.
 
-Next highest-priority task: M1 — AgentAdapter trait with start_run/open_session
-(open_session unimplemented in v1) + a stub adapter that replays a fixture event
-log (used by all UI work).
+2026-07-06 — M1: AgentAdapter trait + stub replay adapter
+- crates/adapters/src/lib.rs: the AgentAdapter trait, object-safe via async_trait
+  so the M3 supervisor can hold a Box<dyn AgentAdapter> chosen by agent name.
+  start_run(&RunSpec) -> RunHandle; open_session(&Path, SessionSeed) ->
+  SessionHandle stays in the frozen signature but v1 impls return
+  AdapterError::SessionsUnsupported (interactive sessions are M5).
+  - RunSpec { cwd, prompt }: only what the stub + supervisor need in M1; per-agent
+    flag sets / model land as real adapters do. SessionSeed { plan_file } present
+    so the signature is frozen now, consumed by no v1 adapter.
+  - RunHandle / SessionHandle wrap a tokio mpsc::Receiver<NormalizedEvent>. Bounded
+    channel = the backpressure contract (matches the later event-log-writer task):
+    a slow consumer stalls the producer, no unbounded buffer. Process-group
+    ownership + stop/SIGTERM stay with the M3 supervisor, not the handle.
+  - AdapterError { Spawn(io), Protocol(String), SessionsUnsupported } + Display /
+    Error. Derived Debug on the handles so tests can unwrap_err.
+- crates/adapters/src/stub.rs: StubAdapter — replays a canned event log, no
+  process/network, deterministic. This is the fixture all UI work builds against
+  before a real adapter exists. new(Vec<NormalizedEvent>) or from_jsonl(&str)
+  (one event per non-empty line, same {"kind":…} shape the store persists; blank
+  lines skipped, malformed JSON is a hard error). start_run clones the events and
+  tokio::spawns a task that sends them in order over the channel, stopping if the
+  receiver is dropped. open_session returns SessionsUnsupported.
+- crates/adapters/fixtures/basic_run.jsonl: a realistic 9-event run (turn_started
+  → assistant_text/reasoning → correlated tool_call/tool_result → command_run →
+  turn_completed → ended) for the from_jsonl loader and UI reuse.
+- Deps: added tokio (rt, sync, macros) and async-trait to workspace deps; adapters
+  now depends on loopfleet-core, async-trait, tokio, serde_json. First async +
+  tokio in the tree — foundational for the supervisor/event-log work, not
+  speculative (PRD's trait is async; Tauri v2 is tokio-based).
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test -p loopfleet-adapters — 5 passed
+  (replay order, run independence, jsonl fixture load+correlate, blank/bad-json
+  handling, open_session unsupported).
+- cargo clippy -p loopfleet-adapters --all-targets — clean.
+- cargo build --workspace — Finished (Tauri app included).
+
+Design notes:
+- Object safety drove async-trait over native async-fn-in-trait: the supervisor
+  dispatches adapters dynamically by agent name, which needs dyn.
+- The stub streams through the exact RunHandle path a real run uses, so UI and
+  the event-log writer can be built and tested with zero agent binaries present.
+
+Next highest-priority task: M1 — Claude Code adapter, headless: spawn
+`claude -p --output-format stream-json`, map every event type to the enum,
+integration test against a fixture repo. (The event-log writer task can also be
+picked up independently.)
