@@ -468,3 +468,67 @@ adapters (Claude Code, pi, cursor-agent), and the event-log writer are done.
 Next milestone: M2 — Sandbox and git (port ralph.sb to a template; Sandbox
 trait + SeatbeltSandbox; parent-.git commit regression test; worktree manager;
 shadow-ref snapshotter; diff service).
+
+2026-07-06 — M2: Port ralph.sb to a per-run template + renderer
+- crates/sandbox/src/profile.sb.tmpl: the Seatbelt (SBPL) profile, rendered per
+  run. (version 1) + (deny default), then the minimum a full-auto headless agent
+  needs re-granted: file-read* / file-read-metadata open (agents read from
+  everywhere — stated plainly, read-scope confinement is post-v1), process-exec/
+  fork + signal(self), sysctl-read/mach-lookup/ipc-posix-shm (toolchain startup),
+  network* open (remote inference + tool egress; egress allowlist is post-v1), a
+  fixed set of writable device nodes (/dev/null, tty, std{out,err}, {u}random,
+  /dev/fd, …), and a parameterized (allow file-write* {{WRITE_SUBPATHS}}) block —
+  the actual boundary.
+- crates/sandbox/src/lib.rs: render(&RenderParams) -> Result<String, RenderError>.
+  RenderParams { worktree, progress_dir, agent_dirs[], temp_dirs[] }; ::new sets
+  the standard macOS temp set (default_temp_dirs: /tmp, /private/tmp, /var/folders,
+  /private/var/folders — Seatbelt matches resolved paths, so grant both symlink
+  and target) and empty agent_dirs. render assembles worktree + progress_dir +
+  agent_dirs + temp_dirs into (subpath "…") lines and splices them into the
+  template's marker.
+  - SECURITY: each write path is validated absolute (RelativePath error — a
+    relative path in the boundary is a bug) and UTF-8 (NonUtf8Path), then escaped
+    (escape_sbpl: backslash then quote) before entering the SBPL string literal.
+    The profile IS the boundary, so a path with " or \ must not break out of its
+    literal. Tested with a /repo/a"b\c path.
+- DECISION (resolves a PRD contradiction): the parent repo's .git is NOT granted
+  write. The Sandbox design section (PRD lines 83/86/92) is emphatic and reasoned
+  — commits are app-owned (the unsandboxed git actor snapshots to shadow refs),
+  the agent never runs git commit, and .git write is a real escape (planted
+  hooks/ script, core.hooksPath / core.sshCommand in config that later runs
+  unsandboxed). The M2 milestone bullets still said "parent .git path" + a
+  ".git-grant" regression test; that wording is stale and superseded. Updated
+  the PRD: this task's line drops the .git param and notes the supersession; the
+  3rd M2 task (the .git-grant regression test) is flagged REVISIT — its premise
+  no longer holds, likely becomes "agent CANNOT write parent .git while the app's
+  out-of-sandbox actor still commits". No .git param exists in the renderer.
+- Cargo.toml: dev-dep tempfile "3" (for the sandbox-exec parse test only). No
+  runtime deps — pure string rendering, no templating crate (simplicity).
+- Tests (7 unit + 1 ignored): all four writable subpaths render; no marker left;
+  boundary shape preserved (deny default / file-read* / network* / file-write*);
+  no .git in any (subpath …) grant for default params; relative path rejected;
+  quotes+backslashes escaped; default_temp_dirs covers the /private paths. Plus
+  parses_under_sandbox_exec (#[ignore], cfg macos): writes the rendered profile
+  and runs `sandbox-exec -f run.sb /usr/bin/true` — proves it is valid SBPL. It
+  tolerates the nested-sandbox "sandbox_apply: Operation not permitted" (the
+  profile parsed; apply is denied because the test itself runs inside the outer
+  build sandbox) while still failing on a real parse error.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test -p loopfleet-sandbox — 7 passed,
+  1 ignored.
+- cargo test -p loopfleet-sandbox -- --ignored parses_under_sandbox_exec — 1
+  passed (real /usr/bin/sandbox-exec parsed the rendered profile).
+- cargo clippy -p loopfleet-sandbox --all-targets — clean.
+- cargo build --workspace — Finished (Tauri app included).
+
+Design notes:
+- Write subpaths are generated in Rust (variable-length agent_dirs/temp_dirs)
+  rather than fixed template placeholders, so the profile parameterizes cleanly
+  over any agent's config/cache dirs.
+- The template embeds the security rationale in comments (why reads/network are
+  open, why .git write is excluded) so the rendered .sb shown in the run UI's
+  profile panel is self-documenting — trust is a feature, not a footnote.
+
+Next highest-priority task: M2 — Sandbox trait + SeatbeltSandbox impl wrapping
+command construction (wrap a command in `sandbox-exec -f <rendered.sb> …`).
