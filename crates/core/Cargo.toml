@@ -6,3 +6,11 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+loopfleet-gitx.workspace = true
+loopfleet-store.workspace = true
+rusqlite.workspace = true
+uuid = { workspace = true }
+
+[dev-dependencies]
+git2.workspace = true
+tempfile = "3"

@@ -2,7 +2,10 @@
 //! single-writer event log. This module owns the schema and its migrations; the
 //! normalized event enum and higher-level queries land in later milestones.
 
-use rusqlite::Connection;
+pub use rusqlite::Connection;
+
+mod projects;
+pub use projects::{insert_project, list_projects, Project};
 
 /// Ordered list of migrations. Each entry is `(name, sql)`; names double as the
 /// applied-migrations key, so they must be unique and never reordered. Add new

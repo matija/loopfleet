@@ -6,3 +6,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+git2.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

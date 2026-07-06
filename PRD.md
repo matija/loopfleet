@@ -141,7 +141,7 @@ Each task below is sized for one agent iteration. Run with ralph-sandbox-exec or
 ### M0 — Skeleton
 - [x] Scaffold Tauri v2 app, Rust workspace with crates: `core`, `adapters`, `sandbox`, `gitx`, `store`
 - [x] SQLite store with migrations for the data model above
-- [ ] Project registration: pick a folder, validate it is a git repo, persist
+- [x] Project registration: pick a folder, validate it is a git repo, persist
 
 ### M1 — Events and adapters
 - [ ] Define the normalized event enum (adapter-sourced vs app-sourced lanes; correlated `ToolCall`/`ToolResult`) + serde round-trip tests
