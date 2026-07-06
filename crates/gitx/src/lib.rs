@@ -5,7 +5,9 @@
 
 use std::path::Path;
 
+pub mod shadow;
 pub mod worktree;
+pub use shadow::{shadow_ref, Snapshot, SnapshotError};
 pub use worktree::{Worktree, WorktreeError};
 
 /// True if `path` is (or is contained by) a git repository. Uses `git2` in

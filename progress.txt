@@ -651,3 +651,64 @@ to refs/agentapp/run-<id>/iter-<n> after each iteration (app-owned commits, the
 unsandboxed git actor; agent never runs git commit). Then the diff service, then
 the flagged-stale ".git-grant" regression test can be rewritten as "agent CANNOT
 write parent .git while the app's out-of-sandbox actor still commits".
+
+2026-07-06 — M2: Shadow-ref snapshotter (app-owned commits to refs/agentapp/…)
+- crates/gitx/src/shadow.rs: snapshot(repo, worktree, run_id, iter) -> Snapshot
+  { git_ref, commit }. Captures the worktree's FULL state (tracked + untracked,
+  respecting .gitignore) to refs/agentapp/run-<id>/iter-<n> after each iteration.
+  App-owned commits — the agent never runs git commit and never gets .git write
+  (PRD "Git layer"). Shells out to git (a mutation, consistent with worktree.rs;
+  git2 stays for reads). Stays actor-agnostic; M3 funnels it through the one
+  serialized git actor.
+  - Throwaway index: GIT_INDEX_FILE points at a per-(pid,run,iter) temp file, so
+    `git add -A` + `write-tree` snapshot disk exactly WITHOUT touching the
+    worktree's own index — the agent's staged/unstaged state at teardown is
+    preserved. Tree objects land in the shared object database.
+  - .gitignore respected (via add -A) so build artifacts (target/, node_modules)
+    are not snapshotted.
+  - commit-tree runs under a FIXED app identity (loopfleet <loopfleet@localhost>
+    via GIT_AUTHOR_*/GIT_COMMITTER_* env), not the repo's user.* config — the
+    commit is the app's, and this never fails on a repo with no user config.
+  - Parent chain: iter-n parents on iter-(n-1)'s shadow commit if it exists, else
+    the worktree's base HEAD (agent branch tip; agent never commits, so this is
+    the commit the worktree was cut from). Gives a readable `git log <shadow>`
+    history. Diffs work between any two refs regardless, but the chain makes the
+    "diffable history" real. update-ref only ever touches refs/agentapp/… — the
+    agent branch and user branches are never advanced.
+  - shadow_ref(run_id, iter) -> "refs/agentapp/run-<id>/iter-<n>" (public helper,
+    the ref-naming convention in one place). Snapshot { git_ref, commit } returned
+    for the store (Iteration.shadow_ref) and the M2 diff service.
+  - SnapshotError { Io, Git(stderr) } + Display/Error/From<io::Error>, mirroring
+    WorktreeError's shape (each gitx module owns its git-CLI error).
+- crates/gitx/src/lib.rs: pub mod shadow + re-exports (shadow_ref, Snapshot,
+  SnapshotError). lib.rs doc already anticipated shadow-ref ops in M2.
+- No new deps (std::process::Command + std::env::temp_dir; tempfile dev-dep
+  already present).
+- Tests (6, all passing): shadow_ref naming; snapshot captures a tracked edit +
+  an untracked file (tree matches disk via `git show <commit>:path`); first
+  snapshot parents on base AND leaves the agent branch tip unchanged; iterations
+  chain (iter-2 parent == iter-1 commit, name-only diff shows the second edit);
+  snapshot leaves the worktree's real index untouched (status still ` M`/`??`);
+  .gitignore respected (ignored file absent from the tree, kept file present).
+  repo_with_worktree() helper inits a repo+commit and cuts a run worktree via
+  crate::worktree::add.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test -p loopfleet-gitx — 15 passed
+  (6 shadow + 9 pre-existing worktree/repo).
+- cargo clippy -p loopfleet-gitx --all-targets — clean.
+- cargo build --workspace — Finished (Tauri app included).
+
+Design notes:
+- The throwaway-index trick is the crux: it lets the app snapshot arbitrary
+  worktree state (including untracked files) without ever mutating the worktree's
+  index or HEAD, so the sandboxed agent's in-progress state is never perturbed by
+  the app's out-of-band commits.
+- Fixed synthetic identity (not repo user.*) keeps app-owned commits attributable
+  and makes commit-tree robust on freshly-cut worktrees / unconfigured repos.
+
+Next highest-priority task: M2 — Diff service: iteration diff, run cumulative
+diff, run-vs-run diff (via git2). Then the flagged-stale ".git-grant" regression
+test can be rewritten as "agent CANNOT write parent .git while the app's
+out-of-sandbox actor still commits", now that the snapshotter proves the actor
+commits out-of-sandbox.
