@@ -1848,6 +1848,7 @@ version = "0.1.0"
 dependencies = [
  "git2",
  "loopfleet-gitx",
+ "loopfleet-sandbox",
  "loopfleet-store",
  "rusqlite",
  "serde",

@@ -778,3 +778,48 @@ regression test, now rewritten per its REVISIT note as "agent CANNOT write paren
 .git while the app's out-of-sandbox actor still commits" (the snapshotter + this
 diff service prove the actor commits out-of-sandbox; the sandbox renderer already
 excludes the .git grant). After that, M2 is complete and M3 (the loop) begins.
+
+2026-07-06 — M2: Sandbox .git write-boundary regression test (completes M2)
+- Finished the last M2 task. The previous iteration committed the test itself
+  (crates/core/tests/git_boundary.rs, commit 47d8d22) but left the bookkeeping
+  undone: Cargo.lock uncommitted, PRD box unchecked, no progress entry. This
+  iteration verified the work, checked the box, and committed the remainder.
+- The test (rewritten per the REVISIT note; supersedes the stale ".git-grant
+  succeeds" bullet) locks the boundary from both sides in one #[ignore]d,
+  macos-only integration test in core (the only crate that sees both sandbox
+  and gitx):
+  - App-actor half (runs unconditionally): cut a worktree via worktree::add,
+    write a file, shadow::snapshot() it — the shadow ref resolves via rev-parse.
+    Proves commits are app-owned and the agent needs no .git write.
+  - NEGATIVE (confined): wrap /usr/bin/touch <parent>/.git/hooks/pwned in the
+    rendered Seatbelt profile (worktree + progress dir only; temp_dirs cleared
+    deliberately — the test repo lives under /var/folders, so the default temp
+    grants would sweep the parent .git into the boundary and defeat the test).
+    Asserts non-zero exit AND the hook file absent — the exact hooks/-planting
+    escape the design closes.
+  - POSITIVE control (confined): the same profile allows touch inside the
+    worktree — proves a real boundary, not a blanket deny.
+  - Nested-sandbox skip: if sandbox_apply is denied (the test itself running
+    under an outer Seatbelt), the confined halves skip with a message; the
+    app-actor half still runs. Run outside a sandbox to observe the deny.
+- crates/core/Cargo.toml: loopfleet-sandbox added as a DEV-dependency only —
+  core's runtime dependency graph is unchanged; only the boundary test needs
+  to render/wrap.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test --workspace — 89 passed, 6 ignored
+  (42 adapters, 20 gitx, 11 sandbox, 7 core, 9 store).
+- cargo test -p loopfleet-core --test git_boundary -- --ignored — 1 passed.
+  In THIS env the confined checks skip (the outer agent sandbox denies nested
+  sandbox_apply — same limitation as the other two ignored sandbox-exec tests);
+  the app-actor snapshot half ran for real. Observing the actual deny requires
+  a run outside any sandbox.
+- cargo clippy --workspace --all-targets — clean.
+- cargo build --workspace — Finished (Tauri app included).
+
+M2 is COMPLETE — profile template + renderer, Sandbox trait + SeatbeltSandbox,
+worktree manager, shadow-ref snapshotter, diff service, and the write-boundary
+regression test are all done.
+Next highest-priority task: M3 — Supervisor: run lifecycle state machine,
+per-run process-group spawning, SIGTERM handling, one git actor serializing
+mutations. (First M3 bullet; the iteration loop builds on it.)
