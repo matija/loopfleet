@@ -314,3 +314,88 @@ Design notes:
 Next highest-priority task: M1 — cursor-agent adapter, headless: spawn
 `cursor-agent -p --output-format stream-json`, map its stream to the enum,
 integration test. (Or the event-log writer task, pickable independently.)
+
+2026-07-06 — M1: cursor-agent adapter, headless
+- Captured ground truth first: ran the real `cursor-agent 2026.07.01` binary with
+  `-p --output-format stream-json --force` in a throwaway git repo. Line types
+  observed: system/init, user (echoed prompt), assistant (content blocks: text
+  only — no reasoning surfaced even on a High reasoning model), tool_call with
+  subtype started/completed, result/success. cursor-agent emits one JSON per
+  newline-terminated line; embedded newlines inside string fields (notably
+  call_id) are JSON-escaped as \n, so line splitting stays safe.
+- crates/adapters/src/cursor.rs: CursorAdapter (stateless) + CursorMapper (also
+  stateless — every tool_call event carries the full typed tool_call object, so
+  shell vs non-shell is decided per line with no cross-line state, unlike the pi
+  mapper's bash-id set). Same drive() read-loop / bounded mpsc(64) RunHandle /
+  receiver-drop→start_kill / EOF-without-terminal→synthesize Failed+Ended shape
+  as the claude and pi adapters.
+  - start_run spawns `cursor-agent -p --output-format stream-json --force
+    <prompt>` in spec.cwd, stdin null, stdout/stderr piped. --force bypasses
+    cursor-agent's own permission prompts; in headless it fabricates a "user
+    skipped" answer anyway (PRD), so the M2 Seatbelt profile is the real
+    boundary — --force just keeps the run from stalling. Live test confirmed the
+    shell tool executes without hanging.
+  - Mapping: system/init → TurnStarted. assistant message content: text →
+    AssistantText (empty skipped). cursor-agent's stream-json does NOT surface
+    reasoning, so no Reasoning is emitted (documented, not guessed — only text
+    blocks were observed). user echo + unknown lines → ignored. tool_call is
+    keyed by tool kind (readToolCall, shellToolCall, …); tool_entry() finds the
+    single key ending in "ToolCall" and strips the suffix for a normalized name
+    (read, shell, …). subtype started: non-shell → ToolCall{call_id,name,
+    input_excerpt=args}; shell → nothing (waits for completed). subtype
+    completed: non-shell → ToolResult{call_id, ok=(result has "success" key),
+    output_excerpt}; shell → CommandRun{cmd, exit}. result → TurnCompleted
+    {usage:{inputTokens,outputTokens}} on success or Failed{reason} on is_error,
+    always followed by Ended.
+  - KEY DIFFERENCE from claude/pi: cursor-agent reports a real numeric exitCode
+    for shell commands (tool_call.shellToolCall.result.success.exitCode), so
+    CommandRun.exit is populated with Some(code) — the enum's Option<i32> exists
+    to carry it when an agent provides it, and cursor is the one that does.
+    Shell's `started` event is dropped (no exit code yet) and CommandRun is
+    emitted at `completed` instead; when no success/exitCode is present (an error
+    variant) exit falls back to None.
+  - Excerpts truncated to 2000 bytes on a char boundary; a non-shell tool
+    result's output prefers a plain `content` string, else compact JSON of the
+    success/error object. Helpers (excerpt/compact/result_excerpt/parse_usage/
+    subtype/read_stderr) file-local, mirroring the self-contained claude.rs/pi.rs.
+- crates/adapters/fixtures/cursor_stream.jsonl: 9-line fixture generated
+  programmatically from the real capture (trimming the very large shellToolCall
+  args to command+workingDirectory, read result to content+metadata) so the
+  escaped call_id (with its embedded \n) is byte-exact. system/init, user echo,
+  assistant text, read start/complete pair, shell start/complete pair, final
+  "done" text, result with real usage.
+- lib.rs: registered `mod cursor` + `pub use cursor::CursorAdapter`.
+- Tests (14 mapper/unit + 1 ignored live): captured-stream mapping (asserts
+  TurnStarted/Ended bracket, read pair correlates despite the newline in the id,
+  shell→CommandRun with exit Some(0), exactly one ToolResult, usage parsed),
+  system init→TurnStarted, non-init system ignored, assistant text + empty
+  skipped, user ignored, non-shell start→ToolCall excerpt, non-shell complete→
+  ToolResult, error-variant result→ok:false, shell start dropped + complete→
+  CommandRun with exit, shell without exitCode→None, result success→
+  TurnCompleted+Ended, result error→Failed+Ended, invalid JSON→Protocol error,
+  excerpt char-boundary truncation. Plus live_run_against_fixture_repo (#[ignore])
+  spawning the real CLI.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test -p loopfleet-adapters — 42 passed,
+  3 ignored.
+- cargo test -p loopfleet-adapters -- --ignored cursor::tests::live_run — 1
+  passed (real cursor-agent 2026.07.01, ~9s, drove spawn→stream→Ended, saw
+  TurnCompleted with real usage).
+- cargo clippy -p loopfleet-adapters --all-targets — clean.
+- cargo build --workspace — Finished (Tauri app included).
+
+Design notes:
+- The mapper is stateless because both the started and completed tool_call events
+  carry the fully-typed tool_call object; shell detection is a per-line key check
+  (shellToolCall present), so no id set is needed — a small simplification over
+  the pi adapter's bash_calls set.
+- CommandRun.exit is the one place across the three v1 adapters where a real exit
+  code lands: claude and pi expose only an isError bool, cursor exposes exitCode.
+  Downstream (timeline) already handles Option<i32>, so mixed None/Some across
+  agents is expected and fine.
+
+Next highest-priority task: M1 — event-log writer: single-writer SQLite via a
+bounded channel (the backpressure); FileChanged emitted here from worktree
+watching, not the adapters. (This is now the only remaining M1 task — all three
+v1.0 headless adapters are done.)
