@@ -13,6 +13,7 @@ uuid = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]
+loopfleet-sandbox.workspace = true
 git2.workspace = true
 tempfile = "3"
 serde_json.workspace = true
