@@ -18,9 +18,11 @@ use loopfleet_core::NormalizedEvent;
 use tokio::sync::mpsc;
 
 mod claude;
+mod cursor;
 mod pi;
 mod stub;
 pub use claude::ClaudeAdapter;
+pub use cursor::CursorAdapter;
 pub use pi::PiAdapter;
 pub use stub::StubAdapter;
 
