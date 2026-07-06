@@ -175,7 +175,66 @@ Design notes:
 - The stub streams through the exact RunHandle path a real run uses, so UI and
   the event-log writer can be built and tested with zero agent binaries present.
 
-Next highest-priority task: M1 — Claude Code adapter, headless: spawn
-`claude -p --output-format stream-json`, map every event type to the enum,
-integration test against a fixture repo. (The event-log writer task can also be
-picked up independently.)
+2026-07-06 — M1: Claude Code adapter, headless
+- Captured ground truth first: ran the real `claude 2.1.201` binary with
+  `-p … --output-format stream-json --verbose --dangerously-skip-permissions`
+  in a throwaway git repo to see the actual line shapes, rather than mapping from
+  memory. Line types observed: system/init, assistant (content blocks: thinking,
+  text, tool_use), user (tool_result), result/success, plus noise (system
+  hook_started/response, rate_limit_event).
+- crates/adapters/src/claude.rs: ClaudeAdapter (stateless) + ClaudeMapper
+  (stateful over one run's stream).
+  - start_run spawns `claude` in spec.cwd, stdin null, stdout/stderr piped, and
+    tokio::spawns drive() which reads stdout line-by-line, maps each via
+    ClaudeMapper, and forwards over the same bounded mpsc(64) RunHandle path the
+    stub uses (backpressure contract preserved). Receiver-dropped → start_kill +
+    stop. Stream ending without a terminal `result` → synthesize
+    Failed{reason: stderr} + Ended so consumers always see termination.
+  - Mapping: system/init → TurnStarted. assistant blocks: text → AssistantText
+    (empty skipped), thinking → Reasoning (empty skipped), tool_use → CommandRun
+    when name=="Bash" (cmd from input.command, exit:None — Claude's bash result
+    carries no numeric exit code) else ToolCall{call_id=id, name, input_excerpt}.
+    user tool_result → ToolResult{call_id=tool_use_id, ok=!is_error,
+    output_excerpt}, EXCEPT results of Bash calls are dropped (already normalized
+    to CommandRun, which the enum carries with no result pairing — mapper tracks
+    bash_calls ids). result → TurnCompleted{usage:{input_tokens,output_tokens}}
+    on success or Failed{reason:result} on error, always followed by Ended.
+    Unknown line types + blanks → ignored.
+  - Excerpts truncated to 2000 bytes on a char boundary (event log stores
+    excerpts, not full payloads). tool_result content flattened whether it's a
+    plain string or an array of text blocks.
+- crates/adapters/fixtures/claude_stream.jsonl: a 9-line fixture distilled from
+  the real capture (init trimmed to the fields the mapper reads; real toolu_ ids,
+  real Read/Bash tool_use + results, real usage numbers, a rate_limit_event noise
+  line). The mapper's primary test runs against this.
+- Cargo.toml: adapters tokio now enables process + io-util; dev-deps add
+  tokio rt-multi-thread + tempfile "3" for the live test.
+- Tests (10 mapper/unit + 1 ignored live): captured-stream mapping (asserts the
+  full expected sequence, Read pair correlates, Bash→CommandRun with its result
+  dropped, exactly one ToolResult, usage parsed), thinking→Reasoning &
+  text→AssistantText, empty blocks skipped, non-Bash tool_use excerpt, error
+  tool_result → ok:false, error result → Failed+Ended, noise/blank ignored,
+  invalid JSON → Protocol error, array content flattened, excerpt char-boundary
+  truncation. Plus live_run_against_fixture_repo (#[ignore]) which spawns the
+  real CLI in a temp git repo — exercises spawn+drive end to end.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test -p loopfleet-adapters — 15 passed,
+  1 ignored.
+- cargo test -p loopfleet-adapters -- --ignored live_run — 1 passed (real
+  claude 2.1.201, ~10s, drove spawn→stream→Ended, saw TurnCompleted).
+- cargo clippy -p loopfleet-adapters --all-targets — clean.
+- cargo build --workspace — Finished (Tauri app included).
+
+Design notes:
+- CommandRun for Bash carries exit:None on purpose: Claude's bash tool_result
+  exposes is_error (bool) but no numeric exit code, and the enum's exit is the
+  process exit code — fabricating Some(0)/Some(1) would misrepresent it. The
+  bash output itself is not representable (CommandRun has no output field); that
+  is the PRD's normalization, and FileChanged (app lane) will catch effects.
+- The mapper is stateful (bash_calls set) and fed one line at a time, so drive()
+  stays a thin read-loop and the mapping is unit-testable with zero process.
+
+Next highest-priority task: M1 — pi adapter, headless: spawn `pi --mode json`,
+map AgentEvent JSONL to the enum, integration test. (Or the event-log writer
+task, pickable independently.)
