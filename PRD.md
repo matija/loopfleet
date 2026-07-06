@@ -149,7 +149,7 @@ Each task below is sized for one agent iteration. Run with ralph-sandbox-exec or
 - [x] Claude Code adapter, headless: spawn `claude -p --output-format stream-json`, map every event type to the enum, integration test against a fixture repo
 - [x] pi adapter, headless: spawn `pi --mode json`, map AgentEvent JSONL to the enum, integration test
 - [x] cursor-agent adapter, headless: spawn `cursor-agent -p --output-format stream-json`, map its stream to the enum, integration test
-- [ ] Event log writer: single-writer SQLite via a bounded channel (this IS the backpressure); `FileChanged` emitted here from worktree watching, not the adapters
+- [x] Event log writer: single-writer SQLite via a bounded channel (this IS the backpressure); `FileChanged` emitted here from worktree watching, not the adapters
 
 ### M2 — Sandbox and git
 - [ ] Port `ralph.sb` to a template; renderer that injects worktree path, parent `.git` path, agent dirs, `/tmp`

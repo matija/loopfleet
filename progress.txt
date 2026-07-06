@@ -399,3 +399,72 @@ Next highest-priority task: M1 — event-log writer: single-writer SQLite via a
 bounded channel (the backpressure); FileChanged emitted here from worktree
 watching, not the adapters. (This is now the only remaining M1 task — all three
 v1.0 headless adapters are done.)
+
+2026-07-06 — M1: Event-log writer (single-writer SQLite via a bounded channel)
+- crates/store/src/event_log.rs: EventLog — the one place rows are appended to
+  the `events` table. spawn(conn, capacity) takes ownership of the Connection and
+  drains a bounded tokio mpsc of LogEntry on a tokio::task::spawn_blocking loop
+  (rx.blocking_recv()), inserting each row. SQLite is single-writer, so funneling
+  every producer through one writer means concurrent runs never contend for the
+  write lock. The bounded channel IS the backpressure: a slow/bursty writer
+  stalls producers at send().await instead of growing an unbounded buffer
+  (matches the RunHandle mpsc(64) contract the adapters already use).
+  - spawn_blocking (not a plain async task): keeps the synchronous rusqlite calls
+    off the async runtime's worker threads; the writer returns
+    rusqlite::Result<usize> (events written) so a write error stops the drain and
+    surfaces on shutdown().await.
+  - sender() -> clonable Sender (re-exported as EventSender): one clone per
+    producer — a per-run adapter-forwarding task (M3) plus the app's worktree
+    watcher (M2/M3). Writer stops when the last sender drops. shutdown() drops
+    the log's own sender, awaits the writer, returns the count.
+  - KEY BOUNDARY: the store stays AGNOSTIC to the event type. LogEntry carries
+    { owner_id, event_json: String } — the already-encoded {"kind":…} JSON that
+    NormalizedEvent serializes to — NOT the core enum. This is deliberate: core
+    depends on store (register_project), so store depending on core would be a
+    build cycle (cargo rejected it), and the enum's own design note says "store
+    persists opaque JSON text, not the Rust type." Producers serialize before
+    sending; consumers (load_events) get the JSON back and deserialize. So this
+    task touched zero core code.
+  - FileChanged (app-sourced lane) enters through the SAME Sender as
+    adapter-sourced events — the channel is the merge point and imposes the
+    ordering. Adapters never emit FileChanged; the app pushes it. The fs/git
+    watcher that generates it needs worktrees, so it lands with M2/M3; M1
+    establishes only that the app lane is a first-class writer input (proven by
+    a test that mixes a TurnStarted from an "adapter" sender and a FileChanged
+    from an "app" sender into one owner's log).
+  - load_events(conn, owner_id) -> Vec<StoredEvent{seq,event_json,ts}>: reads a
+    run/session's events back in append (seq) order via a separate connection.
+    Used by the M4 timeline and by the tests here. Reads stay off the writer.
+  - now_millis(): events.ts is unix millis, stamped at write time.
+- crates/store/Cargo.toml: added tokio (rt, sync) as a dep; dev-deps tokio
+  (rt-multi-thread, macros) + tempfile "3" for the file-backed round-trip tests.
+  No serde_json / loopfleet-core dep — store never (de)serializes the enum.
+- crates/store/src/lib.rs: mod event_log + re-exports (EventLog, LogEntry,
+  EventSender, StoredEvent, load_events). Renamed the re-export of `Sender` to
+  `EventSender` so the crate root name is unambiguous.
+- Tests (3, all passing): round_trips_through_sqlite (events written by the
+  writer connection read back byte-for-byte and in strictly increasing seq order
+  through a separate reader connection), file_changed_flows_through_the_same_
+  channel (adapter-lane + app-lane events from two senders land in one owner's
+  log, in order), separates_events_by_owner (concurrent runs share one writer,
+  stay separable by run_or_session_id).
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test -p loopfleet-store — 9 passed
+  (3 event-log + 6 pre-existing store/projects).
+- cargo clippy -p loopfleet-store --all-targets — clean.
+- cargo build --workspace — Finished (Tauri app included).
+
+Design notes:
+- The writer is intentionally event-type-agnostic: serialization is a boundary
+  concern that belongs above the store, at the point that owns NormalizedEvent
+  (the M3 supervisor's forwarding task). Keeping it out of store preserves the
+  core→store dependency direction and keeps the store a pure persistence layer.
+- spawn_blocking + blocking_recv is the single-writer thread model: one owned
+  Connection, one drain loop, no locks, no async-blocking-on-sync footgun.
+
+M1 is COMPLETE — normalized enum, adapter trait + stub, all three v1.0 headless
+adapters (Claude Code, pi, cursor-agent), and the event-log writer are done.
+Next milestone: M2 — Sandbox and git (port ralph.sb to a template; Sandbox
+trait + SeatbeltSandbox; parent-.git commit regression test; worktree manager;
+shadow-ref snapshotter; diff service).

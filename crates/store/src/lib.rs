@@ -4,6 +4,9 @@
 
 pub use rusqlite::Connection;
 
+mod event_log;
+pub use event_log::{load_events, EventLog, LogEntry, Sender as EventSender, StoredEvent};
+
 mod projects;
 pub use projects::{insert_project, list_projects, Project};
 
