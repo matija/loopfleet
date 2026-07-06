@@ -17,7 +17,9 @@ use async_trait::async_trait;
 use loopfleet_core::NormalizedEvent;
 use tokio::sync::mpsc;
 
+mod claude;
 mod stub;
+pub use claude::ClaudeAdapter;
 pub use stub::StubAdapter;
 
 /// Everything an adapter needs to launch a headless run. Grows as real adapters
