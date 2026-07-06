@@ -157,7 +157,7 @@ Each task below is sized for one agent iteration. Run with ralph-sandbox-exec or
 - [ ] Regression test: `git commit` from inside a sandboxed worktree succeeds (the parent-`.git` grant) — REVISIT: the Sandbox design section removed the `.git` write grant (commits are app-owned), so this test's premise no longer holds; likely replace with a test asserting the agent CANNOT write parent `.git` while the app's out-of-sandbox git actor still commits
 - [x] Worktree manager: create/remove via git CLI, branch naming, orphan cleanup on startup
 - [x] Shadow-ref snapshotter: commit worktree state to `refs/agentapp/run-<id>/iter-<n>` after each iteration
-- [ ] Diff service: iteration diff, run cumulative diff, run-vs-run diff (via git2)
+- [x] Diff service: iteration diff, run cumulative diff, run-vs-run diff (via git2)
 
 ### M3 — The loop
 - [ ] Supervisor: run lifecycle state machine, per-run process-group spawning, SIGTERM handling, one git actor serializing mutations
