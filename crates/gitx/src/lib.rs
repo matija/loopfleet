@@ -1,13 +1,15 @@
 //! loopfleet gitx: the single serialized git actor for mutating ops (worktree
 //! add/remove, shadow commits, ref updates) plus `git2`-backed reads (diff,
-//! status, log). Worktree/shadow-ref ops land in M2; this module currently
-//! provides the read-only repo validation used by project registration (M0).
+//! status, log). Mutations funnel through [`GitActor`] (M3) so concurrent runs
+//! never collide on git lockfiles; reads stay concurrent.
 
 use std::path::Path;
 
+pub mod actor;
 pub mod diff;
 pub mod shadow;
 pub mod worktree;
+pub use actor::GitActor;
 pub use diff::{diff_refs, iteration_diff, run_cumulative_diff, ChangeStatus, DiffError, DiffResult, FileChange};
 pub use shadow::{shadow_ref, Snapshot, SnapshotError};
 pub use worktree::{Worktree, WorktreeError};

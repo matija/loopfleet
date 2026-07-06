@@ -1,8 +1,10 @@
 //! loopfleet core: supervisor, run loop, and the normalized event enum.
 //!
-//! This crate owns the domain logic shared across the app. The supervisor and
-//! event enum land with M1/M3; M0 contributes project registration, which ties
-//! the git-repo validation (`gitx`) and persistence (`store`) layers together.
+//! This crate owns the domain logic shared across the app. M0 contributes
+//! project registration (tying git-repo validation in `gitx` to persistence in
+//! `store`); M1 the normalized event enum; M3 the supervisor foundations (run
+//! lifecycle state machine + process-group spawning). The driving loop composes
+//! these with the adapters, sandbox, and the serialized git actor.
 
 use std::fmt;
 use std::path::Path;
@@ -11,7 +13,9 @@ use loopfleet_store::Project;
 use rusqlite::Connection;
 
 pub mod event;
+pub mod supervisor;
 pub use event::{Lane, NormalizedEvent, Usage};
+pub use supervisor::{InvalidTransition, RunProcess, RunState};
 
 /// Why a project could not be registered.
 #[derive(Debug)]
