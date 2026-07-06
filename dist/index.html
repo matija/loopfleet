@@ -5,31 +5,148 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>loopfleet</title>
     <style>
+      :root {
+        color-scheme: dark;
+      }
       body {
         font-family: -apple-system, system-ui, sans-serif;
         margin: 0;
-        display: grid;
-        place-items: center;
-        height: 100vh;
+        min-height: 100vh;
         background: #14151a;
         color: #e6e6e6;
+        display: flex;
+        justify-content: center;
       }
       .shell {
-        text-align: center;
+        width: 100%;
+        max-width: 640px;
+        padding: 48px 24px;
       }
       h1 {
         font-weight: 600;
         letter-spacing: -0.02em;
+        margin: 0 0 4px;
       }
-      p {
+      .sub {
         color: #8a8f98;
+        margin: 0 0 32px;
+      }
+      button {
+        font: inherit;
+        font-weight: 500;
+        color: #14151a;
+        background: #e6e6e6;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 16px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #fff;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .msg {
+        margin-top: 12px;
+        min-height: 20px;
+        font-size: 14px;
+      }
+      .msg.err {
+        color: #ff8a8a;
+      }
+      .msg.ok {
+        color: #8affb0;
+      }
+      h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #8a8f98;
+        margin: 40px 0 12px;
+      }
+      ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      li {
+        padding: 10px 12px;
+        border: 1px solid #262830;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        font-size: 14px;
+      }
+      li .conv {
+        color: #8a8f98;
+        font-size: 12px;
+      }
+      .empty {
+        color: #8a8f98;
+        font-size: 14px;
       }
     </style>
   </head>
   <body>
     <div class="shell">
       <h1>loopfleet</h1>
-      <p>Scaffold ready — projects, plans, and runs land in later milestones.</p>
+      <p class="sub">Register a git repository to supervise runs against.</p>
+
+      <button id="add">Add project…</button>
+      <div id="msg" class="msg"></div>
+
+      <h2>Projects</h2>
+      <ul id="projects"></ul>
+      <p id="empty" class="empty">No projects registered yet.</p>
     </div>
+
+    <script>
+      const { invoke } = window.__TAURI__.core;
+      const { open } = window.__TAURI__.dialog;
+
+      const addBtn = document.getElementById("add");
+      const msg = document.getElementById("msg");
+      const list = document.getElementById("projects");
+      const empty = document.getElementById("empty");
+
+      function setMsg(text, cls) {
+        msg.textContent = text;
+        msg.className = "msg" + (cls ? " " + cls : "");
+      }
+
+      async function refresh() {
+        const projects = await invoke("list_projects");
+        list.innerHTML = "";
+        empty.style.display = projects.length ? "none" : "block";
+        for (const p of projects) {
+          const li = document.createElement("li");
+          li.textContent = p.repo_path;
+          const conv = document.createElement("div");
+          conv.className = "conv";
+          conv.textContent = "convention: " + p.plan_convention;
+          li.appendChild(conv);
+          list.appendChild(li);
+        }
+      }
+
+      addBtn.addEventListener("click", async () => {
+        const folder = await open({ directory: true, multiple: false });
+        if (!folder) return;
+        addBtn.disabled = true;
+        setMsg("");
+        try {
+          const project = await invoke("register_project", { path: folder });
+          setMsg("Registered " + project.repo_path, "ok");
+          await refresh();
+        } catch (e) {
+          setMsg(String(e), "err");
+        } finally {
+          addBtn.disabled = false;
+        }
+      });
+
+      refresh();
+    </script>
   </body>
 </html>

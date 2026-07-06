@@ -54,5 +54,42 @@ Design notes:
 - foreign_keys pragma is per-connection, so open() sets it every time; migrate()
   alone does not (callers using migrate() directly must set the pragma).
 
-Next highest-priority task: M0 — Project registration (pick a folder, validate
-it is a git repo, persist).
+2026-07-06 — M0: Project registration (pick a folder, validate git repo, persist)
+- crates/store/src/projects.rs: Project { id, repo_path, plan_convention }
+  (serde-derived). insert_project (errors on the repo_path UNIQUE constraint) and
+  list_projects (ordered by repo_path). Re-exported from store's lib.rs. Added
+  serde to the store crate; fixed a duplicate `Connection` import in lib.rs
+  (merged `use` + `pub use rusqlite::Connection` into one pub re-export).
+- crates/gitx/src/lib.rs: is_git_repo(path) — read-only git2 Repository::open,
+  recognizes work-dir and bare repos, never mutates. First real gitx code (rest
+  of the git actor is M2). Added git2 dep + tempfile dev-dep.
+- crates/core/src/lib.rs: register_project(conn, folder) ties it together —
+  canonicalizes the path (so one repo can't register twice via different relative
+  paths), validates via gitx::is_git_repo, generates a uuid v4 id, defaults
+  plan_convention to "prd" (folder-convention detection is M3), inserts.
+  RegisterError { NotAGitRepo, AlreadyRegistered, Store } with Display; the
+  UNIQUE violation from the store maps to AlreadyRegistered. Added gitx/store/
+  rusqlite/uuid deps + git2/tempfile dev-deps.
+- src-tauri/src/lib.rs: AppState { db: Mutex<Connection> } opened in setup() at
+  app_data_dir/loopfleet.db (single-writer; mutex because commands run on
+  arbitrary threads). Tauri commands register_project(path) and list_projects,
+  errors surfaced as strings. Wired the tauri-plugin-dialog for the native
+  folder picker; enabled dialog:default capability and withGlobalTauri.
+- dist/index.html: minimal UI — "Add project…" opens the native directory
+  picker, invokes register_project, shows ok/err status, and refreshes a list of
+  registered projects (repo_path + convention). Replaces the scaffold placeholder.
+- Workspace deps added: git2 0.19, uuid 1 (v4), serde 1 (derive).
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test -p loopfleet-core -p loopfleet-gitx
+  -p loopfleet-store — 12 passed (core 3, gitx 3, store 6).
+- cargo clippy --workspace --all-targets — clean, Tauri app included, 0 warnings.
+
+Design notes:
+- Path canonicalization is the dedup key; it also doubles as an existence check
+  (a path that can't canonicalize can't be a repo → NotAGitRepo).
+- The store stays git-agnostic (raw UNIQUE error); core owns the mapping to a
+  user-facing AlreadyRegistered. Keeps the sandbox/git boundary out of store.
+
+Next highest-priority task: M1 — Define the normalized event enum (adapter-sourced
+vs app-sourced lanes; correlated ToolCall/ToolResult) + serde round-trip tests.
