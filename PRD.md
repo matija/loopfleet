@@ -155,7 +155,7 @@ Each task below is sized for one agent iteration. Run with ralph-sandbox-exec or
 - [x] Port `ralph.sb` to a template; renderer that injects worktree path, agent dirs, `/tmp` (NB: parent-`.git` write is intentionally NOT granted — supersedes the stale wording; commits are app-owned per the Sandbox design section, so `.git` write is an escape vector, not a requirement)
 - [x] `Sandbox` trait + `SeatbeltSandbox` impl wrapping command construction
 - [ ] Regression test: `git commit` from inside a sandboxed worktree succeeds (the parent-`.git` grant) — REVISIT: the Sandbox design section removed the `.git` write grant (commits are app-owned), so this test's premise no longer holds; likely replace with a test asserting the agent CANNOT write parent `.git` while the app's out-of-sandbox git actor still commits
-- [ ] Worktree manager: create/remove via git CLI, branch naming, orphan cleanup on startup
+- [x] Worktree manager: create/remove via git CLI, branch naming, orphan cleanup on startup
 - [ ] Shadow-ref snapshotter: commit worktree state to `refs/agentapp/run-<id>/iter-<n>` after each iteration
 - [ ] Diff service: iteration diff, run cumulative diff, run-vs-run diff (via git2)
 

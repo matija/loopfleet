@@ -594,3 +594,60 @@ branch naming, orphan cleanup on startup). NB: the 3rd M2 bullet (the
 .git write grant) was removed; it likely becomes "agent CANNOT write parent
 .git while the app's out-of-sandbox actor still commits", better done once the
 worktree manager + shadow snapshotter exist.
+
+2026-07-06 — M2: Worktree manager (create/remove via git CLI, orphan cleanup)
+- crates/gitx/src/worktree.rs: per-run worktree lifecycle, shelling out to the
+  `git` CLI (libgit2 worktree support is patchy; agents expect CLI semantics —
+  PRD "Git layer"). git2 stays for reads; this module owns only the mutating
+  worktree ops. Kept actor-agnostic: it builds/runs the commands, the M3
+  supervisor funnels them through the single serialized git actor later.
+  - BRANCH_PREFIX = "agent/" + branch_for(run_id) -> "agent/<run-id>" (PRD
+    branch naming). Worktree { path, branch }.
+  - add(repo, worktrees_root, run_id): `git -C <repo> worktree add -b
+    agent/<run-id> <worktrees_root>/<run-id>` (needs a HEAD to branch from).
+    Creates worktrees_root if missing. Canonicalizes the returned path because
+    git records the canonical form (macOS /var -> /private/var) and `list`
+    reports it that way — so add()'s path matches list()'s and disk.
+  - remove(repo, path): `git worktree remove --force <path>`. --force because
+    agents leave dirty/untracked trees (commits are app-owned via shadow refs,
+    so the checkout is expected dirty at teardown). The agent/<run-id> branch
+    and shadow refs are intentionally left intact so the run's diff history
+    survives (PRD "keep all shadow refs").
+  - list(repo): parses `git worktree list --porcelain`, filtering to worktrees
+    on an agent/ branch (strips refs/heads/), so the repo's own main worktree
+    and unrelated ones don't appear.
+  - cleanup_orphans(repo): startup orphan cleanup = `git worktree prune` (git's
+    own mechanism for entries whose checkout dir vanished, e.g. a crash mid-run).
+    Branches/refs untouched. Returns count pruned (before/after worktree count
+    diff). Scoped to git's notion of orphan; run-record reconciliation (mark
+    running runs failed on restart) stays M6.
+  - WorktreeError { Io, Git(stderr) }, From<io::Error>, Display/Error. git()
+    helper runs `git -C <repo> …`, returns trimmed stdout or stderr on non-zero.
+- crates/gitx/src/lib.rs: `pub mod worktree` + re-export Worktree/WorktreeError.
+- No new deps (std::process::Command; tempfile dev-dep already present).
+- Tests (9 total, all passing): branch naming; add creates worktree on
+  agent/<id> branch with populated checkout + shows in list; remove deletes a
+  dirty+untracked worktree yet keeps the agent branch; list ignores non-agent
+  (feature/x) worktrees; cleanup prunes an orphaned entry (dir deleted out from
+  under git) → gone from list; cleanup is a no-op (0) when a live worktree
+  exists. repo_with_commit() test helper inits a repo with one commit + user
+  config so `worktree add -b` has a HEAD.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test -p loopfleet-gitx — 9 passed.
+- cargo clippy -p loopfleet-gitx --all-targets — clean.
+- cargo build --workspace — Finished (Tauri app included).
+
+Design notes:
+- Path canonicalization in add() is the fix for a real caller footgun: without
+  it the stored path (symlinked /var/...) never equals what list()/git report
+  (/private/var/...), so later remove()/lookup by list() would miss it.
+- cleanup_orphans is deliberately narrow (git prune only). Removing live agent
+  worktrees on restart because "runs don't survive app restart in v1" belongs
+  with M6 crash-recovery + run-record reconciliation, not here.
+
+Next highest-priority task: M2 — Shadow-ref snapshotter: commit worktree state
+to refs/agentapp/run-<id>/iter-<n> after each iteration (app-owned commits, the
+unsandboxed git actor; agent never runs git commit). Then the diff service, then
+the flagged-stale ".git-grant" regression test can be rewritten as "agent CANNOT
+write parent .git while the app's out-of-sandbox actor still commits".
