@@ -712,3 +712,69 @@ diff, run-vs-run diff (via git2). Then the flagged-stale ".git-grant" regression
 test can be rewritten as "agent CANNOT write parent .git while the app's
 out-of-sandbox actor still commits", now that the snapshotter proves the actor
 commits out-of-sandbox.
+
+2026-07-06 — M2: Diff service (iteration / cumulative / run-vs-run, via git2)
+- crates/gitx/src/diff.rs: read-only diff service over the app-owned shadow refs.
+  Uses git2 (reads stay on git2; mutations shell out — PRD "Git layer"), so it's
+  concurrent and never funnels through the M3 git actor. The three UI views all
+  reduce to diffing two tree-ish revisions, so the core is one private build()
+  and the named views are thin ref-resolving wrappers (simplicity, no duplicated
+  diff logic).
+  - iteration_diff(repo, run_id, iter): diff of iter's shadow commit vs its first
+    parent. The shadow refs form a chain (snapshotter parents iter-n on iter-(n-1),
+    or base HEAD for iter-1), so commit.parent(0) IS the prior state — no need to
+    know the branch name or resolve iter-(n-1) explicitly. iter-1 therefore diffs
+    against base = "what iteration 1 changed".
+  - run_cumulative_diff(repo, run_id, final_iter): base HEAD (iter-1's parent) vs
+    final_iter's shadow commit = everything the run produced, final state only.
+  - diff_refs(repo, from_rev, to_rev): diff two arbitrary revs (a shadow ref, sha,
+    or branch). This IS the run-vs-run compare view — pass two runs' final shadow
+    refs. Kept generic rather than a run_vs_run(run_a, run_b) wrapper because the
+    compare view diffs whatever refs the user selects, and the caller already has
+    the refs from the Iteration records.
+  - DiffResult { files: Vec<FileChange>, patch: String }. FileChange { path,
+    old_path (Some only for rename/copy), status: ChangeStatus, insertions,
+    deletions }. Per-file summary (for the compare view's file list) + the full
+    unified patch text (for the diff viewer) — the two shapes M4 consumes. Renames
+    detected via diff.find_similar (renames+copies) so a move shows as one Renamed
+    entry with old_path, not an add+delete pair. Per-file line counts from
+    git2::Patch::from_diff(&diff, idx).line_stats(). Patch text reconstructed via
+    diff.print(Patch, …), prefixing +/-/space lines with their origin char.
+  - A None tree side = the empty tree (build() takes Option<&Tree>), so a
+    first-iteration snapshot with no parent would show every file as added — but
+    in practice iter-1 always has base HEAD as parent.
+  - ChangeStatus { Added, Modified, Deleted, Renamed, Copied, Other } maps
+    git2::Delta; Other folds typechange/conflicted/etc. DiffError { Git } +
+    Display/Error/From<git2::Error>, mirroring the other gitx modules' shape.
+- crates/gitx/src/lib.rs: pub mod diff + re-exports (diff_refs, iteration_diff,
+  run_cumulative_diff, ChangeStatus, DiffError, DiffResult, FileChange).
+- No new deps (git2 already the crate's only runtime dep; tempfile dev-dep present).
+- Tests (5, all passing): iteration_diff iter-1 vs base (modified + added file,
+  insertions counted, +changed/+fresh in patch); iteration_diff iter-2 shows only
+  iter-2's changes (a.txt -one/+two, b.txt added, NOT iter-1's a.txt add);
+  run_cumulative base..final (a.txt is Added across the run, final "two" only, no
+  intermediate "one"); diff_refs between two separate runs' final refs (-alpha/
+  +beta); detects_deletion_and_rename (rename with old_path set + a deletion in
+  one diff). NB: diff tests use distinct run-ids (diff-r1..r4, run-a/run-b) to
+  avoid colliding with shadow.rs's run-1..5 on the shared pid-keyed temp index
+  lock when the two test modules run in parallel.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test -p loopfleet-gitx — 20 passed
+  (5 diff + 6 shadow + 9 worktree/repo).
+- cargo clippy -p loopfleet-gitx --all-targets — clean.
+- cargo build --workspace — Finished (Tauri app included).
+
+Design notes:
+- One build() over Option<&Tree> pairs, three ref-resolving wrappers: adding a
+  new diff view later means resolving refs, not re-implementing diff/patch/rename
+  logic.
+- Reusing commit.parent(0) as the iteration's "from" side leans on the
+  snapshotter's parent chain being real; the two modules are coupled by that
+  invariant, which is exactly why the snapshotter builds the chain.
+
+Next highest-priority task: M2's last bullet — the flagged-stale ".git-grant"
+regression test, now rewritten per its REVISIT note as "agent CANNOT write parent
+.git while the app's out-of-sandbox actor still commits" (the snapshotter + this
+diff service prove the actor commits out-of-sandbox; the sandbox renderer already
+excludes the .git grant). After that, M2 is complete and M3 (the loop) begins.
