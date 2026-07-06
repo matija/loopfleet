@@ -532,3 +532,65 @@ Design notes:
 
 Next highest-priority task: M2 — Sandbox trait + SeatbeltSandbox impl wrapping
 command construction (wrap a command in `sandbox-exec -f <rendered.sb> …`).
+
+2026-07-06 — M2: Sandbox trait + SeatbeltSandbox impl (command construction)
+- crates/sandbox/src/lib.rs: the Sandbox trait, kept behind a trait so non-macOS
+  backends (Landlock/bubblewrap) slot in later without leaking Seatbelt specifics
+  upward (PRD "Sandbox"). Single method:
+    fn wrap(&self, command: &SandboxCommand) -> Result<WrappedCommand, SandboxError>;
+  Object-safe (&self, owned return) so the M3 supervisor can hold a Box<dyn
+  Sandbox>. No async — pure render + file write + argv construction.
+  - SandboxCommand { program: OsString, args: Vec<OsString>, params: RenderParams,
+    profile_path: PathBuf }. profile_path is app-owned, keyed by run-id, set by
+    the supervisor (the sandbox doesn't know about run ids). params is the
+    existing per-run RenderParams (write boundary).
+  - WrappedCommand { program (private OsString), args (private Vec<OsString>),
+    profile_path (pub) } with program()/args() accessors. Deliberately OPAQUE:
+    the caller spawns program()+args() as-is and never learns it's sandbox-exec
+    — that's how Seatbelt stays behind the trait. profile_path is surfaced for
+    the run UI's profile panel (trust is a feature, not a footnote). Derives
+    Debug so tests can unwrap_err.
+  - SeatbeltSandbox (unit struct, stateless). wrap(): render(&params) → create
+    profile_path.parent() dir → write the .sb → build argv
+    ["-f", profile_path, program, ...args] with program=SANDBOX_EXEC
+    ("/usr/bin/sandbox-exec"). Each wrap renders a fresh profile for the run it
+    confines. cwd/env stay the caller's concern (adapters already set
+    .current_dir on their tokio Command; sandbox-exec inherits cwd), so wrap
+    only produces the argv — the adapter/supervisor builds whatever Command type
+    (std or tokio) from program()+args().
+  - SandboxError { Render(RenderError), Io(io::Error) } + Display/Error + From<
+    RenderError> so render()'s error flows through `?`. Render errors (relative/
+    non-UTF-8 write path) propagate unchanged; disk write failures become Io.
+- No new deps: pure std (OsString/OsStr, fs, process in the ignored test).
+  tempfile dev-dep already present.
+- Tests (4 unit + 1 ignored macos, on top of the 7 render tests): argv built in
+  exact order (sandbox-exec, -f, profile, program, args); profile written to
+  disk contains (deny default) + the worktree subpath; parent dir created for a
+  nested profile_path; render errors propagate as Render(RelativePath). Plus
+  wrapped_command_spawns (#[ignore], macos): wrap /usr/bin/true and actually
+  spawn the returned argv, tolerating nested sandbox_apply denial — proves the
+  sandbox-exec -f <profile> <program> shape is spawnable end to end.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test -p loopfleet-sandbox — 11 passed,
+  2 ignored.
+- cargo test -p loopfleet-sandbox -- --ignored wrapped_command_spawns — 1 passed
+  (real /usr/bin/sandbox-exec ran the wrapped /usr/bin/true).
+- cargo clippy -p loopfleet-sandbox --all-targets — clean.
+- cargo build --workspace — Finished (Tauri app included).
+
+Design notes:
+- WrappedCommand is opaque by construction (private program/args + accessors),
+  not by convention: nothing above the Sandbox trait can pattern-match out the
+  sandbox-exec binary, which keeps the PRD's "no Seatbelt details leaking above
+  the trait" honest.
+- The sandbox writes the profile itself (not the caller) so the profile-on-disk
+  and the argv referencing it are produced atomically in one call — a caller
+  can't accidentally spawn against a stale/missing .sb.
+
+Next highest-priority task: M2 — Worktree manager (create/remove via git CLI,
+branch naming, orphan cleanup on startup). NB: the 3rd M2 bullet (the
+".git-grant" regression test) is flagged REVISIT/stale — its premise (parent
+.git write grant) was removed; it likely becomes "agent CANNOT write parent
+.git while the app's out-of-sandbox actor still commits", better done once the
+worktree manager + shadow snapshotter exist.
