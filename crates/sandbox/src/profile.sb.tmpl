@@ -1,0 +1,52 @@
+;; loopfleet sandbox profile — RENDERED PER RUN, do not edit the rendered copy.
+;; The macOS Seatbelt (sandbox-exec) profile is the SINGLE security boundary for
+;; a headless agent run. Writes are confined to the run's worktree, the per-run
+;; progress dir, agent config/cache dirs, and temp dirs. Reads and network are
+;; deliberately open: agent toolchains read from everywhere and agents need
+;; remote inference. See PRD "Sandbox".
+;;
+;; The parent repo's .git is NOT granted write: commits are app-owned (the
+;; unsandboxed git actor snapshots to shadow refs), so the agent never needs
+;; .git write, which closes a real escape (a planted hooks/ script or a
+;; core.hooksPath / core.sshCommand in config that later runs unsandboxed).
+(version 1)
+
+;; Deny everything, then re-grant the minimum a full-auto agent needs.
+(deny default)
+
+;; Reads are unrestricted — a sandboxed agent can read anything this user can
+;; (~/.ssh, ~/.aws, other repos' .env) and, with network open, exfiltrate it.
+;; This is stated plainly in the run UI; read-scope confinement is post-v1.
+(allow file-read*)
+(allow file-read-metadata)
+
+;; Processes: agents spawn toolchains (node, python, git, compilers).
+(allow process-exec)
+(allow process-fork)
+(allow signal (target self))
+
+;; Infrastructure dev toolchains need to start.
+(allow sysctl-read)
+(allow mach-lookup)
+(allow ipc-posix-shm)
+
+;; Network is open — agents need remote inference and tool egress.
+;; Egress allowlisting is post-v1 hardening.
+(allow network*)
+
+;; Writable device nodes toolchains expect.
+(allow file-write*
+    (literal "/dev/null")
+    (literal "/dev/zero")
+    (literal "/dev/dtracehelper")
+    (literal "/dev/tty")
+    (literal "/dev/stdout")
+    (literal "/dev/stderr")
+    (literal "/dev/random")
+    (literal "/dev/urandom")
+    (subpath "/dev/fd"))
+
+;; Writes confined to the run's worktree, progress dir, agent dirs, and temp.
+;; This is the actual boundary the whole app rests on.
+(allow file-write*
+{{WRITE_SUBPATHS}})
