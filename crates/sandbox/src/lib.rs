@@ -8,8 +8,13 @@
 //! progress dir, agent config/cache dirs, and temp dirs; reads and network stay
 //! open. See PRD "Sandbox".
 
+use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::path::{Path, PathBuf};
+
+/// The macOS Seatbelt driver. `sandbox-exec -f <profile> <program> <args…>`
+/// runs `program` confined by the SBPL profile.
+const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
 
 /// The `.sb` profile template. Rendered per run by [`render`], which fills the
 /// `{{WRITE_SUBPATHS}}` marker with the run's writable subpaths.
@@ -117,6 +122,109 @@ fn escape_sbpl(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+/// Confines a child process to a per-run write boundary.
+///
+/// Kept behind a trait so non-macOS backends (Landlock/bubblewrap, containers)
+/// can slot in later without leaking Seatbelt specifics upward — callers spawn
+/// the returned [`WrappedCommand`] opaquely. See PRD "Sandbox".
+pub trait Sandbox {
+    /// Wrap `command` so it runs confined. Renders the run's profile, persists
+    /// it to `command.profile_path`, and returns the argv to spawn.
+    fn wrap(&self, command: &SandboxCommand) -> Result<WrappedCommand, SandboxError>;
+}
+
+/// The agent command to confine, its write boundary, and where to persist the
+/// rendered profile (app-owned, keyed by run-id — set by the supervisor).
+pub struct SandboxCommand {
+    /// Program to run confined (e.g. `claude`).
+    pub program: OsString,
+    /// Its arguments.
+    pub args: Vec<OsString>,
+    /// The run's writable boundary.
+    pub params: RenderParams,
+    /// Where to write the rendered `.sb` profile. Also surfaced back on the
+    /// [`WrappedCommand`] for the run UI's profile panel.
+    pub profile_path: PathBuf,
+}
+
+/// A confined command: an opaque program + argv the caller spawns as-is. The
+/// caller does not need to know it runs under `sandbox-exec`.
+#[derive(Debug)]
+pub struct WrappedCommand {
+    program: OsString,
+    args: Vec<OsString>,
+    /// The rendered profile on disk — surfaced so the run UI can show the
+    /// active boundary (trust is a feature, not a footnote).
+    pub profile_path: PathBuf,
+}
+
+impl WrappedCommand {
+    /// The program to spawn.
+    pub fn program(&self) -> &OsStr {
+        &self.program
+    }
+
+    /// The arguments to spawn it with.
+    pub fn args(&self) -> &[OsString] {
+        &self.args
+    }
+}
+
+/// Why a command could not be confined.
+#[derive(Debug)]
+pub enum SandboxError {
+    /// The profile could not be rendered (bad write path).
+    Render(RenderError),
+    /// The rendered profile could not be persisted to disk.
+    Io(std::io::Error),
+}
+
+impl fmt::Display for SandboxError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SandboxError::Render(e) => write!(f, "{e}"),
+            SandboxError::Io(e) => write!(f, "writing sandbox profile: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for SandboxError {}
+
+impl From<RenderError> for SandboxError {
+    fn from(e: RenderError) -> Self {
+        SandboxError::Render(e)
+    }
+}
+
+/// The macOS `sandbox-exec` (Seatbelt) sandbox. Stateless: each [`wrap`] renders
+/// and writes a fresh profile for the run it confines.
+///
+/// [`wrap`]: Sandbox::wrap
+pub struct SeatbeltSandbox;
+
+impl Sandbox for SeatbeltSandbox {
+    fn wrap(&self, command: &SandboxCommand) -> Result<WrappedCommand, SandboxError> {
+        let profile = render(&command.params)?;
+        if let Some(parent) = command.profile_path.parent() {
+            std::fs::create_dir_all(parent).map_err(SandboxError::Io)?;
+        }
+        std::fs::write(&command.profile_path, profile).map_err(SandboxError::Io)?;
+
+        // sandbox-exec -f <profile> <program> <args…>
+        let mut args = Vec::with_capacity(command.args.len() + 3);
+        args.push(OsString::from("-f"));
+        args.push(command.profile_path.clone().into_os_string());
+        args.push(command.program.clone());
+        args.extend(command.args.iter().cloned());
+
+        Ok(WrappedCommand {
+            program: OsString::from(SANDBOX_EXEC),
+            args,
+            profile_path: command.profile_path.clone(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,6 +305,75 @@ mod tests {
         assert!(dirs.contains(&PathBuf::from("/tmp")));
     }
 
+    fn sandbox_command(dir: &Path) -> SandboxCommand {
+        let worktree = dir.join("wt");
+        let progress = dir.join("progress");
+        SandboxCommand {
+            program: OsString::from("claude"),
+            args: vec![OsString::from("-p"), OsString::from("do the thing")],
+            params: RenderParams::new(&worktree, &progress),
+            profile_path: dir.join("run.sb"),
+        }
+    }
+
+    #[test]
+    fn wrap_builds_sandbox_exec_argv_in_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let cmd = sandbox_command(dir.path());
+        let profile_path = cmd.profile_path.clone();
+
+        let wrapped = SeatbeltSandbox.wrap(&cmd).unwrap();
+
+        assert_eq!(wrapped.program(), OsStr::new(SANDBOX_EXEC));
+        let expected: Vec<OsString> = vec![
+            OsString::from("-f"),
+            profile_path.clone().into_os_string(),
+            OsString::from("claude"),
+            OsString::from("-p"),
+            OsString::from("do the thing"),
+        ];
+        assert_eq!(wrapped.args(), expected.as_slice());
+        assert_eq!(wrapped.profile_path, profile_path);
+    }
+
+    #[test]
+    fn wrap_writes_the_rendered_profile_to_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let cmd = sandbox_command(dir.path());
+        let worktree = cmd.params.worktree.to_str().unwrap().to_string();
+
+        let wrapped = SeatbeltSandbox.wrap(&cmd).unwrap();
+
+        let written = std::fs::read_to_string(&wrapped.profile_path).unwrap();
+        assert!(written.contains("(deny default)"));
+        assert!(written.contains(&format!("(subpath \"{worktree}\")")));
+    }
+
+    #[test]
+    fn wrap_creates_the_profile_parent_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cmd = sandbox_command(dir.path());
+        cmd.profile_path = dir.path().join("nested/deeper/run.sb");
+
+        let wrapped = SeatbeltSandbox.wrap(&cmd).unwrap();
+
+        assert!(wrapped.profile_path.exists());
+    }
+
+    #[test]
+    fn wrap_propagates_render_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cmd = sandbox_command(dir.path());
+        cmd.params.agent_dirs.push(PathBuf::from("relative/dir"));
+
+        match SeatbeltSandbox.wrap(&cmd) {
+            Err(SandboxError::Render(RenderError::RelativePath(bad))) => {
+                assert_eq!(bad, PathBuf::from("relative/dir"));
+            }
+            other => panic!("expected Render(RelativePath), got {other:?}"),
+        }
+    }
+
     /// Validates the rendered profile actually PARSES under real `sandbox-exec`
     /// — the true test that the port is valid SBPL. Ignored by default (nested
     /// sandboxing / platform), runnable manually on macOS:
@@ -242,6 +419,44 @@ mod tests {
         assert!(
             out.status.success() || nested_apply_denied,
             "profile failed to parse under sandbox-exec: {stderr}"
+        );
+    }
+
+    /// End-to-end: `wrap` a real command and spawn the returned argv, proving
+    /// the `sandbox-exec -f <profile> <program> <args…>` shape is spawnable.
+    /// Ignored (nested sandboxing / platform), runnable manually on macOS:
+    ///   cargo test -p loopfleet-sandbox -- --ignored wrapped_command_spawns
+    #[test]
+    #[ignore]
+    #[cfg(target_os = "macos")]
+    fn wrapped_command_spawns() {
+        use std::process::Command;
+
+        let dir = tempfile::tempdir().unwrap();
+        let worktree = dir.path().join("wt");
+        std::fs::create_dir_all(&worktree).unwrap();
+        let progress = dir.path().join("progress");
+        std::fs::create_dir_all(&progress).unwrap();
+
+        let cmd = SandboxCommand {
+            program: OsString::from("/usr/bin/true"),
+            args: vec![],
+            params: RenderParams::new(&worktree, &progress),
+            profile_path: dir.path().join("run.sb"),
+        };
+        let wrapped = SeatbeltSandbox.wrap(&cmd).unwrap();
+
+        let out = Command::new(wrapped.program())
+            .args(wrapped.args())
+            .output()
+            .expect("wrapped command should spawn");
+
+        // Tolerate nested sandbox_apply denial (test runs inside a sandbox),
+        // same as parses_under_sandbox_exec.
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            out.status.success() || stderr.contains("sandbox_apply"),
+            "wrapped command failed: {stderr}"
         );
     }
 }
