@@ -161,6 +161,9 @@ mod tests {
         run(&["init", "-q"]);
         run(&["config", "user.email", "t@t.test"]);
         run(&["config", "user.name", "t"]);
+        // Don't inherit the user's global commit.gpgsign — tests must not depend
+        // on a gpg agent being available.
+        run(&["config", "commit.gpgsign", "false"]);
         std::fs::write(p.join("README.md"), "hi\n").unwrap();
         run(&["add", "."]);
         run(&["commit", "-q", "-m", "init"]);
