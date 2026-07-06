@@ -160,7 +160,7 @@ Each task below is sized for one agent iteration. Run with ralph-sandbox-exec or
 - [x] Diff service: iteration diff, run cumulative diff, run-vs-run diff (via git2)
 
 ### M3 — The loop
-- [ ] Supervisor: run lifecycle state machine, per-run process-group spawning, SIGTERM handling, one git actor serializing mutations
+- [x] Supervisor: run lifecycle state machine, per-run process-group spawning, SIGTERM handling, one git actor serializing mutations
 - [ ] Iteration loop: N passes, fresh agent invocation each pass seeded with the bound task + prior progress file, app-owned snapshot between passes, stop conditions (bound task's `STATUS: COMPLETE`, N reached, failure)
 - [ ] Plan parser: PRD.md checkboxes (frozen; authored state only) + alternative plans-folder convention; text-based task anchors
 - [ ] Progress-file watcher: detect `STATUS: COMPLETE` in the per-run external progress file → mark run completed

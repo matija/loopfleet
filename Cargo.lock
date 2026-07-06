@@ -1847,6 +1847,7 @@ name = "loopfleet-core"
 version = "0.1.0"
 dependencies = [
  "git2",
+ "libc",
  "loopfleet-gitx",
  "loopfleet-sandbox",
  "loopfleet-store",
@@ -1854,6 +1855,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "uuid",
 ]
 
@@ -1863,6 +1865,7 @@ version = "0.1.0"
 dependencies = [
  "git2",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]

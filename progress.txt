@@ -823,3 +823,70 @@ regression test are all done.
 Next highest-priority task: M3 — Supervisor: run lifecycle state machine,
 per-run process-group spawning, SIGTERM handling, one git actor serializing
 mutations. (First M3 bullet; the iteration loop builds on it.)
+
+2026-07-06 — M3: Supervisor foundations (state machine, process groups, git actor)
+- Completes the first M3 bullet. Three pieces; the git actor was written in a
+  prior uncommitted iteration and is committed here alongside the two new ones.
+- crates/gitx/src/actor.rs (GitActor): the single serialized mutation point.
+  One worker thread drains a bounded (64) tokio mpsc of type-erased jobs via
+  blocking_recv (same spawn_blocking-style model as the store's event-log
+  writer), so concurrent runs never collide on git lockfiles (index.lock, refs,
+  worktree metadata). git2 reads (diff/status/log) stay concurrent and never go
+  through it. Public surface is TYPED — one async method per mutating op in the
+  crate (worktree_add / worktree_remove / cleanup_orphans / snapshot), private
+  exec() is the only doorway to the serialization point, so a caller cannot
+  sneak an arbitrary git mutation past it. Clone-able handle; worker exits when
+  the last clone drops. gitx/Cargo.toml gains tokio (+ rt-multi-thread dev).
+  Tests (3): full lifecycle through the actor (add→snapshot→remove→prune), 8
+  concurrent submitters never overlap on the worker thread (shared busy-flag
+  trips on any parallel execution), two runs snapshotting one repo concurrently
+  both succeed (the lockfile-collision scenario the actor exists for).
+- crates/core/src/supervisor.rs — RunState: the lifecycle state machine
+  queued → running → (completed | failed | stopped). as_str/from_token match the
+  runs.status text tokens the store persists; transition() validates edges so an
+  illegal move (queued→completed, resurrecting a terminal state, self-loop) is a
+  caught InvalidTransition, not a silently corrupt row. is_terminal() drives
+  "run is over". Implemented the PRD diagram EXACTLY — no speculative queued→failed
+  edge; setup failure goes queued→running→failed. from_token named to avoid the
+  should_implement_trait clippy lint (Option semantics, not FromStr).
+- crates/core/src/supervisor.rs — RunProcess: per-run process-group spawning +
+  group-wide SIGTERM. spawn() sets process_group(0) so the child leads a fresh
+  group (pgid == pid); terminate() killpg(pgid, SIGTERM) hits the WHOLE group,
+  so a child the agent forked (a shell, a language server) dies too — not just
+  the direct child. wait() reaps. This is the PRD's "SIGTERM that group at the
+  next iteration boundary" mechanism. Unix-only (cfg via the macOS-only v1
+  target; the process/sandbox layers are the platform seam). Uses tokio's
+  inherent Command::process_group + libc::killpg (std can't signal a group).
+  core/Cargo.toml gains tokio (process) + libc; dev-deps add tokio time/io-util/
+  rt-multi-thread.
+  Test: terminate_kills_the_whole_group spawns `sh -c 'sleep 300 & echo $!>f;
+  wait'`, reads the backgrounded sleep's pid, terminates, then asserts the
+  grandchild is gone via kill(pid,0)==ESRCH — proving the signal reaches forked
+  descendants, the reason the group exists. + 3 state-machine unit tests.
+- lib.rs: pub mod supervisor + re-exports (RunState, RunProcess,
+  InvalidTransition); GitActor re-exported from gitx. Updated both crate docs.
+- DESIGN / scope boundary: this bullet delivers the supervisor's PRIMITIVES
+  (state machine + process-group control + serialized git actor). The driving
+  loop that composes them with an AgentAdapter + SeatbeltSandbox + the GitActor
+  to run N iterations is the NEXT M3 bullet (Iteration loop) — deliberately not
+  started here to keep one task per iteration. No orchestrating Supervisor struct
+  was created yet: it would be empty scaffolding until the loop gives it work;
+  it materializes with the loop, holding the actor/adapter/sandbox.
+- NB on adapter integration: the three adapters currently spawn their agent
+  process directly (no process group, no sandbox wrapping). Threading RunProcess
+  + SeatbeltSandbox::wrap through the adapter spawn is the iteration loop's job;
+  the frozen AgentAdapter trait returns only a RunHandle{events}, so how stop
+  reaches the adapter's child is an open integration point to resolve there.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test --workspace — 96 passed, 6 ignored
+  (42 adapters, 11 core, 23 gitx, 11 sandbox, 9 store).
+- cargo clippy --workspace --all-targets — clean, 0 warnings.
+- cargo build --workspace — Finished (Tauri app included).
+
+Next highest-priority task: M3 — Iteration loop: N passes, fresh agent
+invocation each pass seeded with the bound task + prior progress file, app-owned
+snapshot between passes, stop conditions (STATUS: COMPLETE / N reached /
+failure). This composes RunState + RunProcess + GitActor with an adapter and the
+sandbox, and is where the adapter-spawn/process-group/sandbox integration above
+gets resolved.
