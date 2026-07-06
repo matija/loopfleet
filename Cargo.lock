@@ -1832,6 +1832,8 @@ dependencies = [
  "loopfleet-gitx",
  "loopfleet-store",
  "rusqlite",
+ "serde",
+ "serde_json",
  "tempfile",
  "uuid",
 ]

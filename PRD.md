@@ -144,7 +144,7 @@ Each task below is sized for one agent iteration. Run with ralph-sandbox-exec or
 - [x] Project registration: pick a folder, validate it is a git repo, persist
 
 ### M1 — Events and adapters
-- [ ] Define the normalized event enum (adapter-sourced vs app-sourced lanes; correlated `ToolCall`/`ToolResult`) + serde round-trip tests
+- [x] Define the normalized event enum (adapter-sourced vs app-sourced lanes; correlated `ToolCall`/`ToolResult`) + serde round-trip tests
 - [ ] `AgentAdapter` trait with `start_run` / `open_session` (latter unimplemented in v1); stub adapter that replays a fixture event log (used by all UI work)
 - [ ] Claude Code adapter, headless: spawn `claude -p --output-format stream-json`, map every event type to the enum, integration test against a fixture repo
 - [ ] pi adapter, headless: spawn `pi --mode json`, map AgentEvent JSONL to the enum, integration test
