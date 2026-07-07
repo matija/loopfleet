@@ -976,3 +976,73 @@ state only + alternative plans-folder convention; text-based task anchors). Then
 the progress-file watcher, then the end-to-end "Run N loops on task X" against a
 fixture repo with the Claude Code adapter (where the sandbox + process-group
 integration deferred above gets resolved).
+
+2026-07-07 — M3: Plan parser (PRD.md checkboxes + plans-folder; text anchors)
+- Completes the third M3 bullet. Pure, deterministic parsing (no inference,
+  no side effects) landing in core as crates/core/src/plan.rs — the plan is
+  domain input the supervisor/run loop consume, so it belongs beside them.
+- parse_plan(&str) -> ParsedPlan { title, tasks[] }. title = first level-1
+  heading (`# …`); ## and lower ignored, first H1 wins. tasks = markdown
+  checkboxes in document order. Each ParsedTask { anchor: TaskAnchor
+  { normalized_text, line_hint }, text, checked } mirrors the store's `tasks`
+  table shape exactly (plan_id + normalized_text PK, line_hint tiebreaker,
+  text display, checked authored-input), so persistence later is a direct map.
+  - Checkbox recognition (parse_checkbox): optional indentation, a `-`/`*`/`+`
+    list marker + space, a `[ ]` / `[x]` / `[X]` box, then NON-EMPTY text.
+    `[]` (no inner char), empty-text boxes, and plain bullets are rejected.
+    Returns the outer-trimmed display text.
+  - Anchor identity = normalize(text): trim, collapse internal whitespace to
+    single spaces, lowercase. Resilient to cosmetic whitespace/case edits so a
+    run's task binding survives them. line_hint is the 1-based file line — a
+    hint/tiebreaker for locating the task, never the key (PRD: Plans).
+  - Fenced code blocks (``` and ~~~) are tracked and their contents skipped, so
+    a checkbox shown inside a code EXAMPLE is never mistaken for a real task.
+    (The PRD/data-model fenced blocks contain no checkbox-shaped lines, but this
+    closes a real false-positive class deterministically.)
+- discover_plans(repo, PlanConvention) -> Vec<PathBuf>: the two conventions.
+  Prd → <repo>/PRD.md if present (0/1). Folder → every *.md under <repo>/plans/,
+  sorted by path (stable order); non-.md ignored; a missing folder is an empty
+  list, not an error. PlanConvention::from_token maps the persisted
+  plan_convention string ("prd"|"folder"). parse_plan_file(path) = read + parse.
+- SCOPE (Simplicity First): the parser extracts title + tasks. "Free-form
+  sections" from the PRD's parser description are intentionally NOT modelled —
+  nothing consumes them (M4's plan view renders the raw frozen markdown) and the
+  data model's Plan stores only parsed_tasks[]. Persisting parsed plans into the
+  store (a plans.rs) is deferred to when M4 wiring needs it; this task is the
+  parser + file discovery, matched to the existing tasks-table shape.
+- Types derive serde (Serialize/Deserialize) so they cross the Tauri boundary to
+  the M4 plan view unchanged. lib.rs: pub mod plan + re-exports (discover_plans,
+  parse_plan, parse_plan_file, ParsedPlan, ParsedTask, PlanConvention,
+  TaskAnchor). No new deps (serde already present; tempfile dev-dep already there
+  for the discovery tests).
+- Tests (12, all passing): mixed checkbox states (- / * markers, x/X); first-H1
+  title ignoring H2 + no-title case; normalization collapses whitespace+case and
+  records the 1-based line_hint (display text keeps its casing); code-fence
+  contents skipped; non-checkbox/empty-box/`[]` rejected; indented checkbox
+  parsed; discover prd finds root PRD.md (empty when absent); discover folder
+  finds sorted *.md only; missing plans/ dir → empty; from_token mapping; and a
+  real round-trip against THIS repo's PRD.md (title contains "Agent Cockpit",
+  >20 tasks parsed, the M0 scaffold task is authored-checked).
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test --workspace — 112 passed, 6 ignored
+  (42 adapters, 27 core [+12 plan], 23 gitx, 11 sandbox, 9 store).
+- cargo clippy -p loopfleet-core --all-targets — clean, 0 warnings.
+- cargo build --workspace — Finished (Tauri app included).
+
+Design notes:
+- Normalization is deliberately moderate (whitespace-collapse + lowercase, no
+  markdown stripping): aggressive stripping risks two distinct tasks colliding on
+  the (plan_id, normalized_text) PK, while under-normalizing makes bindings
+  brittle. Whitespace+case are the common cosmetic edits; formatting is left
+  intact to keep distinct tasks distinct.
+- The parser returns tasks in document order and does not dedup: anchor
+  uniqueness is enforced by the store PK at insert time, keeping the parser a
+  pure function of its input.
+
+Next highest-priority task: M3 — Progress-file watcher: detect `STATUS: COMPLETE`
+in the per-run external progress file → mark run completed. (The run loop already
+reads the marker at each pass boundary; the watcher is the live/event-driven
+detection the app needs for the run UI.) Then the end-to-end "Run N loops on task
+X" against a fixture repo with the Claude Code adapter (where the deferred
+sandbox + process-group integration through the adapter spawn gets resolved).
