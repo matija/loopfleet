@@ -200,6 +200,118 @@
         white-space: pre-wrap;
         color: #c9ccd4;
       }
+      /* Run list + timeline */
+      .runs {
+        margin: 0 0 6px 0;
+        padding: 0 0 4px 22px;
+      }
+      .runrow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        padding: 4px 0;
+      }
+      .runrow .rid {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: #8a8f98;
+        font-size: 12px;
+      }
+      .dot {
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 7px;
+        border-radius: 999px;
+        white-space: nowrap;
+      }
+      .dot.running { background: #1e3a5f; color: #7cc0ff; }
+      .dot.completed { background: #4a3410; color: #ffcf6b; }
+      .dot.accepted { background: #14401f; color: #8affb0; }
+      .dot.failed { background: #3a1e1e; color: #ff8a8a; }
+      .dot.queued, .dot.stopped { background: #23262f; color: #8a8f98; }
+      .timeline {
+        margin: 24px 0;
+        padding: 16px;
+        border: 1px solid #2c2f3a;
+        border-radius: 10px;
+        background: #16171d;
+      }
+      .timeline .head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .timeline .head .rid {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        color: #8a8f98;
+        flex: 1;
+      }
+      details.iter {
+        border: 1px solid #262830;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        background: #0f1014;
+      }
+      details.iter > summary {
+        cursor: pointer;
+        padding: 10px 12px;
+        font-size: 13px;
+        font-weight: 500;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      details.iter > summary .stat {
+        color: #8a8f98;
+        font-weight: 400;
+        font-size: 12px;
+      }
+      .iterbody {
+        padding: 4px 12px 12px;
+      }
+      .evt {
+        font-size: 12px;
+        line-height: 1.6;
+        border-bottom: 1px solid #1c1e26;
+        padding: 3px 0;
+        display: flex;
+        gap: 8px;
+      }
+      .evt .k {
+        color: #7cc0ff;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        min-width: 120px;
+      }
+      .evt .d {
+        color: #c9ccd4;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        flex: 1;
+      }
+      .files {
+        margin: 10px 0 6px;
+      }
+      .filerow {
+        font-size: 12px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: #c9ccd4;
+        padding: 2px 0;
+      }
+      .filerow .st { color: #8a8f98; }
+      .filerow .add { color: #8affb0; }
+      .filerow .del { color: #ff8a8a; }
+      pre.patch {
+        margin: 6px 0 0;
+        padding: 12px;
+        background: #0b0c10;
+        border: 1px solid #1c1e26;
+        border-radius: 6px;
+        overflow-x: auto;
+        font-size: 11.5px;
+        line-height: 1.45;
+      }
     </style>
   </head>
   <body>
@@ -215,6 +327,7 @@
       <p id="empty" class="empty">No projects registered yet.</p>
 
       <div id="plan"></div>
+      <div id="timeline"></div>
     </div>
 
     <script>
@@ -226,6 +339,7 @@
       const list = document.getElementById("projects");
       const empty = document.getElementById("empty");
       const planEl = document.getElementById("plan");
+      const timelineEl = document.getElementById("timeline");
 
       const AGENTS = ["claude", "pi", "cursor"];
       let selectedProject = null;
@@ -260,6 +374,7 @@
 
       async function loadPlan(id) {
         planEl.innerHTML = "";
+        timelineEl.innerHTML = "";
         let views;
         try {
           views = await invoke("plan_overview", { projectId: id });
@@ -278,10 +393,10 @@
           planEl.appendChild(p);
           return;
         }
-        for (const v of views) renderPlan(v);
+        for (const v of views) await renderPlan(v);
       }
 
-      function renderPlan(v) {
+      async function renderPlan(v) {
         const h = document.createElement("h2");
         h.textContent = "Plan";
         planEl.appendChild(h);
@@ -309,7 +424,19 @@
           planEl.appendChild(r);
         }
 
-        for (const t of v.tasks) planEl.appendChild(renderTask(v, t));
+        // Runs bound to this plan, grouped by task, so each task can list its
+        // runs and open a run's timeline.
+        let runs = [];
+        try {
+          runs = await invoke("plan_runs", { planId: v.plan_id });
+        } catch (e) {
+          /* a plan with no runs yet is fine */
+        }
+        const byTask = {};
+        for (const r of runs) (byTask[r.task_anchor] ||= []).push(r);
+
+        for (const t of v.tasks)
+          planEl.appendChild(renderTask(v, t, byTask[t.anchor] || []));
 
         const details = document.createElement("details");
         details.className = "raw";
@@ -323,7 +450,8 @@
         planEl.appendChild(details);
       }
 
-      function renderTask(plan, t) {
+      function renderTask(plan, t, runs) {
+        const frag = document.createDocumentFragment();
         const row = document.createElement("div");
         row.className = "task " + t.status + (t.checked ? " checked" : "");
 
@@ -387,7 +515,193 @@
           row.appendChild(btn);
         }
 
-        return row;
+        frag.appendChild(row);
+
+        // Each bound run: a status dot, its short id, and a Timeline button.
+        if (runs.length) {
+          const box = document.createElement("div");
+          box.className = "runs";
+          for (const r of runs) {
+            const rr = document.createElement("div");
+            rr.className = "runrow";
+
+            const dot = document.createElement("span");
+            dot.className = "dot " + (r.accepted ? "accepted" : r.status);
+            dot.textContent = r.accepted ? "accepted" : r.status;
+            rr.appendChild(dot);
+
+            const rid = document.createElement("span");
+            rid.className = "rid";
+            rid.textContent = r.id.slice(0, 8);
+            rr.appendChild(rid);
+
+            const tbtn = document.createElement("button");
+            tbtn.className = "mini";
+            tbtn.textContent = "Timeline";
+            tbtn.addEventListener("click", () => showTimeline(r.id));
+            rr.appendChild(tbtn);
+
+            box.appendChild(rr);
+          }
+          frag.appendChild(box);
+        }
+
+        return frag;
+      }
+
+      async function showTimeline(runId) {
+        timelineEl.innerHTML = "";
+        let tl;
+        try {
+          tl = await invoke("run_timeline", { runId });
+        } catch (e) {
+          setMsg(String(e), "err");
+          return;
+        }
+        renderTimeline(tl);
+        timelineEl.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      function renderTimeline(tl) {
+        const box = document.createElement("div");
+        box.className = "timeline";
+
+        const head = document.createElement("div");
+        head.className = "head";
+        const h = document.createElement("h2");
+        h.style.margin = "0";
+        h.textContent = "Run timeline";
+        head.appendChild(h);
+        const meta = document.createElement("span");
+        meta.className = "rid";
+        meta.textContent = tl.run_id.slice(0, 8) + " · " + tl.agent;
+        head.appendChild(meta);
+        const dot = document.createElement("span");
+        dot.className = "dot " + tl.status;
+        dot.textContent = tl.status;
+        head.appendChild(dot);
+        const close = document.createElement("button");
+        close.className = "mini";
+        close.textContent = "Close";
+        close.addEventListener("click", () => (timelineEl.innerHTML = ""));
+        head.appendChild(close);
+        box.appendChild(head);
+
+        if (!tl.iterations.length) {
+          const p = document.createElement("p");
+          p.className = "empty";
+          p.textContent = "No iterations recorded yet.";
+          box.appendChild(p);
+        }
+
+        for (const it of tl.iterations) box.appendChild(renderIteration(it));
+        timelineEl.appendChild(box);
+      }
+
+      function renderIteration(it) {
+        const d = document.createElement("details");
+        d.className = "iter";
+        if (it.n === 1) d.open = true;
+
+        const summary = document.createElement("summary");
+        const label = document.createElement("span");
+        label.textContent = "Iteration " + it.n;
+        summary.appendChild(label);
+        const stat = document.createElement("span");
+        stat.className = "stat";
+        const files = it.diff ? it.diff.files.length : 0;
+        const ins = it.diff ? it.diff.files.reduce((a, f) => a + f.insertions, 0) : 0;
+        const del = it.diff ? it.diff.files.reduce((a, f) => a + f.deletions, 0) : 0;
+        stat.textContent =
+          it.events.length +
+          " event" + (it.events.length === 1 ? "" : "s") +
+          " · " + files + " file" + (files === 1 ? "" : "s") +
+          (it.diff ? " · +" + ins + " −" + del : "");
+        summary.appendChild(stat);
+        d.appendChild(summary);
+
+        const body = document.createElement("div");
+        body.className = "iterbody";
+
+        for (const ev of it.events) {
+          const row = document.createElement("div");
+          row.className = "evt";
+          const k = document.createElement("span");
+          k.className = "k";
+          k.textContent = (ev.event.kind || "?").replace(/_/g, " ");
+          row.appendChild(k);
+          const det = document.createElement("span");
+          det.className = "d";
+          det.textContent = eventDetail(ev.event);
+          row.appendChild(det);
+          body.appendChild(row);
+        }
+
+        if (it.diff && it.diff.files.length) {
+          const fl = document.createElement("div");
+          fl.className = "files";
+          for (const f of it.diff.files) {
+            const fr = document.createElement("div");
+            fr.className = "filerow";
+            const st = document.createElement("span");
+            st.className = "st";
+            st.textContent = f.status[0].toUpperCase() + " ";
+            fr.appendChild(st);
+            fr.appendChild(
+              document.createTextNode(
+                f.old_path ? f.old_path + " → " + f.path : f.path
+              )
+            );
+            const counts = document.createElement("span");
+            counts.innerHTML =
+              ' <span class="add">+' + f.insertions + '</span> <span class="del">−' +
+              f.deletions + "</span>";
+            fr.appendChild(counts);
+            fl.appendChild(fr);
+          }
+          body.appendChild(fl);
+
+          if (it.diff.patch.trim()) {
+            const details = document.createElement("details");
+            const sm = document.createElement("summary");
+            sm.style.cursor = "pointer";
+            sm.style.fontSize = "12px";
+            sm.style.color = "#8a8f98";
+            sm.textContent = "Patch";
+            details.appendChild(sm);
+            const pre = document.createElement("pre");
+            pre.className = "patch";
+            pre.textContent = it.diff.patch;
+            details.appendChild(pre);
+            body.appendChild(details);
+          }
+        }
+
+        d.appendChild(body);
+        return d;
+      }
+
+      // A short human detail for one normalized event, by kind.
+      function eventDetail(e) {
+        switch (e.kind) {
+          case "assistant_text":
+          case "reasoning":
+            return e.text || "";
+          case "tool_call":
+            return e.name + (e.input_excerpt ? " " + e.input_excerpt : "");
+          case "tool_result":
+            return (e.ok ? "ok" : "error") + (e.output_excerpt ? " " + e.output_excerpt : "");
+          case "command_run":
+            return e.cmd + (e.exit != null ? " (exit " + e.exit + ")" : "");
+          case "turn_completed":
+            return e.usage ? "in " + e.usage.input_tokens + " / out " + e.usage.output_tokens : "";
+          case "failed":
+            return e.reason || "";
+          case "file_changed":
+            return e.path || "";
+          default:
+            return "";
+        }
       }
 
       addBtn.addEventListener("click", async () => {

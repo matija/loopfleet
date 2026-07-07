@@ -1240,3 +1240,87 @@ Design notes:
 Next highest-priority task: M4 — Run timeline: iterations as rows, per-iteration
 events, per-iteration diff viewer. (The event log + iteration/shadow-ref records
 this task now writes are exactly what the timeline reads back.)
+
+2026-07-07 — M4: Run timeline (iterations as rows, per-iteration events + diff)
+- Completes the second M4 bullet. The read side that turns the event log +
+  iteration/shadow-ref records (written by launch_run) into a per-run timeline:
+  iterations as rows, each with the normalized events that occurred during it
+  and the diff it produced. App is read-only throughout (no mutation).
+- KEY: per-iteration event attribution via the (already-schema'd but unused)
+  iterations.event_log_offset column. Events are one flat, seq-ordered log per
+  run; each iteration now records the seq of its LAST event, so the timeline
+  partitions the log back into passes (iteration n owns events with
+  offset(n-1) < seq <= offset(n)). This is exactly what the PRD data model's
+  Iteration.event_log_offset was for.
+- store/runs.rs:
+  - insert_iteration gains an event_log_offset: Option<i64> param (persisted to
+    the column). Sole callers: src-tauri launch_run + store's own tests.
+  - IterationRow { n, shadow_ref, event_log_offset } + load_iterations(conn,
+    run_id) — a run's iterations in pass order.
+  - RunDetail { id, task_anchor, agent, status, max_iterations, repo_path } +
+    load_run(conn, run_id) -> Option<RunDetail>. Joins runs → plans → projects
+    to recover the PARENT repo path (where the shadow refs live), which the
+    timeline diffs against. QueryReturnedNoRows → Ok(None).
+  - RunSummary gains #[derive(Serialize)] so plan_runs can return it over IPC.
+- gitx/diff.rs: iteration_diff_at(repo_path, run_id, iter) — a path-taking
+  wrapper over iteration_diff that opens the repo itself, so core (which holds a
+  path, not a git2::Repository) needs no direct git2 dependency.
+- core/timeline.rs (new module): run_timeline(conn, run_id) -> RunTimeline.
+  Loads the run detail, its iterations, and its full event log; partitions the
+  events into iterations by offset (the LAST iteration sweeps any trailing
+  events so nothing is dropped from the view); computes each iteration's diff
+  via iteration_diff_at (a missing/unreadable shadow ref → diff: None, not a
+  hard error). Serializable view structs (RunTimeline, IterationView,
+  TimelineEvent { seq, ts, event: serde_json::Value }, DiffView, FileChangeView)
+  — TimelineEvent passes the stored {"kind":…} payload through as a Value
+  (robust to schema drift; the frontend already speaks that shape). TimelineError
+  { NotFound, Store }. Mirrors overview.rs (read-side assembly lives in core).
+  Added serde_json to core's runtime deps.
+- src-tauri/lib.rs:
+  - launch_run now captures each pass's event boundary: the on_event closure,
+    under the SAME lock as the insert, reads conn.last_insert_rowid() after each
+    insert_event (events.seq == rowid) into a per-pass map; the post-run
+    iteration inserts pass offsets.get(&it.n). Capturing inside the held lock is
+    what makes last_insert_rowid correct even though other UI commands share the
+    connection (upsert_task etc. would otherwise clobber it).
+  - Two new commands: plan_runs(planId) -> Vec<RunSummary> (runs bound to a
+    plan, grouped by task in the UI) and run_timeline(runId) -> RunTimeline.
+    Registered in the invoke_handler.
+- dist/index.html: each task now lists its runs (status dot + short id +
+  Timeline button); Timeline loads run_timeline and renders it below the plan —
+  iterations as collapsible rows (summary: event count · file count · +ins/−del),
+  each expanding to the per-iteration event stream (kind + a by-kind detail) and
+  the diff (per-file status + line counts, plus a collapsible unified patch).
+  Dependency-free vanilla JS, matching the existing shell; new CSS for the run
+  list + timeline. Iteration 1 opens by default; Close clears the panel.
+- Tests (3 new core timeline + 1 new store load_run, all passing): events group
+  by offset (2+3 across two iterations, {"kind"} payload preserved); trailing
+  events with a short offset still land on the last iteration (nothing dropped);
+  unknown run → NotFound; load_run joins repo_path and returns None for a ghost.
+  The offset-partition tests point repo_path at a non-git temp dir so diffs
+  resolve to None — exercising the core assembly without a live git fixture
+  (iteration_diff itself is already covered by gitx's diff tests).
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test --workspace — all pass (42 adapters
+  +3 ignored, 48 core [+3 timeline], 23 gitx, 13 sandbox +2 ignored, 16 store
+  [+1 load_run]).
+- cargo clippy --workspace --all-targets — clean, 0 warnings.
+- cargo build --workspace — Finished (Tauri app links).
+- Frontend JS parses (node --check of the <script> block); the Tauri GUI can't
+  be driven headlessly here, but its two new commands are exercised by the
+  core/store tests and the JS is dependency-free.
+
+Design notes:
+- event_log_offset is the LAST event's seq (an inclusive upper bound), captured
+  at snapshot time = after the pass's events are all inserted, so the partition
+  (offset(n-1), offset(n)] is exact. Recording it under the insert's lock is the
+  correctness crux for last_insert_rowid on the shared single-writer connection.
+- Diffs degrade to None rather than failing the whole timeline: a run may have
+  iteration rows whose shadow ref was pruned or is otherwise unreadable, and the
+  event stream is still worth showing.
+
+Next highest-priority task: M4 — Live run view: streaming events, current file
+changes, stop button. (This timeline reads persisted state; the live view needs
+event streaming to the UI + the process-group SIGTERM stop path that M3
+deliberately deferred to this bullet.)

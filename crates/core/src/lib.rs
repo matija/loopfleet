@@ -21,6 +21,7 @@ pub mod progress;
 pub mod run_loop;
 pub mod supervisor;
 pub mod task_status;
+pub mod timeline;
 pub use adapter::{
     AdapterError, AgentAdapter, RunHandle, RunSpec, SessionHandle, SessionSeed,
 };
@@ -35,6 +36,10 @@ pub use progress::{
 };
 pub use run_loop::{run_loop, IterationRecord, LoopConfig, LoopOutcome};
 pub use supervisor::{InvalidTransition, RunProcess, RunState};
+pub use timeline::{
+    run_timeline, DiffView, FileChangeView, IterationView, RunTimeline, TimelineError,
+    TimelineEvent,
+};
 
 /// Why a project could not be registered.
 #[derive(Debug)]

@@ -1,11 +1,14 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use loopfleet_adapters::{ClaudeAdapter, CursorAdapter, PiAdapter};
-use loopfleet_core::{run_loop, AgentAdapter, LoopConfig, NormalizedEvent, PlanView, RunState};
+use loopfleet_core::{
+    run_loop, AgentAdapter, LoopConfig, NormalizedEvent, PlanView, RunState, RunTimeline,
+};
 use loopfleet_gitx::GitActor;
 use loopfleet_sandbox::{confine_prefix, RenderParams};
-use loopfleet_store::{Connection, NewRun, Project};
+use loopfleet_store::{Connection, NewRun, Project, RunSummary};
 use tauri::{Manager, State};
 
 /// App-owned state shared across commands. The connection is behind
@@ -140,10 +143,17 @@ async fn launch_run(
     tauri::async_runtime::spawn(async move {
         let ev_db = db.clone();
         let ev_id = cfg.run_id.clone();
-        let mut on_event = move |_pass: u32, ev: &NormalizedEvent| {
+        // Per-pass upper event boundary: the `seq` of that pass's last event, so
+        // the timeline can partition the flat log back into iterations. Captured
+        // under the same lock as the insert, so `last_insert_rowid` is that event.
+        let offsets: Arc<Mutex<HashMap<u32, i64>>> = Arc::new(Mutex::new(HashMap::new()));
+        let ev_offsets = offsets.clone();
+        let mut on_event = move |pass: u32, ev: &NormalizedEvent| {
             if let Ok(json) = serde_json::to_string(ev) {
                 if let Ok(conn) = ev_db.lock() {
-                    let _ = loopfleet_store::insert_event(&conn, &ev_id, &json);
+                    if loopfleet_store::insert_event(&conn, &ev_id, &json).is_ok() {
+                        ev_offsets.lock().unwrap().insert(pass, conn.last_insert_rowid());
+                    }
                 }
             }
         };
@@ -151,14 +161,37 @@ async fn launch_run(
         let outcome = run_loop(adapter.as_ref(), &git, &cfg, &mut on_event).await;
 
         if let Ok(conn) = db.lock() {
+            let offsets = offsets.lock().unwrap();
             for it in &outcome.iterations {
-                let _ = loopfleet_store::insert_iteration(&conn, &cfg.run_id, it.n, &it.shadow_ref);
+                let _ = loopfleet_store::insert_iteration(
+                    &conn,
+                    &cfg.run_id,
+                    it.n,
+                    &it.shadow_ref,
+                    offsets.get(&it.n).copied(),
+                );
             }
             let _ = loopfleet_store::update_run_status(&conn, &cfg.run_id, outcome.state.as_str());
         }
     });
 
     Ok(run_id)
+}
+
+/// Every run bound to any task in `plan_id`. The plan view groups these by
+/// `task_anchor` so each task can list its runs and open their timelines.
+#[tauri::command]
+fn plan_runs(plan_id: String, state: State<'_, AppState>) -> Result<Vec<RunSummary>, String> {
+    let conn = state.db.lock().unwrap();
+    loopfleet_store::list_runs_for_plan(&conn, &plan_id).map_err(|e| e.to_string())
+}
+
+/// A run's timeline: its iterations as rows, the events that occurred during
+/// each, and each iteration's diff (read-only over the app-owned shadow refs).
+#[tauri::command]
+fn run_timeline(run_id: String, state: State<'_, AppState>) -> Result<RunTimeline, String> {
+    let conn = state.db.lock().unwrap();
+    loopfleet_core::run_timeline(&conn, &run_id).map_err(|e| e.to_string())
 }
 
 /// Load one project by id.
@@ -220,7 +253,9 @@ pub fn run() {
             register_project,
             list_projects,
             plan_overview,
-            launch_run
+            launch_run,
+            plan_runs,
+            run_timeline
         ])
         .run(tauri::generate_context!())
         .expect("error while running loopfleet");

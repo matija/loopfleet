@@ -56,23 +56,94 @@ pub fn update_run_status(conn: &Connection, run_id: &str, status: &str) -> rusql
     Ok(())
 }
 
-/// Record one iteration's app-owned shadow-ref snapshot.
+/// Record one iteration's app-owned shadow-ref snapshot. `event_log_offset` is
+/// the `seq` of this iteration's last event, so the timeline can partition a
+/// run's flat event log back into per-iteration groups (`None` if unknown).
 pub fn insert_iteration(
     conn: &Connection,
     run_id: &str,
     n: u32,
     shadow_ref: &str,
+    event_log_offset: Option<i64>,
 ) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO iterations (run_id, n, shadow_ref) VALUES (?1, ?2, ?3)",
-        params![run_id, n, shadow_ref],
+        "INSERT INTO iterations (run_id, n, shadow_ref, event_log_offset)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![run_id, n, shadow_ref, event_log_offset],
     )?;
     Ok(())
 }
 
+/// One iteration row, read back for the run timeline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IterationRow {
+    pub n: u32,
+    pub shadow_ref: Option<String>,
+    /// The `seq` of this iteration's last event (its upper event boundary).
+    pub event_log_offset: Option<i64>,
+}
+
+/// A run's iterations in pass order.
+pub fn load_iterations(conn: &Connection, run_id: &str) -> rusqlite::Result<Vec<IterationRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT n, shadow_ref, event_log_offset FROM iterations
+         WHERE run_id = ?1 ORDER BY n",
+    )?;
+    let rows = stmt
+        .query_map([run_id], |r| {
+            Ok(IterationRow {
+                n: r.get(0)?,
+                shadow_ref: r.get(1)?,
+                event_log_offset: r.get(2)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// One run with the parent repo it belongs to (joined through plan → project),
+/// for the timeline view (which diffs the run's shadow refs in that repo).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunDetail {
+    pub id: String,
+    pub task_anchor: String,
+    pub agent: String,
+    pub status: String,
+    pub max_iterations: u32,
+    /// The parent repository where this run's shadow refs live.
+    pub repo_path: String,
+}
+
+/// Load one run's detail (with its parent repo path), or `None` if absent.
+pub fn load_run(conn: &Connection, run_id: &str) -> rusqlite::Result<Option<RunDetail>> {
+    conn.query_row(
+        "SELECT r.id, r.task_anchor, r.agent, r.status, r.max_iterations, pr.repo_path
+         FROM runs r
+         JOIN plans pl ON r.plan_id = pl.id
+         JOIN projects pr ON pl.project_id = pr.id
+         WHERE r.id = ?1",
+        [run_id],
+        |r| {
+            Ok(RunDetail {
+                id: r.get(0)?,
+                task_anchor: r.get(1)?,
+                agent: r.get(2)?,
+                status: r.get(3)?,
+                max_iterations: r.get(4)?,
+                repo_path: r.get(5)?,
+            })
+        },
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+}
+
 /// A run's bearing on its task's derived status: just its `status` token and
 /// acceptance flag, keyed by the task it is bound to.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct RunSummary {
     pub id: String,
     pub task_anchor: String,
@@ -151,19 +222,31 @@ mod tests {
         let pid = seed(&conn);
         insert_run(&conn, &new_run("r1", &pid, "task a", "running")).unwrap();
 
-        insert_iteration(&conn, "r1", 1, "refs/agentapp/run-r1/iter-1").unwrap();
-        insert_iteration(&conn, "r1", 2, "refs/agentapp/run-r1/iter-2").unwrap();
+        insert_iteration(&conn, "r1", 1, "refs/agentapp/run-r1/iter-1", Some(4)).unwrap();
+        insert_iteration(&conn, "r1", 2, "refs/agentapp/run-r1/iter-2", Some(9)).unwrap();
         update_run_status(&conn, "r1", "completed").unwrap();
 
         assert_eq!(list_runs_for_plan(&conn, &pid).unwrap()[0].status, "completed");
-        let iters: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM iterations WHERE run_id='r1'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(iters, 2);
+        let iters = load_iterations(&conn, "r1").unwrap();
+        assert_eq!(iters.len(), 2);
+        assert_eq!(iters[0].n, 1);
+        assert_eq!(iters[0].shadow_ref.as_deref(), Some("refs/agentapp/run-r1/iter-1"));
+        assert_eq!(iters[1].event_log_offset, Some(9));
+    }
+
+    #[test]
+    fn load_run_joins_repo_path() {
+        let conn = crate::open(":memory:").unwrap();
+        let pid = seed(&conn);
+        insert_run(&conn, &new_run("r1", &pid, "task a", "running")).unwrap();
+
+        let detail = load_run(&conn, "r1").unwrap().unwrap();
+        assert_eq!(detail.id, "r1");
+        assert_eq!(detail.task_anchor, "task a");
+        assert_eq!(detail.agent, "claude");
+        assert_eq!(detail.repo_path, "/r");
+        assert_eq!(detail.max_iterations, 5);
+        assert!(load_run(&conn, "nope").unwrap().is_none());
     }
 
     #[test]

@@ -10,7 +10,10 @@ pub mod diff;
 pub mod shadow;
 pub mod worktree;
 pub use actor::GitActor;
-pub use diff::{diff_refs, iteration_diff, run_cumulative_diff, ChangeStatus, DiffError, DiffResult, FileChange};
+pub use diff::{
+    diff_refs, iteration_diff, iteration_diff_at, run_cumulative_diff, ChangeStatus, DiffError,
+    DiffResult, FileChange,
+};
 pub use shadow::{shadow_ref, Snapshot, SnapshotError};
 pub use worktree::{Worktree, WorktreeError};
 

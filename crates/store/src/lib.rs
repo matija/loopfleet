@@ -17,7 +17,8 @@ pub use plans::{plan_id, upsert_plan, upsert_task};
 
 mod runs;
 pub use runs::{
-    insert_iteration, insert_run, list_runs_for_plan, update_run_status, NewRun, RunSummary,
+    insert_iteration, insert_run, list_runs_for_plan, load_iterations, load_run, update_run_status,
+    IterationRow, NewRun, RunDetail, RunSummary,
 };
 
 /// Ordered list of migrations. Each entry is `(name, sql)`; names double as the
