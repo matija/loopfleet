@@ -1046,3 +1046,64 @@ reads the marker at each pass boundary; the watcher is the live/event-driven
 detection the app needs for the run UI.) Then the end-to-end "Run N loops on task
 X" against a fixture repo with the Claude Code adapter (where the deferred
 sandbox + process-group integration through the adapter spawn gets resolved).
+
+2026-07-07 — M3: Progress-file watcher (detect STATUS: COMPLETE → mark completed)
+- Completes the fourth M3 bullet. The run_loop already read the marker at each
+  pass boundary; this adds the live, event-driven detection the run UI needs
+  plus a single home for the marker protocol so the loop and the watcher can
+  never disagree on what "complete" means.
+- crates/core/src/progress.rs (new module):
+  - COMPLETION_MARKER = "STATUS: COMPLETE" — the one place the marker's spelling
+    lives. Previously the literal was duplicated (run_loop's completion check +
+    its prompt text); both now reference this constant.
+  - contents_mark_complete(&str): the marker on its own (trimmed) line. Prose
+    that merely mentions the marker mid-line does NOT trip it (exact trimmed-line
+    match), matching the run_loop semantics it replaces.
+  - file_marks_complete(&Path): read + test; a missing/unreadable file = "not
+    complete" (the agent has not written it yet). The app is read-only on the
+    file (PRD: Plans).
+  - watch_for_completion(path, interval, cancel: oneshot::Receiver<()>) -> bool:
+    the live watcher. Checks once up front (marker may already be present), then
+    polls every `interval` via tokio::select! against the cancel receiver.
+    Resolves true when the marker appears, false if cancel fires first (run
+    ended for another reason — failed/stopped/exhausted). Caller cancels by
+    sending on OR dropping the paired Sender (both wake the receiver).
+- DECISION — poll, not fs-events: the progress file lives OUTSIDE the repo
+  (app-managed, keyed by run-id), the marker is append-only so nothing is missed
+  between polls, and polling needs no watcher crate (Simplicity First). This is
+  distinct from the app-lane FileChanged worktree watcher (M4 UI concern), which
+  observes the repo worktree, not this external file.
+- run_loop.rs refactor: dropped the private task_marked_complete() (its logic is
+  now crate::progress::file_marks_complete) and the hardcoded `STATUS: COMPLETE`
+  in build_prompt (now {marker} = COMPLETION_MARKER). Behavior unchanged; the
+  four run_loop tests still pass. The loop keeps its pass-boundary check (stop =
+  SIGTERM at the next iteration boundary per the PRD); the watcher is the
+  separate live-detection primitive the app/run UI consumes concurrently.
+- lib.rs: pub mod progress + re-exports (COMPLETION_MARKER, contents_mark_complete,
+  file_marks_complete, watch_for_completion).
+- core/Cargo.toml: added the tokio "time" feature to the runtime deps (was only
+  in dev-deps) for tokio::time::sleep in the poller.
+- Tests (6 in progress, all passing): marker on its own line (incl. surrounding
+  whitespace) is complete; prose mentioning it + empty are not; missing file not
+  complete; present file with marker complete; watch returns true when the marker
+  is already present; watch detects the marker appended after start; cancel via
+  send stops watching (false); dropping the sender also cancels (false).
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test -p loopfleet-core — 35 passed
+  (6 progress + 4 run_loop unchanged + 25 pre-existing), 1 ignored (git_boundary).
+- cargo clippy -p loopfleet-core --all-targets — clean, 0 warnings.
+- cargo build --workspace — Finished (Tauri app included).
+
+Design notes:
+- watch_for_completion takes the cancel Receiver by value and selects on
+  &mut cancel: oneshot::Receiver is Unpin, so no pin is needed, and a resolved
+  select arm returns immediately (no re-poll of a completed future).
+- The marker protocol living in its own module (not run_loop) is what lets the
+  live watcher and the pass-boundary check share exactly one definition of
+  "complete" — the correctness reason to extract it now rather than duplicate.
+
+Next highest-priority task: M3's last bullet — "Run N loops on task X"
+end-to-end against a fixture repo with the Claude Code adapter, where the
+deferred SeatbeltSandbox command-wrapping + process-group SIGTERM integration
+through the adapter spawn finally gets resolved. That completes M3.

@@ -12,7 +12,7 @@ rusqlite.workspace = true
 uuid = { workspace = true }
 serde = { workspace = true }
 async-trait.workspace = true
-tokio = { workspace = true, features = ["process", "sync"] }
+tokio = { workspace = true, features = ["process", "sync", "time"] }
 libc.workspace = true
 
 [dev-dependencies]

@@ -145,7 +145,7 @@ pub async fn run_loop(
         }
 
         // Done when the agent has written the completion marker for its task.
-        if task_marked_complete(&cfg.progress_path) {
+        if crate::progress::file_marks_complete(&cfg.progress_path) {
             return LoopOutcome {
                 state: RunState::Completed,
                 iterations,
@@ -165,15 +165,6 @@ fn read_progress(path: &Path) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
 
-/// Whether the progress file carries the machine-readable completion marker on
-/// its own line. Exact match (trimmed) so prose mentioning the marker doesn't
-/// trip it.
-fn task_marked_complete(path: &Path) -> bool {
-    std::fs::read_to_string(path)
-        .map(|c| c.lines().any(|l| l.trim() == "STATUS: COMPLETE"))
-        .unwrap_or(false)
-}
-
 /// Assemble a pass's prompt: the bound task, the progress-file protocol, and the
 /// prior progress as the durable memory the fresh context reads back.
 fn build_prompt(cfg: &LoopConfig, prior: &str) -> String {
@@ -188,10 +179,11 @@ You are running in a loop with fresh context each pass. Your durable memory is \
 the progress file at:\n  {progress}\n\n\
 Read your prior progress below, continue the work, and append what you did this \
 pass to that file. When the task is fully done, write a line containing exactly \
-`STATUS: COMPLETE` to the progress file.\n\n\
+`{marker}` to the progress file.\n\n\
 --- prior progress ---\n{prior}\n",
         task = cfg.task_text,
         progress = cfg.progress_path.display(),
+        marker = crate::progress::COMPLETION_MARKER,
         prior = prior,
     )
 }
