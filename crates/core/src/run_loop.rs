@@ -96,7 +96,7 @@ pub async fn run_loop(
     adapter: &dyn AgentAdapter,
     git: &GitActor,
     cfg: &LoopConfig,
-    on_event: &mut dyn FnMut(u32, &NormalizedEvent),
+    on_event: &mut (dyn FnMut(u32, &NormalizedEvent) + Send),
 ) -> LoopOutcome {
     let mut iterations = Vec::new();
 
