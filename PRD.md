@@ -167,7 +167,7 @@ Each task below is sized for one agent iteration. Run with ralph-sandbox-exec or
 - [x] "Run N loops on task X" end-to-end against a fixture repo with the Claude Code adapter
 
 ### M4 — UI: overview and timeline
-- [ ] Project list + plan view: rendered (frozen) PRD with a derived `TaskStatus` overlay, run-launch affordance per task; surface completed-unaccepted loudly (the review/compare queue)
+- [x] Project list + plan view: rendered (frozen) PRD with a derived `TaskStatus` overlay, run-launch affordance per task; surface completed-unaccepted loudly (the review/compare queue)
 - [ ] Run timeline: iterations as rows, per-iteration events, per-iteration diff viewer
 - [ ] Live run view: streaming events, current file changes, stop button
 - [ ] Compare view: two-or-more runs side by side, final-ref diffs, "use this run" → merge chosen branch into a user-named target

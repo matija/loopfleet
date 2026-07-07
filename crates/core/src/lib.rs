@@ -15,17 +15,21 @@ use rusqlite::Connection;
 
 pub mod adapter;
 pub mod event;
+pub mod overview;
 pub mod plan;
 pub mod progress;
 pub mod run_loop;
 pub mod supervisor;
+pub mod task_status;
 pub use adapter::{
     AdapterError, AgentAdapter, RunHandle, RunSpec, SessionHandle, SessionSeed,
 };
 pub use event::{Lane, NormalizedEvent, Usage};
+pub use overview::{plan_overview, OverviewError, PlanView, TaskView};
 pub use plan::{
     discover_plans, parse_plan, parse_plan_file, ParsedPlan, ParsedTask, PlanConvention, TaskAnchor,
 };
+pub use task_status::{derive_status, TaskRun, TaskStatus};
 pub use progress::{
     contents_mark_complete, file_marks_complete, watch_for_completion, COMPLETION_MARKER,
 };

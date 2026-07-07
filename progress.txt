@@ -1161,3 +1161,82 @@ M3 is COMPLETE — supervisor foundations, iteration loop, plan parser,
 progress-file watcher, and the end-to-end "Run N loops on task X" with the
 Claude adapter are all done. Next milestone: M4 — UI: overview and timeline
 (project list + plan view, run timeline, live run view, compare view).
+
+2026-07-07 — M4: Project list + plan view (derived TaskStatus overlay, launch)
+- Completes the first M4 bullet. A prior interrupted iteration had left the
+  backend for this task uncommitted (new overview/task_status/plans/runs modules
+  + the launch_run/plan_overview Tauri commands) but it did not compile and had
+  no frontend. This iteration finished it: fixed the compile, wired the plan-view
+  UI, verified, checked the box, appended this entry.
+- crates/core/src/task_status.rs (TaskStatus + derive_status): the four DERIVED
+  per-task states (not-started / in-progress / completed-unaccepted / accepted),
+  computed from the runs bound to a task — never stored (PRD: Plans / Data model).
+  Precedence: any accepted → Accepted; any completed → CompletedUnaccepted; any
+  queued|running → InProgress; else NotStarted. `checked` (authored input) plays
+  no part. Serializes kebab-case for the UI. 6 unit tests.
+- crates/core/src/overview.rs (plan_overview): the read side of the plan UI.
+  Discovers the project's plan file(s) by convention, parses each
+  (deterministic), upserts plan + tasks into the store so runs can bind to a
+  stable (plan_id, task_anchor), then joins parsed tasks against their runs to
+  derive each task's status. Returns PlanView { plan_id, file_path, title,
+  markdown (raw, for the frozen render), tasks[] }; TaskView carries anchor,
+  line_hint, text, checked, status, run_count. Never edits the frozen plan file.
+  3 tests (overlay + task sync, missing PRD → no plans, unknown convention).
+- crates/store/src/plans.rs: plan_id (deterministic from project id + file path),
+  upsert_plan, upsert_task (upsert by the (plan_id, normalized_text) anchor PK;
+  never deletes a vanished task — a launched run's FK may still reference it).
+  3 tests. crates/store/src/runs.rs: NewRun + insert_run, update_run_status,
+  insert_iteration, RunSummary + list_runs_for_plan (every run bound to any task
+  in a plan, for status derivation). 3 tests.
+- src-tauri/src/lib.rs: AppState now holds Arc<Mutex<Connection>> (so a
+  background run task shares the single writer) + a GitActor + data_dir. Two new
+  commands: plan_overview(project_id) → Vec<PlanView>; launch_run(project_id,
+  task_anchor, agent, max_iterations) → run id. launch_run resolves the bound
+  task, mints app-managed paths keyed by run id (worktree via the GitActor,
+  external progress dir, Seatbelt profile), renders the sandbox boundary into the
+  opaque wrapper prefix via confine_prefix (agent $HOME config dirs granted),
+  inserts the run row, then drives run_loop on a background task — persisting
+  events (via the new store::insert_event), iterations, and final status on the
+  shared connection. The mutex is never held across an await.
+- FIX (why it didn't compile): the launch task's event callback used
+  rusqlite::params! but src-tauri doesn't depend on rusqlite. Added
+  store::insert_event(conn, owner_id, json) — a synchronous single-row append on
+  a borrowed connection, the app's writer path that doesn't warrant the async
+  EventLog channel — keeping rusqlite out of the app layer (consistent with how
+  insert_iteration/update_run_status are already called). Removed the now-orphan
+  now_millis + SystemTime import from src-tauri.
+- FIX (Send): run_loop is spawned on Tauri's multi-thread runtime, so its future
+  must be Send; its on_event was `&mut dyn FnMut(...)` (not Send). Tightened to
+  `&mut (dyn FnMut(...) + Send)`. The app's DB-writing closure (captures
+  Arc<Mutex<Connection>> + String) is Send; the run_loop unit-test closures
+  (Vec/borrow collectors) are Send too, so all four still compile unchanged.
+- dist/index.html: the plan view. Projects are now clickable; selecting one loads
+  its plan overview. Each task renders with a color-coded status badge, its run
+  count, and (unless authored-checked, which gates launch) an agent selector +
+  iteration count + Run button that calls launch_run. Completed-unaccepted is
+  surfaced LOUDLY — an amber banner counting the review queue plus amber row
+  highlighting (PRD: "surface completed-unaccepted loudly"). The frozen plan
+  source is shown verbatim in a collapsible <pre> (no markdown dependency pulled
+  — Simplicity First). Dependency-free vanilla JS, matching the existing shell.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test --workspace — 138 passed, 7 ignored
+  (42 adapters, 45 core [+6 task_status +3 overview], 23 gitx, 13 sandbox, 15
+  store [+3 plans +3 runs]).
+- cargo clippy --workspace --all-targets — clean, 0 warnings.
+- cargo build --workspace — Finished (Tauri app included).
+- The UI itself is a Tauri desktop GUI (can't be driven headlessly in this env);
+  the commands it calls are exercised by the core/store tests, and the frontend
+  is dependency-free vanilla JS served statically.
+
+Design notes:
+- TaskStatus lives in core (derived domain state), computed at read time in
+  overview.rs from run records — the store never persists it, keeping the PRD's
+  "derived, never stored as truth" invariant honest.
+- The launch flow deliberately releases the DB mutex before every await
+  (git worktree add, the run loop) and re-locks only for synchronous inserts, so
+  a long-running background run never blocks the UI commands on the single writer.
+
+Next highest-priority task: M4 — Run timeline: iterations as rows, per-iteration
+events, per-iteration diff viewer. (The event log + iteration/shadow-ref records
+this task now writes are exactly what the timeline reads back.)

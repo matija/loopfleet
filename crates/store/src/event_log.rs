@@ -91,6 +91,20 @@ impl EventLog {
     }
 }
 
+/// Append one event on a borrowed connection, stamping the current time. For the
+/// app's own writer path (a background run task holding the shared single-writer
+/// connection) where routing through the async [`EventLog`] channel isn't
+/// warranted; the same append, minus the channel. `event_json` is the encoded
+/// `{"kind":…}` payload a `NormalizedEvent` serializes to.
+pub fn insert_event(conn: &Connection, owner_id: &str, event_json: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO events (run_or_session_id, normalized_event_json, ts)
+         VALUES (?1, ?2, ?3)",
+        params![owner_id, event_json, now_millis()],
+    )?;
+    Ok(())
+}
+
 /// Read a run's or session's events back in append order. Used by the timeline
 /// (M4) and by tests to prove what the writer stored comes back intact.
 pub fn load_events(conn: &Connection, owner_id: &str) -> rusqlite::Result<Vec<StoredEvent>> {

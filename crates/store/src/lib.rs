@@ -5,10 +5,20 @@
 pub use rusqlite::Connection;
 
 mod event_log;
-pub use event_log::{load_events, EventLog, LogEntry, Sender as EventSender, StoredEvent};
+pub use event_log::{
+    insert_event, load_events, EventLog, LogEntry, Sender as EventSender, StoredEvent,
+};
 
 mod projects;
 pub use projects::{insert_project, list_projects, Project};
+
+mod plans;
+pub use plans::{plan_id, upsert_plan, upsert_task};
+
+mod runs;
+pub use runs::{
+    insert_iteration, insert_run, list_runs_for_plan, update_run_status, NewRun, RunSummary,
+};
 
 /// Ordered list of migrations. Each entry is `(name, sql)`; names double as the
 /// applied-migrations key, so they must be unique and never reordered. Add new
