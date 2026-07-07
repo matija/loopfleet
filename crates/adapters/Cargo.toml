@@ -12,5 +12,7 @@ tokio = { workspace = true, features = ["process", "io-util"] }
 serde_json.workspace = true
 
 [dev-dependencies]
+loopfleet-gitx.workspace = true
+loopfleet-sandbox.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tempfile = "3"

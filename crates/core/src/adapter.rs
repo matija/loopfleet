@@ -16,6 +16,7 @@
 //! returns [`AdapterError::SessionsUnsupported`] — interactive sessions land in
 //! M5.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
@@ -33,6 +34,14 @@ pub struct RunSpec {
     /// The seeded prompt: the bound task plus the progress-file instructions the
     /// supervisor injects.
     pub prompt: String,
+    /// An opaque argv prefix the adapter prepends to its own `program args…`,
+    /// spawning `wrapper[0] wrapper[1..] program args…` instead. The wiring layer
+    /// fills this with the Seatbelt sandbox invocation (`sandbox-exec -f
+    /// <profile>`) so every pass runs confined; empty means spawn the agent
+    /// directly (unsandboxed dev/test runs). The adapter treats the tokens as
+    /// opaque — it never learns the backend is Seatbelt, keeping the `Sandbox`
+    /// details from leaking into adapters (PRD: Sandbox).
+    pub wrapper: Vec<OsString>,
 }
 
 /// Seed context for an interactive plan-editing session (M5). Present so the

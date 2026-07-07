@@ -164,7 +164,7 @@ Each task below is sized for one agent iteration. Run with ralph-sandbox-exec or
 - [x] Iteration loop: N passes, fresh agent invocation each pass seeded with the bound task + prior progress file, app-owned snapshot between passes, stop conditions (bound task's `STATUS: COMPLETE`, N reached, failure)
 - [x] Plan parser: PRD.md checkboxes (frozen; authored state only) + alternative plans-folder convention; text-based task anchors
 - [x] Progress-file watcher: detect `STATUS: COMPLETE` in the per-run external progress file → mark run completed
-- [ ] "Run N loops on task X" end-to-end against a fixture repo with the Claude Code adapter
+- [x] "Run N loops on task X" end-to-end against a fixture repo with the Claude Code adapter
 
 ### M4 — UI: overview and timeline
 - [ ] Project list + plan view: rendered (frozen) PRD with a derived `TaskStatus` overlay, run-launch affordance per task; surface completed-unaccepted loudly (the review/compare queue)

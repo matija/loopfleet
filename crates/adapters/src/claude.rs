@@ -26,7 +26,6 @@ use async_trait::async_trait;
 use loopfleet_core::{NormalizedEvent, Usage};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 use tokio::sync::mpsc;
 
 use crate::{AdapterError, AgentAdapter, RunHandle, RunSpec, SessionHandle, SessionSeed};
@@ -42,7 +41,7 @@ pub struct ClaudeAdapter;
 #[async_trait]
 impl AgentAdapter for ClaudeAdapter {
     async fn start_run(&self, spec: &RunSpec) -> Result<RunHandle, AdapterError> {
-        let mut child = Command::new("claude")
+        let mut child = crate::base_command(&spec.wrapper, "claude")
             .arg("-p")
             .arg(&spec.prompt)
             .args(["--output-format", "stream-json", "--verbose"])
@@ -524,6 +523,7 @@ mod tests {
         let spec = RunSpec {
             cwd: dir.path().to_path_buf(),
             prompt: "Read README.md and then say the single word done.".into(),
+            wrapper: Vec::new(),
         };
         let mut handle = ClaudeAdapter.start_run(&spec).await.unwrap();
 
