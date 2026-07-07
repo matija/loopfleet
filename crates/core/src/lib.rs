@@ -16,6 +16,7 @@ use rusqlite::Connection;
 pub mod adapter;
 pub mod event;
 pub mod plan;
+pub mod progress;
 pub mod run_loop;
 pub mod supervisor;
 pub use adapter::{
@@ -24,6 +25,9 @@ pub use adapter::{
 pub use event::{Lane, NormalizedEvent, Usage};
 pub use plan::{
     discover_plans, parse_plan, parse_plan_file, ParsedPlan, ParsedTask, PlanConvention, TaskAnchor,
+};
+pub use progress::{
+    contents_mark_complete, file_marks_complete, watch_for_completion, COMPLETION_MARKER,
 };
 pub use run_loop::{run_loop, IterationRecord, LoopConfig, LoopOutcome};
 pub use supervisor::{InvalidTransition, RunProcess, RunState};
