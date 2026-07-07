@@ -1829,6 +1829,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
+ "tokio",
  "uuid",
 ]
 
@@ -1837,6 +1838,7 @@ name = "loopfleet-adapters"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "libc",
  "loopfleet-core",
  "loopfleet-gitx",
  "loopfleet-sandbox",

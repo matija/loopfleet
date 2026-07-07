@@ -9,17 +9,65 @@ use loopfleet_core::{
 use loopfleet_gitx::GitActor;
 use loopfleet_sandbox::{confine_prefix, RenderParams};
 use loopfleet_store::{Connection, NewRun, Project, RunSummary};
-use tauri::{Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
+use tokio::sync::watch;
 
 /// App-owned state shared across commands. The connection is behind
 /// `Arc<Mutex<…>>` so a background launch task can persist run progress on the
 /// same single writer the commands use (SQLite is single-writer by design). The
 /// git actor serializes all mutating git ops; `data_dir` roots the app-managed
-/// worktrees, progress files, and sandbox profiles.
+/// worktrees, progress files, and sandbox profiles. `stops` holds a cancel
+/// sender per active run so the live-run Stop button can signal it.
 struct AppState {
     db: Arc<Mutex<Connection>>,
     git: GitActor,
     data_dir: PathBuf,
+    stops: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
+}
+
+/// A live run event pushed to the UI as it happens: the run it belongs to, its
+/// `seq` in the run's event log, and the normalized event payload (the same
+/// `{"kind":…}` shape the timeline renders).
+#[derive(Clone, serde::Serialize)]
+struct RunEventPayload {
+    run_id: String,
+    seq: i64,
+    event: serde_json::Value,
+}
+
+/// A run reaching a terminal state, pushed to the UI so the live view can update
+/// its status and disable the Stop button.
+#[derive(Clone, serde::Serialize)]
+struct RunStatusPayload {
+    run_id: String,
+    status: String,
+}
+
+/// Persist one event to the run's log and push it to the live UI. Returns the
+/// event's `seq` (its `rowid`), captured under the same lock as the insert so it
+/// is that event's even though other writers share the connection.
+fn record_event(
+    db: &Mutex<Connection>,
+    app: &AppHandle,
+    run_id: &str,
+    ev: &NormalizedEvent,
+) -> Option<i64> {
+    let json = serde_json::to_string(ev).ok()?;
+    let seq = {
+        let conn = db.lock().ok()?;
+        loopfleet_store::insert_event(&conn, run_id, &json).ok()?;
+        conn.last_insert_rowid()
+    };
+    let event = serde_json::from_str(&json).unwrap_or(serde_json::Value::Null);
+    let _ = app.emit(
+        "run_event",
+        RunEventPayload {
+            run_id: run_id.to_string(),
+            seq,
+            event,
+        },
+    );
+    Some(seq)
 }
 
 /// Validate `path` is a git repo and persist it as a project.
@@ -49,14 +97,15 @@ fn plan_overview(project_id: String, state: State<'_, AppState>) -> Result<Vec<P
 /// Launch `max_iterations` looping passes of `agent` against the task anchored at
 /// `task_anchor` in the given project's plan, confined by a rendered Seatbelt
 /// profile. Returns the new run id immediately; the loop runs in the background
-/// and its progress is persisted to the store (status, iterations, events). The
-/// live event/timeline UI that observes it lands with the later M4 bullets.
+/// and its progress is persisted to the store (status, iterations, events) and
+/// streamed live to the UI (`run_event`/`run_status` Tauri events).
 #[tauri::command]
 async fn launch_run(
     project_id: String,
     task_anchor: String,
     agent: String,
     max_iterations: u32,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let adapter = build_adapter(&agent).ok_or_else(|| format!("unknown agent: {agent}"))?;
@@ -126,6 +175,7 @@ async fn launch_run(
         .map_err(|e| e.to_string())?;
     }
 
+    let worktree_path = worktree.path.clone();
     let cfg = LoopConfig {
         run_id: run_id.clone(),
         repo: PathBuf::from(&project.repo_path),
@@ -136,12 +186,46 @@ async fn launch_run(
         wrapper,
     };
 
+    // Register a cancel channel so the live-run Stop button can signal this run.
+    let (cancel_tx, mut cancel_rx) = watch::channel(false);
+    state.stops.lock().unwrap().insert(run_id.clone(), cancel_tx);
+
     // Drive the loop off the command's response: it may run for minutes. Progress
-    // is persisted on the shared single-writer connection.
+    // is persisted on the shared single-writer connection and streamed to the UI.
     let db = state.db.clone();
     let git = state.git.clone();
+    let stops = state.stops.clone();
     tauri::async_runtime::spawn(async move {
+        // Watch the worktree for file changes (the app-sourced `FileChanged`
+        // lane) and stream them alongside the agent's events. Polls git status
+        // once a second; aborted when the loop ends.
+        let poller = {
+            let db = db.clone();
+            let app = app.clone();
+            let run_id = cfg.run_id.clone();
+            let worktree = worktree_path;
+            tauri::async_runtime::spawn(async move {
+                let mut seen = std::collections::HashSet::new();
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+                    if let Ok(changed) = loopfleet_gitx::worktree_changes(&worktree) {
+                        for path in changed {
+                            if seen.insert(path.clone()) {
+                                record_event(
+                                    &db,
+                                    &app,
+                                    &run_id,
+                                    &NormalizedEvent::FileChanged { path: path.into() },
+                                );
+                            }
+                        }
+                    }
+                }
+            })
+        };
+
         let ev_db = db.clone();
+        let ev_app = app.clone();
         let ev_id = cfg.run_id.clone();
         // Per-pass upper event boundary: the `seq` of that pass's last event, so
         // the timeline can partition the flat log back into iterations. Captured
@@ -149,16 +233,14 @@ async fn launch_run(
         let offsets: Arc<Mutex<HashMap<u32, i64>>> = Arc::new(Mutex::new(HashMap::new()));
         let ev_offsets = offsets.clone();
         let mut on_event = move |pass: u32, ev: &NormalizedEvent| {
-            if let Ok(json) = serde_json::to_string(ev) {
-                if let Ok(conn) = ev_db.lock() {
-                    if loopfleet_store::insert_event(&conn, &ev_id, &json).is_ok() {
-                        ev_offsets.lock().unwrap().insert(pass, conn.last_insert_rowid());
-                    }
-                }
+            if let Some(seq) = record_event(&ev_db, &ev_app, &ev_id, ev) {
+                ev_offsets.lock().unwrap().insert(pass, seq);
             }
         };
 
-        let outcome = run_loop(adapter.as_ref(), &git, &cfg, &mut on_event).await;
+        let outcome = run_loop(adapter.as_ref(), &git, &cfg, &mut cancel_rx, &mut on_event).await;
+        poller.abort();
+        stops.lock().unwrap().remove(&cfg.run_id);
 
         if let Ok(conn) = db.lock() {
             let offsets = offsets.lock().unwrap();
@@ -173,9 +255,33 @@ async fn launch_run(
             }
             let _ = loopfleet_store::update_run_status(&conn, &cfg.run_id, outcome.state.as_str());
         }
+
+        // Tell the live view the run reached a terminal state.
+        let _ = app.emit(
+            "run_status",
+            RunStatusPayload {
+                run_id: cfg.run_id.clone(),
+                status: outcome.state.as_str().to_string(),
+            },
+        );
     });
 
     Ok(run_id)
+}
+
+/// Request a stop of an active run. Signals the run's cancel channel; the loop
+/// stops at the current pass boundary (SIGTERMing the agent's process group) and
+/// finalizes its status (`stopped`). Errors if the run is not active.
+#[tauri::command]
+fn stop_run(run_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    let stops = state.stops.lock().unwrap();
+    match stops.get(&run_id) {
+        Some(tx) => {
+            let _ = tx.send(true);
+            Ok(())
+        }
+        None => Err(format!("run is not active: {run_id}")),
+    }
 }
 
 /// Every run bound to any task in `plan_id`. The plan view groups these by
@@ -246,6 +352,7 @@ pub fn run() {
                 db: Arc::new(Mutex::new(conn)),
                 git: GitActor::spawn(),
                 data_dir: dir,
+                stops: Arc::new(Mutex::new(HashMap::new())),
             });
             Ok(())
         })
@@ -255,7 +362,8 @@ pub fn run() {
             plan_overview,
             launch_run,
             plan_runs,
-            run_timeline
+            run_timeline,
+            stop_run
         ])
         .run(tauri::generate_context!())
         .expect("error while running loopfleet");

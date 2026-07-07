@@ -108,8 +108,8 @@ async fn drive(
                         saw_terminal = true;
                     }
                     if tx.send(ev).await.is_err() {
-                        // Consumer dropped: stop the agent and stop reading.
-                        let _ = child.start_kill();
+                        // Consumer dropped: SIGTERM the agent's group and stop.
+                        crate::stop_agent(&mut child);
                         return;
                     }
                 }
