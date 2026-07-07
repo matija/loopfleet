@@ -1324,3 +1324,91 @@ Next highest-priority task: M4 — Live run view: streaming events, current file
 changes, stop button. (This timeline reads persisted state; the live view needs
 event streaming to the UI + the process-group SIGTERM stop path that M3
 deliberately deferred to this bullet.)
+
+2026-07-07 — M4: Live run view (streaming events, file changes, stop button)
+- Completes the third M4 bullet. Turns launch_run from a fire-and-persist
+  background loop into a live-observable one, and wires the stop path M3
+  deliberately deferred ("process-group SIGTERM ... is the job of M4's live-run
+  stop button"). Three pieces: cancellation in the loop, a group-SIGTERM stop in
+  the adapters, and a git-status worktree watcher for the app-lane FileChanged.
+- core/run_loop.rs — cancellation:
+  - run_loop gains a `cancel: &mut watch::Receiver<bool>` param. Boundary stop
+    (PRD default, "SIGTERM that group at the next iteration boundary"): before
+    spawning each pass, if cancel is set → return RunState::Stopped (nothing is
+    running at the boundary, so it is clean). Mid-pass: the drain is now a
+    tokio::select! over handle.events.recv() vs cancel.changed(); a stop breaks
+    the drain, then drop(handle) closes the receiver (the adapter SIGTERMs the
+    agent) and the pass is STILL snapshotted before returning Stopped — PRD
+    "keep all shadow refs". changed()==Err (all senders dropped, i.e. app
+    shutdown) is also treated as stop.
+  - Updated the module NB (was "process-group SIGTERM is deferred to M4's stop
+    button") to describe the now-wired stop; the five existing tests gained a
+    `watch::channel(false)` arg; two new tests: stops_at_boundary_when_cancelled
+    (stop before the loop → Stopped, 0 iterations, 0 spawns) and
+    stop_requested_mid_run_ends_after_the_current_pass (stop during pass 1 →
+    Stopped with pass 1's shadow ref kept, not exhausting all 5).
+- adapters — process-group stop:
+  - base_command now sets process_group(0) (cfg(unix)) so every agent (or its
+    sandbox-exec wrapper, which pgid==pid) leads its own group. New pub(crate)
+    stop_agent(child): killpg(pid, SIGTERM) on unix — replaces the three
+    identical `child.start_kill()` calls in the claude/pi/cursor drive()
+    receiver-drop branches. So dropping the RunHandle now SIGTERMs the whole
+    group (shells/tools the agent forked die too), matching the PRD stop
+    semantics. libc added as a cfg(unix) dep. Robust reaping of an agent that
+    ignores SIGTERM stays M6 (orphan reaping).
+  - KNOWN LIMIT (documented, acceptable for v1): the drop-kill only fires when
+    the drive task next attempts a send, so a stop during a fully quiet agent
+    isn't delivered until the agent emits again or the pass ends (then the
+    boundary stop catches it). The existing mechanism; mid-pass responsiveness
+    is best-effort.
+- gitx/status.rs (new) — worktree_changes(worktree) -> Vec<String>: paths that
+  differ from HEAD (staged/unstaged/untracked), via git2 statuses (a read; PRD
+  "git2 for reads"). This is the observation source for the app-sourced
+  FileChanged lane — never parsed from the agent stream, so it catches files
+  changed by shell commands too (PRD). 1 test (edits + untracked reported, clean
+  tree empty). Exported from gitx/lib.rs.
+- src-tauri/lib.rs — the live wiring:
+  - AppState gains `stops: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>` — a
+    cancel sender per active run. New stop_run(run_id) command sends true on it;
+    unknown/ended run → "run is not active".
+  - record_event(db, app, run_id, ev) -> Option<i64>: the one place an event is
+    persisted (insert_event, seq captured under the same lock) AND emitted to the
+    UI (`run_event` Tauri event, RunEventPayload{run_id, seq, event: Value}).
+    Both the loop's on_event closure and the file watcher funnel through it.
+  - launch_run: takes AppHandle; registers a watch::channel in `stops`; spawns a
+    1 Hz worktree-status poller (dedup via a HashSet, emits FileChanged for each
+    newly-changed path) alongside run_loop; passes cancel_rx to run_loop; on
+    completion aborts the poller, removes the cancel sender, persists
+    iterations/status as before, and emits `run_status` (RunStatusPayload) so the
+    live view can finalize. tokio (sync,time) added as an app dep.
+  - capabilities/default.json: added core:event:default so the frontend may
+    listen() for the two emitted events.
+- dist/index.html — the live view: a Run launch now opens a live panel (reusing
+  the .timeline shell) with a status dot, a Stop button (invoke stop_run), a
+  Close button, a files-changed list, and a scrolling event stream. Two global
+  listen()s ("run_event"/"run_status") dispatch to the current live run by
+  run_id: FileChanged paths append to the files list (deduped), other events
+  render via the existing eventDetail(); a terminal status disables Stop and
+  reloads the plan so the task's run dot updates. Dependency-free vanilla JS.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test --workspace — 145 passed, 7 ignored
+  (adapters 42 +3, core 50 [+2 stop], gitx 24 [+1 status], sandbox 13 +2, store 16).
+- cargo clippy --workspace --all-targets — clean, 0 warnings.
+- cargo build --workspace — Finished (Tauri app links).
+- Frontend JS parses (new Function over the <script> block); the Tauri GUI can't
+  be driven headlessly here, but its new command (stop_run) + emit path are
+  exercised by the core/gitx tests and the JS is dependency-free.
+
+Design notes:
+- Boundary stop needs no process kill (nothing runs between passes); the group
+  SIGTERM only matters for the mid-pass drop path. Both keep the pass's snapshot,
+  so shadow refs survive a stop either way.
+- record_event unifies persist+emit so the live stream and the persisted log can
+  never diverge, and the per-pass offset (last_insert_rowid) stays correct under
+  the shared single-writer connection even with the file watcher interleaving
+  FileChanged inserts (its seq just lands in whichever pass window it falls).
+
+Next highest-priority task: M4's last bullet — Compare view: two-or-more runs
+side by side, final-ref diffs, "use this run" → merge the chosen branch into a
+user-named target. That completes M4.

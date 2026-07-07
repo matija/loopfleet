@@ -16,6 +16,7 @@
 //!
 //! Stop conditions (PRD run status machine):
 //! - the bound task's `STATUS: COMPLETE` appears → [`RunState::Completed`];
+//! - the user requests a stop via `cancel` → [`RunState::Stopped`];
 //! - `max_iterations` reached still incomplete → [`RunState::Failed`];
 //! - a hard failure (adapter cannot spawn, or a snapshot fails) →
 //!   [`RunState::Failed`].
@@ -25,19 +26,20 @@
 //! rolls into the next fresh pass; only exhausting N without completion, or an
 //! inability to spawn/snapshot at all, fails the run.
 //!
-//! NB (deferred integration): today `start_run` owns the agent process and this
-//! loop's stop is dropping the [`RunHandle`](crate::adapter::RunHandle) (which
-//! every adapter honors by killing its child). Threading `SeatbeltSandbox`
-//! command-wrapping and process-group SIGTERM *through* the adapter spawn — so a
-//! forked descendant dies too and the Seatbelt profile is the boundary — is the
-//! job of the end-to-end wiring (last M3 bullet), where a real sandboxed agent
-//! is actually spawned. This module is transport- and sandbox-agnostic on
-//! purpose.
+//! Stop (PRD "SIGTERM that group at the next iteration boundary"): the loop
+//! watches a `cancel` [`watch`](tokio::sync::watch) channel. Between passes,
+//! nothing is running, so a requested stop just returns [`RunState::Stopped`]
+//! without spawning the next pass. During a pass, a stop breaks the drain and
+//! drops the [`RunHandle`](crate::adapter::RunHandle); every adapter honors that
+//! by SIGTERMing the agent's process group (so forked descendants die too — the
+//! adapters spawn each agent as a group leader). Either way the pass's worktree
+//! is still snapshotted, so all shadow refs are kept.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use loopfleet_gitx::GitActor;
+use tokio::sync::watch;
 
 use crate::adapter::{AgentAdapter, RunSpec};
 use crate::{NormalizedEvent, RunState};
@@ -87,6 +89,10 @@ pub struct LoopOutcome {
 
 /// Drive `adapter` through up to `cfg.max_iterations` passes against one task.
 ///
+/// Sending `true` on `cancel` requests a stop: the run ends in
+/// [`RunState::Stopped`] at the current pass boundary (dropping the handle so
+/// the adapter SIGTERMs the agent), keeping every snapshot taken so far.
+///
 /// `on_event` receives every normalized event, tagged with its 1-based pass
 /// number, as it arrives — the caller forwards these to the SQLite event log
 /// (serialize + send through the bounded [`EventSender`](loopfleet_store)). It
@@ -96,11 +102,21 @@ pub async fn run_loop(
     adapter: &dyn AgentAdapter,
     git: &GitActor,
     cfg: &LoopConfig,
+    cancel: &mut watch::Receiver<bool>,
     on_event: &mut (dyn FnMut(u32, &NormalizedEvent) + Send),
 ) -> LoopOutcome {
     let mut iterations = Vec::new();
 
     for n in 1..=cfg.max_iterations {
+        // Boundary stop (PRD default): a stop requested between passes returns
+        // without spawning the next one — nothing is running, so it is clean.
+        if *cancel.borrow() {
+            return LoopOutcome {
+                state: RunState::Stopped,
+                iterations,
+            };
+        }
+
         // Fresh context each pass: seed with the task and whatever the agent has
         // recorded in the external progress file so far.
         let prior = read_progress(&cfg.progress_path);
@@ -121,14 +137,33 @@ pub async fn run_loop(
             }
         };
 
-        // Drain the pass to completion. The stream ends on `Ended`/`Failed` or
-        // when the adapter's child exits; dropping the handle here would stop it.
-        while let Some(event) = handle.events.recv().await {
-            on_event(n, &event);
+        // Drain the pass. The stream ends on `Ended`/`Failed` or when the
+        // adapter's child exits. A mid-pass stop breaks out and drops the handle
+        // below, which the adapter honors by SIGTERMing the agent's group.
+        let mut cancelled = false;
+        loop {
+            tokio::select! {
+                event = handle.events.recv() => match event {
+                    Some(event) => on_event(n, &event),
+                    None => break,
+                },
+                changed = cancel.changed() => {
+                    // A stop request (or all senders dropped, i.e. app shutdown)
+                    // ends the pass.
+                    if changed.is_err() || *cancel.borrow_and_update() {
+                        cancelled = true;
+                        break;
+                    }
+                }
+            }
         }
+        // Stop the agent promptly if we broke early (drop closes the receiver →
+        // the adapter SIGTERMs the process group). A no-op if the pass ended.
+        drop(handle);
 
         // App-owned snapshot of this pass's worktree state (the agent never
-        // commits). A snapshot failure is a hard failure.
+        // commits). Taken even on stop, so shadow refs are kept. A snapshot
+        // failure is a hard failure.
         match git
             .snapshot(
                 cfg.repo.clone(),
@@ -149,6 +184,14 @@ pub async fn run_loop(
                     iterations,
                 }
             }
+        }
+
+        // A stop honored during this pass ends the run once its snapshot is safe.
+        if cancelled {
+            return LoopOutcome {
+                state: RunState::Stopped,
+                iterations,
+            };
         }
 
         // Done when the agent has written the completion marker for its task.
@@ -353,8 +396,9 @@ mod tests {
         let (cfg, _repo, _root, _prog) = setup("loop-complete", 3, &git).await;
         let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(1));
 
+        let (_ctx, mut cancel) = watch::channel(false);
         let mut seen = Vec::new();
-        let outcome = run_loop(&adapter, &git, &cfg, &mut |n, ev| {
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut |n, ev| {
             seen.push((n, ev.clone()))
         })
         .await;
@@ -377,7 +421,8 @@ mod tests {
         let (cfg, _repo, _root, _prog) = setup("loop-exhaust", 3, &git).await;
         let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), None);
 
-        let outcome = run_loop(&adapter, &git, &cfg, &mut |_, _| {}).await;
+        let (_ctx, mut cancel) = watch::channel(false);
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut |_, _| {}).await;
 
         assert_eq!(outcome.state, RunState::Failed);
         assert_eq!(outcome.iterations.len(), 3);
@@ -401,7 +446,8 @@ mod tests {
         let mut adapter = ScriptedAdapter::new(cfg.progress_path.clone(), None);
         adapter.fail_start = true;
 
-        let outcome = run_loop(&adapter, &git, &cfg, &mut |_, _| {}).await;
+        let (_ctx, mut cancel) = watch::channel(false);
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut |_, _| {}).await;
 
         assert_eq!(outcome.state, RunState::Failed);
         assert!(outcome.iterations.is_empty());
@@ -413,7 +459,8 @@ mod tests {
         let (cfg, _repo, _root, _prog) = setup("loop-prompt", 3, &git).await;
         let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(2));
 
-        let outcome = run_loop(&adapter, &git, &cfg, &mut |_, _| {}).await;
+        let (_ctx, mut cancel) = watch::channel(false);
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut |_, _| {}).await;
         assert_eq!(outcome.state, RunState::Completed);
 
         let prompts = adapter.prompts.lock().unwrap();
@@ -437,11 +484,55 @@ mod tests {
         ];
         let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(2));
 
-        run_loop(&adapter, &git, &cfg, &mut |_, _| {}).await;
+        let (_ctx, mut cancel) = watch::channel(false);
+        run_loop(&adapter, &git, &cfg, &mut cancel, &mut |_, _| {}).await;
 
         // Every pass's RunSpec carried the wrapper verbatim.
         let wrappers = adapter.wrappers.lock().unwrap();
         assert_eq!(wrappers.len(), 2);
         assert!(wrappers.iter().all(|w| *w == cfg.wrapper));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn stops_at_boundary_when_cancelled() {
+        let git = GitActor::spawn();
+        // 5 passes available, but a stop is requested before the loop starts, so
+        // no pass ever runs and the run ends Stopped with no snapshots.
+        let (cfg, _repo, _root, _prog) = setup("loop-stop-boundary", 5, &git).await;
+        let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), None);
+
+        let (ctx, mut cancel) = watch::channel(false);
+        ctx.send(true).unwrap();
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut |_, _| {}).await;
+
+        assert_eq!(outcome.state, RunState::Stopped);
+        assert!(outcome.iterations.is_empty());
+        assert_eq!(adapter.call.load(Ordering::SeqCst), 0, "no pass should spawn");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn stop_requested_mid_run_ends_after_the_current_pass() {
+        let git = GitActor::spawn();
+        // Never completes on its own; a stop is requested during pass 1, so the
+        // run stops after that pass's snapshot rather than exhausting all 5.
+        let (cfg, _repo, _root, _prog) = setup("loop-stop-mid", 5, &git).await;
+        let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), None);
+
+        let (ctx, mut cancel) = watch::channel(false);
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut |n, _| {
+            // Request the stop while pass 1 is streaming.
+            if n == 1 {
+                let _ = ctx.send(true);
+            }
+        })
+        .await;
+
+        assert_eq!(outcome.state, RunState::Stopped);
+        // The in-flight pass is still snapshotted, so its shadow ref is kept.
+        assert_eq!(outcome.iterations.len(), 1);
+        assert_eq!(
+            outcome.iterations[0].shadow_ref,
+            "refs/agentapp/run-loop-stop-mid/iter-1"
+        );
     }
 }

@@ -113,7 +113,8 @@ async fn runs_n_loops_on_a_task_with_claude() {
         wrapper,
     };
 
-    let outcome = run_loop(&ClaudeAdapter, &git, &cfg, &mut |_pass, _ev| {}).await;
+    let (_cancel_tx, mut cancel_rx) = tokio::sync::watch::channel(false);
+    let outcome = run_loop(&ClaudeAdapter, &git, &cfg, &mut cancel_rx, &mut |_pass, _ev| {}).await;
 
     // The agent wrote STATUS: COMPLETE within N passes.
     assert_eq!(

@@ -13,7 +13,7 @@
 
 use std::ffi::OsString;
 
-use tokio::process::Command;
+use tokio::process::{Child, Command};
 
 mod claude;
 mod cursor;
@@ -33,15 +33,39 @@ pub use stub::StubAdapter;
 /// appends its own flags to the returned command. The tokens are opaque here —
 /// the adapter never learns the backend is Seatbelt, keeping `Sandbox` details
 /// out of the adapters (PRD: Sandbox).
+///
+/// The child is put in its own process group (`process_group(0)`, so its pgid
+/// equals its pid) so a stop can SIGTERM the whole group via [`stop_agent`],
+/// catching shells and tools the agent forked — the PRD's stop semantics.
 pub(crate) fn base_command(wrapper: &[OsString], program: &str) -> Command {
-    match wrapper.split_first() {
+    let mut cmd = match wrapper.split_first() {
         Some((launcher, prefix_args)) => {
             let mut cmd = Command::new(launcher);
             cmd.args(prefix_args).arg(program);
             cmd
         }
         None => Command::new(program),
+    };
+    #[cfg(unix)]
+    cmd.process_group(0);
+    cmd
+}
+
+/// Stop a running agent when the consumer drops its [`RunHandle`]. SIGTERMs the
+/// child's process group (per [`base_command`], the child leads its own group,
+/// so its forked descendants get the signal too), matching the PRD's stop
+/// semantics ("SIGTERM that group"). Robust reaping of an agent that ignores
+/// SIGTERM is left to M6 (orphan reaping).
+pub(crate) fn stop_agent(child: &mut Child) {
+    #[cfg(unix)]
+    if let Some(pid) = child.id() {
+        // SAFETY: killpg is a thin libc syscall wrapper with no memory effects.
+        unsafe {
+            libc::killpg(pid as libc::pid_t, libc::SIGTERM);
+        }
     }
+    #[cfg(not(unix))]
+    let _ = child.start_kill();
 }
 
 // The `AgentAdapter` trait and its launch/handle types live in `core` — next to

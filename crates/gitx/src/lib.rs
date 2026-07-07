@@ -8,6 +8,7 @@ use std::path::Path;
 pub mod actor;
 pub mod diff;
 pub mod shadow;
+pub mod status;
 pub mod worktree;
 pub use actor::GitActor;
 pub use diff::{
@@ -15,6 +16,7 @@ pub use diff::{
     DiffResult, FileChange,
 };
 pub use shadow::{shadow_ref, Snapshot, SnapshotError};
+pub use status::worktree_changes;
 pub use worktree::{Worktree, WorktreeError};
 
 /// True if `path` is (or is contained by) a git repository. Uses `git2` in

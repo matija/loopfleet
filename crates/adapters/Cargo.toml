@@ -11,6 +11,9 @@ async-trait.workspace = true
 tokio = { workspace = true, features = ["process", "io-util"] }
 serde_json.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
 [dev-dependencies]
 loopfleet-gitx.workspace = true
 loopfleet-sandbox.workspace = true

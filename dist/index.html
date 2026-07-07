@@ -326,6 +326,7 @@
       <ul id="projects"></ul>
       <p id="empty" class="empty">No projects registered yet.</p>
 
+      <div id="live"></div>
       <div id="plan"></div>
       <div id="timeline"></div>
     </div>
@@ -333,16 +334,125 @@
     <script>
       const { invoke } = window.__TAURI__.core;
       const { open } = window.__TAURI__.dialog;
+      const { listen } = window.__TAURI__.event;
 
       const addBtn = document.getElementById("add");
       const msg = document.getElementById("msg");
       const list = document.getElementById("projects");
       const empty = document.getElementById("empty");
       const planEl = document.getElementById("plan");
+      const liveEl = document.getElementById("live");
       const timelineEl = document.getElementById("timeline");
 
       const AGENTS = ["claude", "pi", "cursor"];
       let selectedProject = null;
+
+      // The live run currently shown, if any. Streamed `run_event`/`run_status`
+      // Tauri events are dispatched to it by matching run_id.
+      let live = null; // { runId, eventsEl, filesEl, files:Set, dot, stopBtn }
+
+      function isTerminal(status) {
+        return status === "completed" || status === "failed" || status === "stopped";
+      }
+
+      // Open a live view for a just-launched run: streaming events, the set of
+      // files it has changed, and a Stop button.
+      function showLive(runId) {
+        liveEl.innerHTML = "";
+        const box = document.createElement("div");
+        box.className = "timeline";
+
+        const head = document.createElement("div");
+        head.className = "head";
+        const h = document.createElement("h2");
+        h.style.margin = "0";
+        h.textContent = "Live run";
+        head.appendChild(h);
+        const rid = document.createElement("span");
+        rid.className = "rid";
+        rid.textContent = runId.slice(0, 8);
+        head.appendChild(rid);
+        const dot = document.createElement("span");
+        dot.className = "dot running";
+        dot.textContent = "running";
+        head.appendChild(dot);
+        const stopBtn = document.createElement("button");
+        stopBtn.className = "mini";
+        stopBtn.textContent = "Stop";
+        stopBtn.addEventListener("click", async () => {
+          stopBtn.disabled = true;
+          try {
+            await invoke("stop_run", { runId });
+          } catch (e) {
+            setMsg(String(e), "err");
+          }
+        });
+        head.appendChild(stopBtn);
+        const close = document.createElement("button");
+        close.className = "mini";
+        close.textContent = "Close";
+        close.addEventListener("click", () => {
+          liveEl.innerHTML = "";
+          live = null;
+        });
+        head.appendChild(close);
+        box.appendChild(head);
+
+        const filesWrap = document.createElement("div");
+        filesWrap.className = "files";
+        const filesEl = document.createElement("div");
+        filesWrap.appendChild(filesEl);
+        box.appendChild(filesWrap);
+
+        const eventsEl = document.createElement("div");
+        eventsEl.className = "iterbody";
+        eventsEl.style.maxHeight = "320px";
+        eventsEl.style.overflowY = "auto";
+        box.appendChild(eventsEl);
+
+        liveEl.appendChild(box);
+        live = { runId, eventsEl, filesEl, files: new Set(), dot, stopBtn };
+      }
+
+      function onRunEvent(runId, ev) {
+        if (!live || live.runId !== runId) return;
+        if (ev.kind === "file_changed") {
+          if (ev.path && !live.files.has(ev.path)) {
+            live.files.add(ev.path);
+            const fr = document.createElement("div");
+            fr.className = "filerow";
+            fr.textContent = ev.path;
+            live.filesEl.appendChild(fr);
+          }
+          return;
+        }
+        const row = document.createElement("div");
+        row.className = "evt";
+        const k = document.createElement("span");
+        k.className = "k";
+        k.textContent = (ev.kind || "?").replace(/_/g, " ");
+        row.appendChild(k);
+        const det = document.createElement("span");
+        det.className = "d";
+        det.textContent = eventDetail(ev);
+        row.appendChild(det);
+        live.eventsEl.appendChild(row);
+        live.eventsEl.scrollTop = live.eventsEl.scrollHeight;
+      }
+
+      function onRunStatus(runId, status) {
+        if (!live || live.runId !== runId) return;
+        live.dot.className = "dot " + status;
+        live.dot.textContent = status;
+        if (isTerminal(status)) {
+          live.stopBtn.disabled = true;
+          // Refresh the plan so the run's status dot updates in its task list.
+          if (selectedProject) loadPlan(selectedProject);
+        }
+      }
+
+      listen("run_event", (e) => onRunEvent(e.payload.run_id, e.payload.event));
+      listen("run_status", (e) => onRunStatus(e.payload.run_id, e.payload.status));
 
       function setMsg(text, cls) {
         msg.textContent = text;
@@ -506,6 +616,7 @@
                 maxIterations: Number(iterSel.value),
               });
               setMsg("Launched run " + runId, "ok");
+              showLive(runId);
               await loadPlan(selectedProject);
             } catch (e) {
               setMsg(String(e), "err");
