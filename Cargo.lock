@@ -1846,6 +1846,7 @@ dependencies = [
 name = "loopfleet-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "git2",
  "libc",
  "loopfleet-gitx",

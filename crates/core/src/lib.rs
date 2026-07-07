@@ -2,9 +2,10 @@
 //!
 //! This crate owns the domain logic shared across the app. M0 contributes
 //! project registration (tying git-repo validation in `gitx` to persistence in
-//! `store`); M1 the normalized event enum; M3 the supervisor foundations (run
-//! lifecycle state machine + process-group spawning). The driving loop composes
-//! these with the adapters, sandbox, and the serialized git actor.
+//! `store`); M1 the normalized event enum and the [`AgentAdapter`] trait; M3 the
+//! supervisor foundations (run lifecycle state machine + process-group spawning)
+//! and the driving [`run_loop`], which composes the adapter trait, the state
+//! machine, and the serialized git actor into the ralph-style iteration loop.
 
 use std::fmt;
 use std::path::Path;
@@ -12,9 +13,15 @@ use std::path::Path;
 use loopfleet_store::Project;
 use rusqlite::Connection;
 
+pub mod adapter;
 pub mod event;
+pub mod run_loop;
 pub mod supervisor;
+pub use adapter::{
+    AdapterError, AgentAdapter, RunHandle, RunSpec, SessionHandle, SessionSeed,
+};
 pub use event::{Lane, NormalizedEvent, Usage};
+pub use run_loop::{run_loop, IterationRecord, LoopConfig, LoopOutcome};
 pub use supervisor::{InvalidTransition, RunProcess, RunState};
 
 /// Why a project could not be registered.

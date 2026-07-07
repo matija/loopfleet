@@ -11,7 +11,8 @@ loopfleet-store.workspace = true
 rusqlite.workspace = true
 uuid = { workspace = true }
 serde = { workspace = true }
-tokio = { workspace = true, features = ["process"] }
+async-trait.workspace = true
+tokio = { workspace = true, features = ["process", "sync"] }
 libc.workspace = true
 
 [dev-dependencies]

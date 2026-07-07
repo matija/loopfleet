@@ -890,3 +890,89 @@ snapshot between passes, stop conditions (STATUS: COMPLETE / N reached /
 failure). This composes RunState + RunProcess + GitActor with an adapter and the
 sandbox, and is where the adapter-spawn/process-group/sandbox integration above
 gets resolved.
+
+2026-07-07 — M3: Iteration loop (N passes, snapshot between passes, stop conditions)
+- Completes the second M3 bullet. The prior commit (22d02c9 "add AgentAdapter
+  trait and run loop logic") had added crates/core/src/adapter.rs and
+  crates/core/src/run_loop.rs as FILES but never wired them in: core/lib.rs had
+  no `pub mod adapter/run_loop`, so they were orphan (uncompiled) source; the
+  adapters crate still defined its OWN duplicate AgentAdapter trait; and
+  core/Cargo.toml lacked async-trait. This iteration finished the refactor,
+  verified it, checked the box, and appended this entry.
+- WHY the trait moved crate: the driving loop lives in core (PRD architecture
+  places "Supervisor / run loop" AND "AgentAdapter trait" in Rust core), and it
+  composes over a `&dyn AgentAdapter`. adapters depends on core (for
+  NormalizedEvent), so core cannot depend on adapters — the trait had to live in
+  core to break the cycle. The concrete adapters (Claude/pi/cursor/stub) now
+  `impl loopfleet_core::AgentAdapter`.
+- crates/core/src/adapter.rs: the AgentAdapter trait + its launch/handle types
+  (RunSpec, SessionSeed, RunHandle, SessionHandle, AdapterError), moved verbatim
+  from adapters/lib.rs. Object-safe via async_trait so the supervisor holds a
+  Box<dyn AgentAdapter> chosen by agent name.
+- crates/adapters/src/lib.rs: the local trait/type definitions are DELETED and
+  replaced with `pub use loopfleet_core::{AdapterError, AgentAdapter, RunHandle,
+  RunSpec, SessionHandle, SessionSeed}`. The four impl files (claude/cursor/pi/
+  stub) are UNCHANGED — they import via `use crate::{…}`, which now resolves to
+  the re-export, and construct RunHandle { events } through its pub field. Also
+  dropped lib.rs's now-orphan imports (std::path, async_trait, mpsc,
+  NormalizedEvent). adapters/Cargo.toml untouched (its mpsc/async-trait use was
+  already covered).
+- crates/core/src/run_loop.rs (run_loop): drives an adapter through up to
+  cfg.max_iterations passes against ONE bound task. Each pass: read the external
+  progress file → build_prompt(task + progress-file protocol + prior progress as
+  the fresh-context durable memory) → adapter.start_run → drain the normalized
+  event stream (each event handed to an `on_event(pass_n, &event)` callback so
+  the loop stays decoupled from the store; the caller serializes+forwards to the
+  EventSender) → GitActor.snapshot the worktree to
+  refs/agentapp/run-<id>/iter-<n> (app-owned; the agent never commits) → check
+  the progress file for a line == "STATUS: COMPLETE".
+  - Stop conditions → LoopOutcome { state, iterations }: marker present →
+    RunState::Completed; max_iterations exhausted still incomplete →
+    RunState::Failed; adapter cannot spawn OR a snapshot fails → RunState::Failed
+    (a hard crash). A per-pass Failed *event* is deliberately NOT fatal — the
+    ralph pattern retries with fresh context each pass; only exhausting N, or an
+    inability to spawn/snapshot at all, fails the run.
+  - LoopConfig { run_id, repo, worktree, progress_path, task_text,
+    max_iterations }; IterationRecord { n, shadow_ref, commit } for the store's
+    Iteration rows.
+  - DEFERRED integration (documented in the module): today start_run owns the
+    agent process and "stop" is dropping the RunHandle (every adapter honors that
+    by killing its child). Threading SeatbeltSandbox command-wrapping +
+    process-group SIGTERM THROUGH the adapter spawn — so a forked descendant dies
+    too and the Seatbelt profile is the boundary — is the last M3 bullet's job
+    (end-to-end wiring, where a real sandboxed agent is spawned). This module is
+    transport- and sandbox-agnostic on purpose, and is proven end-to-end against
+    a scripted in-test adapter driving a REAL git worktree + GitActor snapshots.
+- core/Cargo.toml: added async-trait (for the moved trait) and tokio "sync"
+  feature (mpsc in the handles).
+- Tests (4 in run_loop, all passing) — each cuts a real repo+worktree via the
+  GitActor and runs a scripted adapter that writes the progress file + touches
+  the worktree per pass: completes_when_marker_written (marker on pass 1 →
+  Completed, 1 iteration, shadow ref named, all 4 events forwarded tagged pass 1);
+  fails_after_exhausting_iterations (never completes, max 3 → Failed, 3 chained
+  distinct shadow commits); hard_failure_when_adapter_cannot_spawn (start_run Err
+  → Failed, 0 iterations); prompt_carries_task_and_prior_progress (pass 1 prompt
+  has the task + "(no prior progress yet)", pass 2 prompt feeds back pass 1's
+  progress line).
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test --workspace — 100 passed, 6 ignored
+  (42 adapters, 15 core [+4 run_loop], 23 gitx, 11 sandbox, 9 store).
+- cargo clippy --workspace --all-targets — clean, 0 warnings.
+- cargo build --workspace — Finished (Tauri app included).
+
+Design notes:
+- on_event is a plain &mut dyn FnMut(u32, &NormalizedEvent), not an EventSender:
+  the loop stays store-agnostic and unit-testable with a Vec collector, while the
+  real caller closes over an EventSender and does serialize+send. Keeps the
+  core→store dependency from leaking the event-log channel into the loop's core.
+- The completion check reads the FILE, not the event stream: "done = the marker
+  appears" (PRD open-question 2) is uniform across all agents, so the loop needs
+  no per-adapter done-predicate — the marker in the external progress file is the
+  single source of truth.
+
+Next highest-priority task: M3 — Plan parser (PRD.md checkboxes, frozen, authored
+state only + alternative plans-folder convention; text-based task anchors). Then
+the progress-file watcher, then the end-to-end "Run N loops on task X" against a
+fixture repo with the Claude Code adapter (where the sandbox + process-group
+integration deferred above gets resolved).
