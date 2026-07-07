@@ -1107,3 +1107,57 @@ Next highest-priority task: M3's last bullet — "Run N loops on task X"
 end-to-end against a fixture repo with the Claude Code adapter, where the
 deferred SeatbeltSandbox command-wrapping + process-group SIGTERM integration
 through the adapter spawn finally gets resolved. That completes M3.
+
+2026-07-07 — M3: "Run N loops on task X" end-to-end with the Claude Code adapter
+- Completes the last M3 bullet, resolving the sandbox-wrapping integration the
+  run loop deferred. The pieces (worktree/snapshot GitActor, SeatbeltSandbox
+  renderer, ClaudeAdapter, run_loop) now compose into one confined N-pass run.
+- adapter.rs: finished the WIP RunSpec.wrapper field — an OPAQUE argv prefix the
+  adapter prepends (`wrapper[0] wrapper[1..] program args…`). Empty = spawn the
+  agent directly (dev/test); filled = the Seatbelt invocation. The adapter never
+  learns the backend is Seatbelt (PRD: no Sandbox details leak into adapters).
+- adapters/lib.rs: base_command(wrapper, program) -> tokio Command — the one
+  place the prefix is applied. All three real adapters (claude/pi/cursor) now
+  build their command via it instead of Command::new(<prog>); their now-orphan
+  `use tokio::process::Command` imports were removed. stub + the three live-test
+  RunSpecs gained `wrapper: Vec::new()`.
+- sandbox/lib.rs: confine_prefix(&RenderParams, &Path) -> Vec<OsString> — the
+  adapter-facing counterpart to Sandbox::wrap. Renders + persists the profile
+  and returns [sandbox-exec, -f, <profile>], keeping the Seatbelt argv shape
+  inside the sandbox crate. Extracted the shared render+write into a private
+  persist_profile() that both confine_prefix and wrap() now call (was inline in
+  wrap). Two unit tests: prefix shape + profile written (parent dir created);
+  render errors propagate.
+- core/run_loop.rs: LoopConfig gains `wrapper: Vec<OsString>`, threaded into
+  every pass's RunSpec. New unit test threads_wrapper_into_each_pass_spec asserts
+  the ScriptedAdapter sees the wrapper verbatim on each pass (the adapter now
+  records spec.wrapper alongside the prompt).
+- crates/adapters/tests/run_n_loops.rs (new, #[ignore], cfg macos): the
+  end-to-end capstone. Cuts a fixture worktree via the GitActor, renders the
+  Seatbelt boundary (worktree + progress dir + claude's $HOME config dirs +
+  temp), builds the wrapper via confine_prefix, and drives run_loop(&ClaudeAdapter
+  …) on a real task ("create DONE.txt containing 'done'"). Asserts the run reaches
+  Completed within N passes, every pass's shadow ref resolves in the repo, and
+  DONE.txt landed in the confined worktree. adapters gains gitx + sandbox as
+  DEV-deps only (no runtime cycle). Runnable manually outside a nested sandbox
+  (a nested sandbox_apply is OS-denied, same limit as the other live sandbox
+  tests).
+- SCOPE: process-group SIGTERM through the adapter spawn (RunProcess in
+  supervisor.rs) is deliberately NOT wired here — it is the *stop* path, which
+  "run N loops to completion" does not exercise; it belongs with M4's live-run
+  stop button. The wrapper/sandbox integration is what makes the loop run
+  confined end-to-end, which is this bullet.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test --workspace — all pass
+  (42 adapters +3 ignored, 36 core [+1 run_loop wrapper], 23 gitx, 13 sandbox
+  [+2 confine_prefix] +2 ignored, 9 store; +1 new ignored e2e integration test).
+- cargo clippy --workspace --all-targets — clean, 0 warnings.
+- cargo build --workspace — Finished (Tauri app included).
+- The e2e test itself is #[ignore]d (real claude + network + outside-sandbox);
+  compiled but not executed in this env.
+
+M3 is COMPLETE — supervisor foundations, iteration loop, plan parser,
+progress-file watcher, and the end-to-end "Run N loops on task X" with the
+Claude adapter are all done. Next milestone: M4 — UI: overview and timeline
+(project list + plan view, run timeline, live run view, compare view).

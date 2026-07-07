@@ -34,6 +34,7 @@
 //! is actually spawned. This module is transport- and sandbox-agnostic on
 //! purpose.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use loopfleet_gitx::GitActor;
@@ -57,6 +58,11 @@ pub struct LoopConfig {
     pub task_text: String,
     /// Maximum passes before the run fails as incomplete.
     pub max_iterations: u32,
+    /// The opaque sandbox wrapper prefix prepended to each pass's agent spawn
+    /// (see [`RunSpec::wrapper`](crate::adapter::RunSpec::wrapper)). The wiring
+    /// layer fills it with the Seatbelt invocation (`sandbox-exec -f <profile>`,
+    /// via [`confine_prefix`](loopfleet_sandbox)); empty runs the agent directly.
+    pub wrapper: Vec<OsString>,
 }
 
 /// One completed pass's app-owned snapshot. The caller persists these as
@@ -101,6 +107,7 @@ pub async fn run_loop(
         let spec = RunSpec {
             cwd: cfg.worktree.clone(),
             prompt: build_prompt(cfg, &prior),
+            wrapper: cfg.wrapper.clone(),
         };
 
         let mut handle = match adapter.start_run(&spec).await {
@@ -210,6 +217,9 @@ mod tests {
         fail_start: bool,
         call: AtomicU32,
         prompts: Arc<Mutex<Vec<String>>>,
+        /// The `wrapper` prefix each pass's `RunSpec` carried — records that the
+        /// loop threads `LoopConfig::wrapper` through to the adapter.
+        wrappers: Arc<Mutex<Vec<Vec<OsString>>>>,
     }
 
     impl ScriptedAdapter {
@@ -220,6 +230,7 @@ mod tests {
                 fail_start: false,
                 call: AtomicU32::new(0),
                 prompts: Arc::new(Mutex::new(Vec::new())),
+                wrappers: Arc::new(Mutex::new(Vec::new())),
             }
         }
     }
@@ -232,6 +243,7 @@ mod tests {
             }
             let n = self.call.fetch_add(1, Ordering::SeqCst) + 1;
             self.prompts.lock().unwrap().push(spec.prompt.clone());
+            self.wrappers.lock().unwrap().push(spec.wrapper.clone());
 
             // Append this pass's progress to the external file.
             let mut f = std::fs::OpenOptions::new()
@@ -330,6 +342,7 @@ mod tests {
             progress_path: progress_dir.path().join("progress.md"),
             task_text: "Implement the widget".into(),
             max_iterations,
+            wrapper: Vec::new(),
         };
         (cfg, repo, root, progress_dir)
     }
@@ -410,5 +423,25 @@ mod tests {
         assert!(prompts[0].contains("(no prior progress yet)"));
         // Pass 2: the prior progress the agent wrote in pass 1 is fed back.
         assert!(prompts[1].contains("pass 1 did work"));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn threads_wrapper_into_each_pass_spec() {
+        let git = GitActor::spawn();
+        let (mut cfg, _repo, _root, _prog) = setup("loop-wrapper", 3, &git).await;
+        // Stand in for the Seatbelt prefix the wiring layer builds.
+        cfg.wrapper = vec![
+            OsString::from("/usr/bin/sandbox-exec"),
+            OsString::from("-f"),
+            OsString::from("/tmp/run-loop-wrapper.sb"),
+        ];
+        let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(2));
+
+        run_loop(&adapter, &git, &cfg, &mut |_, _| {}).await;
+
+        // Every pass's RunSpec carried the wrapper verbatim.
+        let wrappers = adapter.wrappers.lock().unwrap();
+        assert_eq!(wrappers.len(), 2);
+        assert!(wrappers.iter().all(|w| *w == cfg.wrapper));
     }
 }

@@ -29,7 +29,6 @@ use async_trait::async_trait;
 use loopfleet_core::{NormalizedEvent, Usage};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 use tokio::sync::mpsc;
 
 use crate::{AdapterError, AgentAdapter, RunHandle, RunSpec, SessionHandle, SessionSeed};
@@ -50,7 +49,7 @@ impl AgentAdapter for CursorAdapter {
         // headless mode cursor-agent fabricates a "user skipped" answer for any
         // prompt anyway (see PRD), so the Seatbelt profile (M2) is the real
         // boundary — `--force` just keeps the run from stalling.
-        let mut child = Command::new("cursor-agent")
+        let mut child = crate::base_command(&spec.wrapper, "cursor-agent")
             .arg("-p")
             .args(["--output-format", "stream-json"])
             .arg("--force")
@@ -585,6 +584,7 @@ mod tests {
         let spec = RunSpec {
             cwd: dir.path().to_path_buf(),
             prompt: "Read README.md and then say the single word done.".into(),
+            wrapper: Vec::new(),
         };
         let mut handle = CursorAdapter.start_run(&spec).await.unwrap();
 

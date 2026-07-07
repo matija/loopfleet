@@ -1837,6 +1837,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "loopfleet-core",
+ "loopfleet-gitx",
+ "loopfleet-sandbox",
  "serde_json",
  "tempfile",
  "tokio",

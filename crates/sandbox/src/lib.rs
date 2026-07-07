@@ -122,6 +122,39 @@ fn escape_sbpl(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+/// Render `params`, persist the profile to `profile_path`, and return the opaque
+/// argv prefix that runs a program confined: `[sandbox-exec, -f, <profile_path>]`.
+///
+/// This is the adapter-facing counterpart to [`Sandbox::wrap`]. An
+/// [`AgentAdapter`](loopfleet_core) owns its own `program args…` and must stay
+/// ignorant of the backend, so rather than handing the sandbox a whole command
+/// it receives this prefix (via `RunSpec::wrapper`) and prepends it. The Seatbelt
+/// argv shape stays inside this crate — the adapter never learns it is
+/// `sandbox-exec`, keeping the boundary detail from leaking upward (PRD:
+/// Sandbox).
+pub fn confine_prefix(
+    params: &RenderParams,
+    profile_path: &Path,
+) -> Result<Vec<OsString>, SandboxError> {
+    persist_profile(params, profile_path)?;
+    Ok(vec![
+        OsString::from(SANDBOX_EXEC),
+        OsString::from("-f"),
+        profile_path.to_path_buf().into_os_string(),
+    ])
+}
+
+/// Render the profile and write it to `profile_path` (creating its parent dir).
+/// Shared by [`confine_prefix`] and [`SeatbeltSandbox::wrap`].
+fn persist_profile(params: &RenderParams, profile_path: &Path) -> Result<(), SandboxError> {
+    let profile = render(params)?;
+    if let Some(parent) = profile_path.parent() {
+        std::fs::create_dir_all(parent).map_err(SandboxError::Io)?;
+    }
+    std::fs::write(profile_path, profile).map_err(SandboxError::Io)?;
+    Ok(())
+}
+
 /// Confines a child process to a per-run write boundary.
 ///
 /// Kept behind a trait so non-macOS backends (Landlock/bubblewrap, containers)
@@ -204,11 +237,7 @@ pub struct SeatbeltSandbox;
 
 impl Sandbox for SeatbeltSandbox {
     fn wrap(&self, command: &SandboxCommand) -> Result<WrappedCommand, SandboxError> {
-        let profile = render(&command.params)?;
-        if let Some(parent) = command.profile_path.parent() {
-            std::fs::create_dir_all(parent).map_err(SandboxError::Io)?;
-        }
-        std::fs::write(&command.profile_path, profile).map_err(SandboxError::Io)?;
+        persist_profile(&command.params, &command.profile_path)?;
 
         // sandbox-exec -f <profile> <program> <args…>
         let mut args = Vec::with_capacity(command.args.len() + 3);
@@ -358,6 +387,44 @@ mod tests {
         let wrapped = SeatbeltSandbox.wrap(&cmd).unwrap();
 
         assert!(wrapped.profile_path.exists());
+    }
+
+    #[test]
+    fn confine_prefix_writes_profile_and_returns_argv_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let worktree = dir.path().join("wt");
+        let progress = dir.path().join("progress");
+        let params = RenderParams::new(&worktree, &progress);
+        let profile_path = dir.path().join("nested/run.sb");
+
+        let prefix = confine_prefix(&params, &profile_path).unwrap();
+
+        assert_eq!(
+            prefix,
+            vec![
+                OsString::from(SANDBOX_EXEC),
+                OsString::from("-f"),
+                profile_path.clone().into_os_string(),
+            ]
+        );
+        // The profile was rendered and persisted (parent dir created).
+        let written = std::fs::read_to_string(&profile_path).unwrap();
+        assert!(written.contains("(deny default)"));
+        assert!(written.contains(&format!("(subpath \"{}\")", worktree.to_str().unwrap())));
+    }
+
+    #[test]
+    fn confine_prefix_propagates_render_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut params = RenderParams::new(dir.path().join("wt"), dir.path().join("progress"));
+        params.agent_dirs.push(PathBuf::from("relative/dir"));
+
+        match confine_prefix(&params, &dir.path().join("run.sb")) {
+            Err(SandboxError::Render(RenderError::RelativePath(bad))) => {
+                assert_eq!(bad, PathBuf::from("relative/dir"));
+            }
+            other => panic!("expected Render(RelativePath), got {other:?}"),
+        }
     }
 
     #[test]
