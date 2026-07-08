@@ -56,6 +56,13 @@ pub fn update_run_status(conn: &Connection, run_id: &str, status: &str) -> rusql
     Ok(())
 }
 
+/// Mark a run accepted ("use this run"). Acceptance is a separate flag from
+/// status (PRD data model): `"Implemented" = a run you accepted`. Idempotent.
+pub fn set_run_accepted(conn: &Connection, run_id: &str) -> rusqlite::Result<()> {
+    conn.execute("UPDATE runs SET accepted = 1 WHERE id = ?1", params![run_id])?;
+    Ok(())
+}
+
 /// Record one iteration's app-owned shadow-ref snapshot. `event_log_offset` is
 /// the `seq` of this iteration's last event, so the timeline can partition a
 /// run's flat event log back into per-iteration groups (`None` if unknown).
@@ -247,6 +254,20 @@ mod tests {
         assert_eq!(detail.repo_path, "/r");
         assert_eq!(detail.max_iterations, 5);
         assert!(load_run(&conn, "nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn accept_run_sets_the_flag() {
+        let conn = crate::open(":memory:").unwrap();
+        let pid = seed(&conn);
+        insert_run(&conn, &new_run("r1", &pid, "task a", "completed")).unwrap();
+        assert!(!list_runs_for_plan(&conn, &pid).unwrap()[0].accepted);
+
+        set_run_accepted(&conn, "r1").unwrap();
+        assert!(list_runs_for_plan(&conn, &pid).unwrap()[0].accepted);
+        // Idempotent.
+        set_run_accepted(&conn, "r1").unwrap();
+        assert!(list_runs_for_plan(&conn, &pid).unwrap()[0].accepted);
     }
 
     #[test]

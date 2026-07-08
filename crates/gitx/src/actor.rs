@@ -13,6 +13,7 @@ use std::path::PathBuf;
 
 use tokio::sync::{mpsc, oneshot};
 
+use crate::merge::{self, MergeError, MergeResult};
 use crate::shadow::{self, Snapshot, SnapshotError};
 use crate::worktree::{self, Worktree, WorktreeError};
 
@@ -76,6 +77,20 @@ impl GitActor {
         iter: u32,
     ) -> Result<Snapshot, SnapshotError> {
         self.exec(move || shadow::snapshot(&repo, &worktree, &run_id, iter))
+            .await
+    }
+
+    /// Merge a run's final commit into `target_branch` ("use this run",
+    /// `merge::merge_run`) through the actor. `scratch_root` roots the throwaway
+    /// worktree used when the target already exists.
+    pub async fn merge_run(
+        &self,
+        repo: PathBuf,
+        source_rev: String,
+        target_branch: String,
+        scratch_root: PathBuf,
+    ) -> Result<MergeResult, MergeError> {
+        self.exec(move || merge::merge_run(&repo, &source_rev, &target_branch, &scratch_root))
             .await
     }
 

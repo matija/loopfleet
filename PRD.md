@@ -170,7 +170,7 @@ Each task below is sized for one agent iteration. Run with ralph-sandbox-exec or
 - [x] Project list + plan view: rendered (frozen) PRD with a derived `TaskStatus` overlay, run-launch affordance per task; surface completed-unaccepted loudly (the review/compare queue)
 - [x] Run timeline: iterations as rows, per-iteration events, per-iteration diff viewer
 - [x] Live run view: streaming events, current file changes, stop button
-- [ ] Compare view: two-or-more runs side by side, final-ref diffs, "use this run" → merge chosen branch into a user-named target
+- [x] Compare view: two-or-more runs side by side, final-ref diffs, "use this run" → merge chosen branch into a user-named target
 
 ### M5 — Plan chat (deferred: build only after the loop tool is in daily use)
 - [ ] Claude Code adapter, interactive: bidirectional stream-json session

@@ -136,7 +136,9 @@ pub fn run_timeline(conn: &Connection, run_id: &str) -> Result<RunTimeline, Time
     })
 }
 
-fn to_diff_view(d: DiffResult) -> DiffView {
+/// Map a gitx [`DiffResult`] into the serializable [`DiffView`] the UI consumes.
+/// Shared with the compare view (which shows each run's cumulative diff).
+pub(crate) fn to_diff_view(d: DiffResult) -> DiffView {
     DiffView {
         files: d
             .files
