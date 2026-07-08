@@ -1510,3 +1510,52 @@ M4 is COMPLETE — project/plan view, run timeline, live run view, and the compa
 view + "use this run" are all done. Per the PRD build order the next work is the
 M6 hardening bits (crash recovery, agent discovery/version checks, settings)
 before the tool goes into daily use; M5 (plan chat) stays deferred.
+
+2026-07-08 — M6: Crash recovery + orphan cleanup on startup (mark running runs failed)
+- First M6 hardening bullet. Per the PRD build order (M4 → M6 hardening bits →
+  daily use → M5), this is the highest-priority remaining task now that M0–M4 are
+  done. Scope = the bullet's explicit parenthetical: mark running runs failed on
+  restart, keep refs — plus wiring the orphan-worktree prune the M2 worktree
+  manager built but never called at startup.
+- crates/store/src/runs.rs: fail_interrupted_runs(conn) -> Vec<String>. One
+  `UPDATE runs SET status='failed' WHERE status IN ('queued','running')
+  RETURNING id`. Runs don't survive an app restart in v1 (the daemon split is
+  post-v1), so any run still marked in-flight was interrupted by a prior crash or
+  quit — its background task and agent process are gone. Only runs.status is
+  touched: iterations and the app-owned shadow refs are left INTACT (PRD "keep
+  refs"). Returns the affected ids (for the startup log + testability). Idempotent
+  — a second startup finds nothing to recover. Re-exported from store/lib.rs.
+- src-tauri/src/lib.rs setup(): after opening the DB and BEFORE managing state,
+  call fail_interrupted_runs (sync, on the fresh connection) and log the count.
+  Then read the registered projects' repo paths and spawn a background task that
+  runs git.cleanup_orphans (git worktree prune) per project — the "orphan cleanup
+  on startup" wiring. GitActor is now spawned in setup() (was inline in the
+  manage() literal) so its clone can drive the prune task; the managed AppState
+  takes the same actor.
+- SCOPE / honesty (Simplicity First): true cross-restart *process* reaping of an
+  orphaned agent process is NOT achievable in v1 — PIDs aren't persisted and the
+  headless-supervisor daemon that would own surviving runs is explicitly post-v1.
+  So v1 reaps the RECOVERABLE resources: the run's status (→ failed) and orphan
+  worktree metadata (prune). A crashed run's worktree dir that still exists is
+  left in place deliberately — the user may want to inspect it, its shadow refs
+  preserve the diffable history, and prune only sweeps entries whose checkout
+  vanished. Auto-removing live crashed worktrees is a heavier policy call left to
+  the user / future work; it is not part of the bullet's parenthetical.
+- Tests (1 new store, all pass): crash_recovery_fails_interrupted_runs_and_keeps_
+  refs — two in-flight (running/queued) + one terminal (completed) run, one with
+  a shadow-ref iteration; fail_interrupted_runs returns exactly [r1,r2], flips
+  both to failed, leaves the completed run untouched, KEEPS r1's iteration row
+  (refs intact), and is idempotent on a second call.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test --workspace — all pass (adapters 42
+  +3 ignored, core 52, gitx 28, sandbox 13 +2 ignored, store 18 [+1 crash
+  recovery]).
+- cargo clippy --workspace --all-targets — clean, 0 warnings.
+- cargo build --workspace — Finished (Tauri app links).
+- The startup wiring itself runs in the Tauri setup() hook (can't be driven
+  headlessly here); its store call is covered by the new test and cleanup_orphans
+  by gitx's existing prune tests.
+
+Next highest-priority task: M6 — Agent binary discovery + version checks, graceful
+errors when a CLI is missing (the second M6 hardening bullet).
