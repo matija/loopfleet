@@ -85,6 +85,54 @@ fn list_projects(state: State<'_, AppState>) -> Result<Vec<Project>, String> {
     loopfleet_store::list_projects(&conn).map_err(|e| e.to_string())
 }
 
+/// The global app settings (default agent, default iteration count, concurrency
+/// cap). Unset fields fall back to code defaults.
+#[tauri::command]
+fn get_settings(state: State<'_, AppState>) -> Result<loopfleet_store::Settings, String> {
+    let conn = state.db.lock().unwrap();
+    loopfleet_store::load_settings(&conn).map_err(|e| e.to_string())
+}
+
+/// Persist the global app settings.
+#[tauri::command]
+fn save_settings(
+    settings: loopfleet_store::Settings,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    loopfleet_store::save_settings(&conn, &settings).map_err(|e| e.to_string())
+}
+
+/// A project's sandbox write overrides (extra absolute paths granted per run).
+#[tauri::command]
+fn project_sandbox_writes(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let conn = state.db.lock().unwrap();
+    loopfleet_store::project_sandbox_writes(&conn, &project_id).map_err(|e| e.to_string())
+}
+
+/// Replace a project's sandbox write overrides. Each path must be absolute (the
+/// Seatbelt boundary needs absolute subpaths); relative entries are rejected so
+/// a bad override never silently widens or breaks the boundary.
+#[tauri::command]
+fn set_project_sandbox_writes(
+    project_id: String,
+    paths: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    for p in &paths {
+        let p = p.trim();
+        if !p.is_empty() && !std::path::Path::new(p).is_absolute() {
+            return Err(format!("sandbox write path must be absolute: {p}"));
+        }
+    }
+    let conn = state.db.lock().unwrap();
+    loopfleet_store::set_project_sandbox_writes(&conn, &project_id, &paths)
+        .map_err(|e| e.to_string())
+}
+
 /// The plan overview for a project: its plan(s) with a derived `TaskStatus`
 /// overlay per task. Syncs plan + tasks into the store as a side effect (so runs
 /// can bind to them); never edits the frozen plan file.
@@ -124,9 +172,23 @@ async fn launch_run(
     }
 
     // Resolve the bound task's text and stable plan id. plan_overview also syncs
-    // the plan + tasks into the store, so the run's FK resolves on insert.
-    let (project, plan_id, task_text) = {
+    // the plan + tasks into the store, so the run's FK resolves on insert. Also
+    // enforce the concurrency cap (M6 settings) and read the project's sandbox
+    // write overrides — all under one lock.
+    let (project, plan_id, task_text, extra_writes) = {
         let conn = state.db.lock().unwrap();
+
+        let settings = loopfleet_store::load_settings(&conn).map_err(|e| e.to_string())?;
+        if settings.concurrency_cap > 0 {
+            let active = loopfleet_store::count_active_runs(&conn).map_err(|e| e.to_string())?;
+            if active >= settings.concurrency_cap {
+                return Err(format!(
+                    "concurrency cap reached ({active}/{}); stop a run or raise the cap in Settings",
+                    settings.concurrency_cap
+                ));
+            }
+        }
+
         let project = get_project(&conn, &project_id)?;
         let views = loopfleet_core::plan_overview(&conn, &project).map_err(|e| e.to_string())?;
         let (plan_id, task_text) = views
@@ -138,7 +200,9 @@ async fn launch_run(
                     .map(|t| (v.plan_id.clone(), t.text.clone()))
             })
             .ok_or_else(|| format!("no task anchored at '{task_anchor}'"))?;
-        (project, plan_id, task_text)
+        let extra_writes = loopfleet_store::project_sandbox_writes(&conn, &project_id)
+            .map_err(|e| e.to_string())?;
+        (project, plan_id, task_text, extra_writes)
     };
 
     // App-managed paths, keyed by run id (outside the repo).
@@ -166,6 +230,7 @@ async fn launch_run(
     // config dirs + temp.
     let mut params = RenderParams::new(&worktree.path, &progress_dir);
     params.agent_dirs = agent_dirs();
+    params.extra_writes = extra_writes.into_iter().map(PathBuf::from).collect();
     let wrapper = confine_prefix(&params, &profile_path).map_err(|e| e.to_string())?;
 
     {
@@ -483,6 +548,10 @@ pub fn run() {
             register_project,
             list_projects,
             agent_status,
+            get_settings,
+            save_settings,
+            project_sandbox_writes,
+            set_project_sandbox_writes,
             plan_overview,
             launch_run,
             plan_runs,
