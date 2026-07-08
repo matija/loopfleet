@@ -426,9 +426,34 @@ pub fn run() {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             let conn = loopfleet_store::open(dir.join("loopfleet.db"))?;
+
+            // Crash recovery: runs don't survive an app restart in v1, so any run
+            // still marked queued/running was interrupted by a prior crash or
+            // quit — its background task and agent process are gone. Mark them
+            // failed (shadow refs are kept). Then prune orphan worktree metadata
+            // for each project (worktrees whose checkout vanished on the crash).
+            let interrupted = loopfleet_store::fail_interrupted_runs(&conn).unwrap_or_default();
+            if !interrupted.is_empty() {
+                eprintln!(
+                    "crash recovery: marked {} interrupted run(s) failed",
+                    interrupted.len()
+                );
+            }
+            let repos: Vec<String> = loopfleet_store::list_projects(&conn)
+                .map(|ps| ps.into_iter().map(|p| p.repo_path).collect())
+                .unwrap_or_default();
+
+            let git = GitActor::spawn();
+            let prune_git = git.clone();
+            tauri::async_runtime::spawn(async move {
+                for repo in repos {
+                    let _ = prune_git.cleanup_orphans(PathBuf::from(repo)).await;
+                }
+            });
+
             app.manage(AppState {
                 db: Arc::new(Mutex::new(conn)),
-                git: GitActor::spawn(),
+                git,
                 data_dir: dir,
                 stops: Arc::new(Mutex::new(HashMap::new())),
             });

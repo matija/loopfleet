@@ -56,6 +56,24 @@ pub fn update_run_status(conn: &Connection, run_id: &str, status: &str) -> rusql
     Ok(())
 }
 
+/// Crash recovery: mark every run left in a non-terminal state
+/// (`queued`/`running`) as `failed`, returning the affected run ids. Called once
+/// at startup — a run still marked in-flight was interrupted by a prior crash or
+/// quit, and its background task and agent process are gone (runs don't survive
+/// app restart in v1). Only `runs.status` is touched: iterations and the
+/// app-owned shadow refs are left intact (PRD: "keep refs").
+pub fn fail_interrupted_runs(conn: &Connection) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "UPDATE runs SET status = 'failed'
+         WHERE status IN ('queued', 'running')
+         RETURNING id",
+    )?;
+    let ids = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(ids)
+}
+
 /// Mark a run accepted ("use this run"). Acceptance is a separate flag from
 /// status (PRD data model): `"Implemented" = a run you accepted`. Idempotent.
 pub fn set_run_accepted(conn: &Connection, run_id: &str) -> rusqlite::Result<()> {
@@ -268,6 +286,34 @@ mod tests {
         // Idempotent.
         set_run_accepted(&conn, "r1").unwrap();
         assert!(list_runs_for_plan(&conn, &pid).unwrap()[0].accepted);
+    }
+
+    #[test]
+    fn crash_recovery_fails_interrupted_runs_and_keeps_refs() {
+        let conn = crate::open(":memory:").unwrap();
+        let pid = seed(&conn);
+        // Two in-flight (queued/running) + one already terminal.
+        insert_run(&conn, &new_run("r1", &pid, "task a", "running")).unwrap();
+        insert_run(&conn, &new_run("r2", &pid, "task a", "queued")).unwrap();
+        insert_run(&conn, &new_run("r3", &pid, "task a", "completed")).unwrap();
+        // r1 produced a snapshot before the crash.
+        insert_iteration(&conn, "r1", 1, "refs/agentapp/run-r1/iter-1", Some(4)).unwrap();
+
+        let mut failed = fail_interrupted_runs(&conn).unwrap();
+        failed.sort();
+        assert_eq!(failed, vec!["r1".to_string(), "r2".to_string()]);
+
+        // Both in-flight runs are now failed; the completed one is untouched.
+        let runs = list_runs_for_plan(&conn, &pid).unwrap();
+        let status = |id: &str| runs.iter().find(|r| r.id == id).unwrap().status.clone();
+        assert_eq!(status("r1"), "failed");
+        assert_eq!(status("r2"), "failed");
+        assert_eq!(status("r3"), "completed");
+        // The shadow-ref record survives — recovery keeps refs.
+        assert_eq!(load_iterations(&conn, "r1").unwrap().len(), 1);
+
+        // Idempotent: a second startup finds nothing to recover.
+        assert!(fail_interrupted_runs(&conn).unwrap().is_empty());
     }
 
     #[test]
