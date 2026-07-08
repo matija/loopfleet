@@ -56,6 +56,18 @@ pub fn update_run_status(conn: &Connection, run_id: &str, status: &str) -> rusql
     Ok(())
 }
 
+/// Count runs currently active (`queued` or `running`) across all projects.
+/// The supervisor compares this against the settings concurrency cap before
+/// launching another run.
+pub fn count_active_runs(conn: &Connection) -> rusqlite::Result<u32> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM runs WHERE status IN ('queued', 'running')",
+        [],
+        |r| r.get::<_, i64>(0),
+    )
+    .map(|n| n as u32)
+}
+
 /// Crash recovery: mark every run left in a non-terminal state
 /// (`queued`/`running`) as `failed`, returning the affected run ids. Called once
 /// at startup — a run still marked in-flight was interrupted by a prior crash or

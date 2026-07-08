@@ -12,19 +12,28 @@ pub use event_log::{
 mod projects;
 pub use projects::{insert_project, list_projects, Project};
 
+mod settings;
+pub use settings::{
+    load_settings, project_sandbox_writes, save_settings, set_project_sandbox_writes, Settings,
+};
+
 mod plans;
 pub use plans::{plan_id, upsert_plan, upsert_task};
 
 mod runs;
 pub use runs::{
-    fail_interrupted_runs, insert_iteration, insert_run, list_runs_for_plan, load_iterations,
-    load_run, set_run_accepted, update_run_status, IterationRow, NewRun, RunDetail, RunSummary,
+    count_active_runs, fail_interrupted_runs, insert_iteration, insert_run, list_runs_for_plan,
+    load_iterations, load_run, set_run_accepted, update_run_status, IterationRow, NewRun, RunDetail,
+    RunSummary,
 };
 
 /// Ordered list of migrations. Each entry is `(name, sql)`; names double as the
 /// applied-migrations key, so they must be unique and never reordered. Add new
 /// migrations by appending — never editing an already-shipped entry.
-const MIGRATIONS: &[(&str, &str)] = &[("0001_init", include_str!("migrations/0001_init.sql"))];
+const MIGRATIONS: &[(&str, &str)] = &[
+    ("0001_init", include_str!("migrations/0001_init.sql")),
+    ("0002_settings", include_str!("migrations/0002_settings.sql")),
+];
 
 /// Open a SQLite database at `path`, enable foreign keys, and apply all pending
 /// migrations. Use `":memory:"` for an ephemeral database (tests).

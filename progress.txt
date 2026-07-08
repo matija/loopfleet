@@ -1635,3 +1635,69 @@ Next highest-priority task: M6 — Settings: default agent, default iteration
 count, concurrency cap, sandbox profile overrides per project. (The remaining
 M6 bullets — codesign/notarize, naming/domain — are the deferred release items,
 after the tool has earned its keep in daily use per the PRD build order.)
+
+2026-07-08 — M6: Settings (default agent, default iterations, concurrency cap,
+per-project sandbox overrides)
+- Store: migration 0002_settings.sql adds a KV `settings` table (key TEXT PK,
+  value TEXT) for global defaults and `ALTER TABLE projects ADD COLUMN
+  sandbox_extra_writes TEXT NOT NULL DEFAULT ''` for per-project write
+  overrides (newline-separated absolute paths). Appended to MIGRATIONS in
+  lib.rs (append-only, never edit a shipped entry).
+- crates/store/src/settings.rs: Settings { default_agent, default_iterations,
+  concurrency_cap } with serde + Default (claude / 5 / 3). load_settings reads
+  each key, falling back to Default per-key (so the table only records explicit
+  changes); save_settings upserts each key (ON CONFLICT DO UPDATE).
+  project_sandbox_writes / set_project_sandbox_writes read/replace a project's
+  override list (blank lines dropped on both read and write). concurrency_cap
+  0 = unlimited.
+- crates/store/src/runs.rs: count_active_runs(conn) -> u32 counts
+  queued|running runs across all projects — the value the launch path compares
+  against the cap. Exported alongside the settings fns.
+- crates/sandbox/src/lib.rs: RenderParams gains `extra_writes: Vec<PathBuf>`
+  (per-project overrides), chained into render() after agent_dirs/temp_dirs so
+  each entry becomes a validated+escaped (subpath …) grant. RenderParams::new
+  inits it empty; existing callers (all via ::new) unaffected. Doc note warns
+  never to list the parent .git here (commits stay app-owned).
+- src-tauri/src/lib.rs: four commands — get_settings, save_settings,
+  project_sandbox_writes, set_project_sandbox_writes (the setter rejects any
+  non-empty relative path up front, since the Seatbelt boundary needs absolute
+  subpaths and a bad override must never silently break the boundary).
+  launch_run now, under its existing single db lock: (1) enforces the cap —
+  load_settings + count_active_runs, rejects with a "stop a run or raise the
+  cap" message when active >= cap (cap 0 skips the check); (2) reads the
+  project's sandbox overrides and sets params.extra_writes so they land in the
+  rendered profile. Registered the four commands in the invoke_handler.
+- dist/index.html: a collapsible Settings panel (default agent select, default
+  iterations + concurrency-cap number inputs, Save) wired to get_settings/
+  save_settings via loadSettings() on boot. The per-task launch affordance now
+  pre-selects settings.default_agent and settings.default_iterations (the iter
+  dropdown injects the configured default into its options so a non-standard
+  value is still selectable). Per-project sandbox overrides render as a
+  collapsible <details> textarea at the top of the plan view (needs the
+  selected project's context), saving through set_project_sandbox_writes with
+  its own inline ok/err message. Added scoped CSS for both.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test --workspace — all green (store 21
+  incl. 3 new settings tests, sandbox 14 incl. the extra_writes render test,
+  gitx 28, adapters 46, core 52; ignored live/macos tests unchanged).
+- cargo clippy --workspace --all-targets — clean, 0 warnings.
+- cargo build -p loopfleet — Finished (Tauri app compiles with the new
+  commands).
+
+Design notes:
+- Global settings as a KV table (not typed columns) keeps "add a setting" to a
+  code change in settings.rs, no migration, and missing-key-means-default falls
+  out for free.
+- Per-project overrides live on the projects row rather than a side table: they
+  are 1:1 with a project and read on the launch hot path, so a column read is
+  the simplest thing that works. The Project struct + list/get queries were
+  left untouched (they select explicit columns), so this stayed surgical.
+- Concurrency is enforced at launch only (a soft admission gate), not tracked
+  as a running semaphore — v1 has no queue; a rejected launch is an immediate,
+  explained error, matching the "no pause, stop at boundary" run model.
+
+Next: M6's remaining items are release/distribution chores explicitly deferred
+until the loop tool is in daily use — codesign+notarize / DMG, and the naming
+workflow (register domain, replace working name). M5 (plan chat) is likewise
+deferred per the build order. No non-deferred tasks remain.

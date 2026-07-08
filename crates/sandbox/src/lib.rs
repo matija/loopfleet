@@ -37,6 +37,9 @@ pub struct RenderParams {
     pub agent_dirs: Vec<PathBuf>,
     /// Temp dirs. Use [`default_temp_dirs`] for the standard macOS set.
     pub temp_dirs: Vec<PathBuf>,
+    /// Per-project write overrides (PRD M6 settings). Additional absolute paths
+    /// the run may write. Never include the parent repo's `.git`.
+    pub extra_writes: Vec<PathBuf>,
 }
 
 impl RenderParams {
@@ -47,6 +50,7 @@ impl RenderParams {
             progress_dir: progress_dir.into(),
             agent_dirs: Vec::new(),
             temp_dirs: default_temp_dirs(),
+            extra_writes: Vec::new(),
         }
     }
 }
@@ -96,7 +100,8 @@ pub fn render(params: &RenderParams) -> Result<String, RenderError> {
     let paths = std::iter::once(&params.worktree)
         .chain(std::iter::once(&params.progress_dir))
         .chain(params.agent_dirs.iter())
-        .chain(params.temp_dirs.iter());
+        .chain(params.temp_dirs.iter())
+        .chain(params.extra_writes.iter());
 
     let mut subpaths = String::new();
     for p in paths {
@@ -272,6 +277,14 @@ mod tests {
         assert!(profile.contains("(subpath \"/app/progress/run-1\")"));
         assert!(profile.contains("(subpath \"/home/u/.claude\")"));
         assert!(profile.contains("(subpath \"/tmp\")"));
+    }
+
+    #[test]
+    fn renders_per_project_extra_writes() {
+        let mut p = params();
+        p.extra_writes.push(PathBuf::from("/opt/shared-cache"));
+        let profile = render(&p).unwrap();
+        assert!(profile.contains("(subpath \"/opt/shared-cache\")"));
     }
 
     #[test]
