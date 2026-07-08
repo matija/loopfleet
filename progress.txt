@@ -1559,3 +1559,79 @@ Verification:
 
 Next highest-priority task: M6 — Agent binary discovery + version checks, graceful
 errors when a CLI is missing (the second M6 hardening bullet).
+
+2026-07-08 — M6: Agent binary discovery + version checks + graceful missing-CLI errors
+- Second M6 hardening bullet. Before this, launching a run with an uninstalled
+  agent CLI cut a worktree, inserted a run record, spawned the loop, and only
+  failed deep inside start_run when Command::spawn returned NotFound — leaving an
+  orphan worktree and a run flipped running→failed with no clear cause. Now a
+  missing CLI is a clean, up-front error; installed CLIs surface their version
+  and warn on drift from the version the adapter was tested against.
+- crates/adapters/src/discovery.rs (new): the per-agent CLI facts + discovery.
+  - AgentSpec { key, display, binary, version_arg, tested_version } and
+    KNOWN_AGENTS: the three v1.0 agents (claude/pi/cursor), keys matching
+    build_adapter + the stored run `agent`, tested_version = the version each
+    adapter was captured/tested against (claude 2.1.201, pi 0.80.3, cursor-agent
+    2026.07.01, from the M1 adapter notes).
+  - spec_for(key): lookup, accepts the "cursor-agent" alias for "cursor"
+    (mirrors build_adapter's dispatch).
+  - discover(spec) -> AgentStatus: one `<binary> --version` spawn. A NotFound
+    spawn error → installed:false with "'<bin>' not found on PATH"; any other
+    spawn error → installed:false with the error; success → installed:true,
+    version = first version-like token (prefers stdout, falls back to stderr for
+    CLIs that print the banner there). version_matches = Some(detected ==
+    tested). Discovery is the single subprocess: presence + version in one shot,
+    no separate PATH walk.
+  - discover_all(): sequential over the three agents (three fast --version
+    spawns — no join-all dep pulled in).
+  - AgentStatus derives Serialize (added `serde` to adapters deps) so the Tauri
+    command returns it directly. extract_version is a pure `\d+(\.\d+)+` scanner
+    (no regex crate): first dotted number, at least one dot, not trailing-dot —
+    handles "2.1.201 (Claude Code)", "pi version 0.80.3", the date-shaped
+    "2026.07.01", strips a "-beta" suffix, rejects a bare "7" or "2.".
+  - DESIGN: a version MISMATCH is a warning, never a blocker — the CLIs ship
+    weekly (PRD Risks) so pinning exact-match would false-alarm constantly, but
+    the drift is worth showing. Only a MISSING binary blocks a launch.
+- crates/adapters/src/lib.rs: mod discovery + re-exports (discover, discover_all,
+  spec_for, AgentSpec, AgentStatus, KNOWN_AGENTS).
+- src-tauri/src/lib.rs:
+  - launch_run: right after build_adapter and BEFORE any worktree/run-record
+    work, spec_for(&agent) → discover(); if !installed, return the status.detail
+    string. Fail-fast, so no orphan worktree / phantom failed run for a missing
+    CLI. The existing frontend launch handler already surfaces the Err via
+    setMsg(..., "err"), so the graceful message shows with no JS change.
+  - agent_status() command (async) → Vec<AgentStatus> via discover_all();
+    registered in the invoke_handler.
+- dist/index.html: an "Agents" status strip above Projects. loadAgents() (called
+  on startup alongside refresh()) invokes agent_status and renders one chip per
+  agent: green dot + version when installed, a yellow "tested <v>" warning (with
+  a tooltip) when the detected version differs, red dot + reason when missing.
+  New CSS for #agents/.agent/.dot/.ver/.warn. Dependency-free vanilla JS.
+- SCOPE (Simplicity First): "version checks" = detect + display + drift warning,
+  not an enforced compatibility matrix. "Discovery" = presence via the version
+  spawn, not a bespoke PATH resolver. Enough for the daily-use guardrail the
+  bullet asks for.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test --workspace — all pass (adapters 46
+  [+4 discovery: version extraction, non-version rejection, spec/alias lookup,
+  missing-binary graceful; +1 ignored live claude discovery], core 52, gitx 28,
+  sandbox 13 +2 ignored, store 18).
+- cargo clippy --workspace --all-targets — clean, 0 warnings.
+- Frontend JS parses (new Function over the <script> block). The Tauri GUI can't
+  be driven headlessly here; agent_status/discover are exercised by the adapter
+  tests and the launch guard reuses the existing error surface.
+
+Design notes:
+- Discovery lives in adapters (per-agent CLI knowledge — binary name, version
+  flag, tested version — belongs beside the adapters), NOT on the frozen
+  AgentAdapter trait (which is start_run/open_session only). It's a free
+  function set, so the trait signature the PRD froze in M1 is untouched.
+- The launch guard runs discover() (a --version spawn) on every launch. Cheap
+  and always current — no cached availability that could go stale between an
+  install/uninstall and the next run.
+
+Next highest-priority task: M6 — Settings: default agent, default iteration
+count, concurrency cap, sandbox profile overrides per project. (The remaining
+M6 bullets — codesign/notarize, naming/domain — are the deferred release items,
+after the tool has earned its keep in daily use per the PRD build order.)

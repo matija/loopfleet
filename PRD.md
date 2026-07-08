@@ -181,7 +181,7 @@ Each task below is sized for one agent iteration. Run with ralph-sandbox-exec or
 
 ### M6 — Hardening and release
 - [x] Orphan process reaping, crash recovery (mark running runs as failed on restart, keep refs)
-- [ ] Agent binary discovery + version checks, graceful errors when a CLI is missing
+- [x] Agent binary discovery + version checks, graceful errors when a CLI is missing
 - [ ] Settings: default agent, default iteration count, concurrency cap, sandbox profile overrides per project
 - [ ] Codesign + notarize (Developer ID, existing Esploro pipeline), DMG build
 - [ ] Run the naming workflow; register domain; replace working name

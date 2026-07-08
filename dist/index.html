@@ -106,6 +106,44 @@
         color: #8a8f98;
         font-size: 14px;
       }
+      /* Agents status strip */
+      #agents {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .agent {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border: 1px solid #262830;
+        border-radius: 8px;
+        font-size: 12px;
+        color: #c5c9d3;
+      }
+      .agent .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #4a4d57;
+      }
+      .agent.on .dot {
+        background: #8affb0;
+      }
+      .agent.off {
+        color: #8a8f98;
+      }
+      .agent.off .dot {
+        background: #ff8a8a;
+      }
+      .agent .ver {
+        color: #8a8f98;
+      }
+      .agent .warn {
+        color: #ffd479;
+      }
       /* Plan view */
       .plan-title {
         font-size: 18px;
@@ -361,6 +399,9 @@
       <button id="add">Add project…</button>
       <div id="msg" class="msg"></div>
 
+      <h2>Agents</h2>
+      <div id="agents"></div>
+
       <h2>Projects</h2>
       <ul id="projects"></ul>
       <p id="empty" class="empty">No projects registered yet.</p>
@@ -380,6 +421,7 @@
       const msg = document.getElementById("msg");
       const list = document.getElementById("projects");
       const empty = document.getElementById("empty");
+      const agentsEl = document.getElementById("agents");
       const planEl = document.getElementById("plan");
       const liveEl = document.getElementById("live");
       const compareEl = document.getElementById("compare");
@@ -501,6 +543,53 @@
       function setMsg(text, cls) {
         msg.textContent = text;
         msg.className = "msg" + (cls ? " " + cls : "");
+      }
+
+      // Agent CLI availability + version drift. Installed agents show green with
+      // their version; a version differing from the tested one warns; a missing
+      // CLI shows red so the user knows a run with it will be refused.
+      async function loadAgents() {
+        let statuses = [];
+        try {
+          statuses = await invoke("agent_status");
+        } catch (e) {
+          agentsEl.textContent = String(e);
+          return;
+        }
+        agentsEl.innerHTML = "";
+        for (const s of statuses) {
+          const el = document.createElement("div");
+          el.className = "agent " + (s.installed ? "on" : "off");
+          const dot = document.createElement("span");
+          dot.className = "dot";
+          el.appendChild(dot);
+          const name = document.createElement("span");
+          name.textContent = s.display;
+          el.appendChild(name);
+          if (s.installed) {
+            const ver = document.createElement("span");
+            ver.className = "ver";
+            ver.textContent = s.version || "installed";
+            el.appendChild(ver);
+            if (s.version && s.version_matches === false) {
+              const warn = document.createElement("span");
+              warn.className = "warn";
+              warn.textContent = "tested " + s.tested_version;
+              warn.title =
+                "Adapter tested against " +
+                s.tested_version +
+                "; you have " +
+                s.version;
+              el.appendChild(warn);
+            }
+          } else {
+            const d = document.createElement("span");
+            d.className = "ver";
+            d.textContent = s.detail || "not installed";
+            el.appendChild(d);
+          }
+          agentsEl.appendChild(el);
+        }
       }
 
       async function refresh() {
@@ -1059,6 +1148,7 @@
         }
       });
 
+      loadAgents();
       refresh();
     </script>
   </body>
