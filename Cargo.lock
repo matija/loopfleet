@@ -1842,6 +1842,7 @@ dependencies = [
  "loopfleet-core",
  "loopfleet-gitx",
  "loopfleet-sandbox",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",

@@ -17,10 +17,12 @@ use tokio::process::{Child, Command};
 
 mod claude;
 mod cursor;
+mod discovery;
 mod pi;
 mod stub;
 pub use claude::ClaudeAdapter;
 pub use cursor::CursorAdapter;
+pub use discovery::{discover, discover_all, spec_for, AgentSpec, AgentStatus, KNOWN_AGENTS};
 pub use pi::PiAdapter;
 pub use stub::StubAdapter;
 

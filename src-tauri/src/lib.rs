@@ -111,6 +111,18 @@ async fn launch_run(
 ) -> Result<String, String> {
     let adapter = build_adapter(&agent).ok_or_else(|| format!("unknown agent: {agent}"))?;
 
+    // Fail fast if the agent CLI isn't installed, before cutting a worktree or
+    // inserting a run record — otherwise the run would spawn, die mid-loop, and
+    // leave an orphan worktree behind (M6: graceful errors when a CLI is missing).
+    if let Some(spec) = loopfleet_adapters::spec_for(&agent) {
+        let status = loopfleet_adapters::discover(spec).await;
+        if !status.installed {
+            return Err(status
+                .detail
+                .unwrap_or_else(|| format!("{} CLI is not available", spec.display)));
+        }
+    }
+
     // Resolve the bound task's text and stable plan id. plan_overview also syncs
     // the plan + tasks into the store, so the run's FK resolves on insert.
     let (project, plan_id, task_text) = {
@@ -394,6 +406,14 @@ fn get_project(conn: &Connection, id: &str) -> Result<Project, String> {
     .map_err(|_| format!("unknown project: {id}"))
 }
 
+/// Discover the v1 agent CLIs: which are installed, their detected version, and
+/// whether it matches the version the adapter was tested against. Lets the UI
+/// show availability up front and warn on version drift (PRD Risks).
+#[tauri::command]
+async fn agent_status() -> Vec<loopfleet_adapters::AgentStatus> {
+    loopfleet_adapters::discover_all().await
+}
+
 /// The v1 agents, dispatched by name. Boxed so the loop holds a `dyn` adapter.
 fn build_adapter(agent: &str) -> Option<Box<dyn AgentAdapter>> {
     match agent {
@@ -462,6 +482,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             register_project,
             list_projects,
+            agent_status,
             plan_overview,
             launch_run,
             plan_runs,
