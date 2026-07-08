@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex};
 
 use loopfleet_adapters::{ClaudeAdapter, CursorAdapter, PiAdapter};
 use loopfleet_core::{
-    run_loop, AgentAdapter, LoopConfig, NormalizedEvent, PlanView, RunState, RunTimeline,
+    run_loop, AgentAdapter, CompareView, LoopConfig, NormalizedEvent, PlanView, RunState,
+    RunTimeline,
 };
 use loopfleet_gitx::GitActor;
 use loopfleet_sandbox::{confine_prefix, RenderParams};
@@ -300,6 +301,83 @@ fn run_timeline(run_id: String, state: State<'_, AppState>) -> Result<RunTimelin
     loopfleet_core::run_timeline(&conn, &run_id).map_err(|e| e.to_string())
 }
 
+/// The compare view for a task: every run bound to it, side by side, each with
+/// its final-ref cumulative diff (read-only over the app-owned shadow refs).
+#[tauri::command]
+fn compare_task(
+    plan_id: String,
+    task_anchor: String,
+    state: State<'_, AppState>,
+) -> Result<CompareView, String> {
+    let conn = state.db.lock().unwrap();
+    loopfleet_core::compare_view(&conn, &plan_id, &task_anchor).map_err(|e| e.to_string())
+}
+
+/// The result of "use this run": which branch the run was merged into and how.
+#[derive(serde::Serialize)]
+struct UseRunResult {
+    target_branch: String,
+    merged_commit: String,
+    created: bool,
+    up_to_date: bool,
+}
+
+/// "Use this run": merge the run's final state into `target_branch` (created if
+/// absent) and mark the run accepted. Never targets a branch by default — the
+/// user names it. The run's work lives in its final shadow ref; the merge runs
+/// through the serialized git actor, in a throwaway worktree when the target
+/// already exists, so the user's own checkout is never touched.
+#[tauri::command]
+async fn use_run(
+    run_id: String,
+    target_branch: String,
+    state: State<'_, AppState>,
+) -> Result<UseRunResult, String> {
+    let target = target_branch.trim().to_string();
+    if target.is_empty() {
+        return Err("target branch name is required".into());
+    }
+
+    // Resolve the run's parent repo and its final shadow ref (its produced state).
+    let (repo_path, source_ref) = {
+        let conn = state.db.lock().unwrap();
+        let detail = loopfleet_store::load_run(&conn, &run_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("unknown run: {run_id}"))?;
+        let source_ref = loopfleet_store::load_iterations(&conn, &run_id)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .rev()
+            .find_map(|it| it.shadow_ref)
+            .ok_or_else(|| "run has no snapshot to use".to_string())?;
+        (detail.repo_path, source_ref)
+    };
+
+    let scratch_root = state.data_dir.join("worktrees");
+    let merge = state
+        .git
+        .merge_run(
+            PathBuf::from(&repo_path),
+            source_ref,
+            target,
+            scratch_root,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+    {
+        let conn = state.db.lock().unwrap();
+        loopfleet_store::set_run_accepted(&conn, &run_id).map_err(|e| e.to_string())?;
+    }
+
+    Ok(UseRunResult {
+        target_branch: merge.target_branch,
+        merged_commit: merge.merged_commit,
+        created: merge.created,
+        up_to_date: merge.up_to_date,
+    })
+}
+
 /// Load one project by id.
 fn get_project(conn: &Connection, id: &str) -> Result<Project, String> {
     conn.query_row(
@@ -363,7 +441,9 @@ pub fn run() {
             launch_run,
             plan_runs,
             run_timeline,
-            stop_run
+            stop_run,
+            compare_task,
+            use_run
         ])
         .run(tauri::generate_context!())
         .expect("error while running loopfleet");

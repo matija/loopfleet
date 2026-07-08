@@ -1412,3 +1412,101 @@ Design notes:
 Next highest-priority task: M4's last bullet — Compare view: two-or-more runs
 side by side, final-ref diffs, "use this run" → merge the chosen branch into a
 user-named target. That completes M4.
+
+2026-07-08 — M4: Compare view (side-by-side final-ref diffs + "use this run")
+- Completes the last M4 bullet, so M4 is done. Two halves: a read side (the runs
+  bound to a task, side by side, each with its produced diff) and a mutation side
+  ("use this run" → merge the chosen run's final state into a user-named target
+  branch + mark it accepted). App stays read-only on plans/progress; the only
+  writes are the app-owned merge (via the git actor) and the acceptance flag.
+- KEY design point — what "the chosen run's branch" actually is: the agent never
+  commits, so the `agent/<run-id>` branch still points at base HEAD; the run's
+  work lives in its final shadow commit (refs/agentapp/run-<id>/iter-<n>). So the
+  merge source is the final shadow ref, not the branch. "Use this run" = take
+  that final commit and put it on the named target.
+- crates/gitx/src/merge.rs (new): merge_run(repo, source_rev, target_branch,
+  scratch_root) -> MergeResult { target_branch, merged_commit, created,
+  up_to_date }. A mutation, so it shells out (consistent with worktree/shadow)
+  and funnels through the GitActor. Two cases:
+  - target branch absent → `git branch <target> <final_commit>` (pure ref
+    creation; no worktree, no possible conflict — the common "use this run"
+    flow). created=true.
+  - target branch present → a real `git merge --no-edit <final_commit>` performed
+    inside a THROWAWAY worktree under scratch_root (keyed by pid+nanos), so the
+    user's own checkout is never touched. A conflicting merge is `merge --abort`ed
+    and the worktree torn down, leaving the target exactly as it was →
+    MergeError::Conflict (conflict assistance is post-v1). Checking the target
+    out also naturally guards against merging into a branch that is checked out
+    in the main worktree (git refuses the second checkout).
+  MergeError { Io, Git(stderr), Conflict(msg) } + Display/Error/From<io::Error>,
+  mirroring the other gitx modules. Re-exported from gitx/lib.rs; GitActor gains a
+  typed merge_run(...) method (the only doorway to the serialized mutation point).
+  4 tests: creates target at the run's final commit (file lands on the new
+  branch); merges into an existing integration branch (run file + base file both
+  present, throwaway worktree gone); conflicting merge aborts and leaves the
+  target unchanged with no lingering worktree; missing source ref → Git error.
+- crates/gitx/src/diff.rs: run_cumulative_diff_at(repo_path, run_id, final_iter)
+  — a path-taking wrapper over run_cumulative_diff (mirrors iteration_diff_at) so
+  core (which holds a path, not a git2::Repository) computes each run's produced
+  diff without a direct git2 dep. Re-exported.
+- crates/store/src/runs.rs: set_run_accepted(conn, run_id) — UPDATE runs SET
+  accepted = 1 (idempotent). Acceptance is a separate flag from status (PRD data
+  model): "Implemented" = a run you accepted. Re-exported. 1 test.
+- crates/core/src/compare.rs (new): compare_view(conn, plan_id, task_anchor) ->
+  CompareView { task_anchor, runs: Vec<RunCompare> }. RunCompare { run_id, agent,
+  status, accepted, final_ref, diff }. For each run bound to the task: recover its
+  parent repo (load_run) + last iteration (load_iterations), compute the
+  base..final cumulative diff via run_cumulative_diff_at (a missing/unreadable
+  shadow ref → diff:None, not a hard error), and expose the final shadow ref.
+  This is the "two runs both complete on the same task" resolution (PRD open Q3):
+  show both diffs, never score. Reuses timeline::to_diff_view (made pub(crate)) so
+  the DiffView/FileChangeView shape the UI already speaks is shared, not
+  duplicated. CompareError { Store } + Display/Error/From. 2 tests (only the
+  task's runs appear, final_ref is the last iteration's shadow ref, a run with no
+  iterations has no final ref; empty when no runs).
+- src-tauri/src/lib.rs: two commands.
+  - compare_task(planId, taskAnchor) -> CompareView (read).
+  - use_run(runId, targetBranch) -> UseRunResult { target_branch, merged_commit,
+    created, up_to_date }: trims/validates the target (non-empty), resolves the
+    run's repo + final shadow ref (the last iteration with a ref; "run has no
+    snapshot to use" otherwise), calls git.merge_run through the actor with
+    scratch_root = data_dir/worktrees, then set_run_accepted. The DB mutex is
+    released before the await (same discipline as launch_run). UseRunResult is a
+    local serde payload (MergeResult isn't Serialize and gitx has no serde dep).
+    Both registered in the invoke_handler.
+- dist/index.html: each task with ≥1 run gets a "Compare runs"/"Review run"
+  button → showCompare, rendering the runs as side-by-side columns in a new
+  #compare panel (reusing the .timeline shell). Each column: status/accepted dot,
+  short id · agent, the final-ref diff summary (files · +ins/−del) + file list +
+  collapsible patch, and a "Use this run" row (target-branch input + button,
+  disabled when there's no snapshot). Success sets a status message (created vs
+  merged vs up-to-date), reloads the plan (so the task's dot flips to accepted),
+  and re-renders the compare view. Target branch is never prefilled (PRD: never
+  targets your main branch by default). currentPlans hoisted to module scope so
+  the post-merge reload can re-resolve the plan. New CSS for .cmpcols/.cmpcol/
+  .userun. Dependency-free vanilla JS, matching the existing shell.
+
+Verification:
+- CARGO_HOME=/tmp/loopfleet-cargo cargo test --workspace — all pass (adapters 42
+  +3 ignored, core 52 [+2 compare], gitx 28 [+4 merge], sandbox 13 +2 ignored,
+  store 17 [+1 accept]).
+- cargo clippy --workspace --all-targets — clean, 0 warnings.
+- cargo build --workspace — Finished (Tauri app links).
+- Frontend JS parses (new Function over the <script> block); the Tauri GUI can't
+  be driven headlessly here, but its two new commands are exercised by the
+  core/gitx/store tests and the JS is dependency-free.
+
+Design notes:
+- The new-branch case needs no worktree and cannot conflict, which is why it's a
+  distinct path from the existing-branch merge; the throwaway worktree only pays
+  its cost when a real merge is required, and it keeps the user's checkout and
+  the app's "commits are app-owned, no user branch is auto-advanced" invariant
+  intact — the app touches only the branch the user explicitly named.
+- Acceptance is set only after a successful merge, so a conflicting or failed
+  "use this run" never marks the run accepted; the derived TaskStatus flips to
+  Accepted purely off the persisted flag (task_status already reads it).
+
+M4 is COMPLETE — project/plan view, run timeline, live run view, and the compare
+view + "use this run" are all done. Per the PRD build order the next work is the
+M6 hardening bits (crash recovery, agent discovery/version checks, settings)
+before the tool goes into daily use; M5 (plan chat) stays deferred.

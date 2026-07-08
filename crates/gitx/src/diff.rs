@@ -93,6 +93,17 @@ pub fn iteration_diff_at(repo_path: &std::path::Path, run_id: &str, iter: u32) -
     iteration_diff(&repo, run_id, iter)
 }
 
+/// Convenience wrapper over [`run_cumulative_diff`] that opens `repo_path`
+/// itself, so callers (the compare view) holding only a path need no `git2` dep.
+pub fn run_cumulative_diff_at(
+    repo_path: &std::path::Path,
+    run_id: &str,
+    final_iter: u32,
+) -> Result<DiffResult> {
+    let repo = Repository::open(repo_path)?;
+    run_cumulative_diff(&repo, run_id, final_iter)
+}
+
 /// Diff everything run `run_id` produced: the base HEAD the run was cut from
 /// (iter-1's parent) against `final_iter`'s shadow commit.
 pub fn run_cumulative_diff(repo: &Repository, run_id: &str, final_iter: u32) -> Result<DiffResult> {

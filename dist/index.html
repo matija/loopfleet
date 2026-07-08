@@ -312,6 +312,45 @@
         font-size: 11.5px;
         line-height: 1.45;
       }
+      /* Compare view: runs as side-by-side columns. */
+      .cmpcols {
+        display: flex;
+        gap: 12px;
+        overflow-x: auto;
+        padding: 4px 0;
+      }
+      .cmpcol {
+        flex: 1 1 320px;
+        min-width: 300px;
+        background: #0d0e13;
+        border: 1px solid #1c1e26;
+        border-radius: 8px;
+        padding: 12px;
+      }
+      .cmphead {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      .cmpcol .stat { color: #8a8f98; font-size: 12px; margin-bottom: 6px; }
+      .userun {
+        display: flex;
+        gap: 6px;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #1c1e26;
+      }
+      .userun input {
+        flex: 1;
+        min-width: 0;
+        background: #0b0c10;
+        border: 1px solid #262933;
+        border-radius: 6px;
+        color: #e6e6e6;
+        padding: 5px 8px;
+        font-size: 12px;
+      }
     </style>
   </head>
   <body>
@@ -328,6 +367,7 @@
 
       <div id="live"></div>
       <div id="plan"></div>
+      <div id="compare"></div>
       <div id="timeline"></div>
     </div>
 
@@ -342,10 +382,14 @@
       const empty = document.getElementById("empty");
       const planEl = document.getElementById("plan");
       const liveEl = document.getElementById("live");
+      const compareEl = document.getElementById("compare");
       const timelineEl = document.getElementById("timeline");
 
       const AGENTS = ["claude", "pi", "cursor"];
       let selectedProject = null;
+      // The plan views last loaded, so the compare view can re-resolve a plan by
+      // id after a "use this run" reload.
+      let currentPlans = [];
 
       // The live run currently shown, if any. Streamed `run_event`/`run_status`
       // Tauri events are dispatched to it by matching run_id.
@@ -485,6 +529,7 @@
       async function loadPlan(id) {
         planEl.innerHTML = "";
         timelineEl.innerHTML = "";
+        compareEl.innerHTML = "";
         let views;
         try {
           views = await invoke("plan_overview", { projectId: id });
@@ -496,6 +541,7 @@
           planEl.appendChild(p);
           return;
         }
+        currentPlans = views;
         if (!views.length) {
           const p = document.createElement("p");
           p.className = "empty";
@@ -580,6 +626,16 @@
         meta.textContent = t.run_count ? t.run_count + " run" + (t.run_count === 1 ? "" : "s") : "";
         row.appendChild(meta);
 
+        // Compare / review affordance: side-by-side final-ref diffs of this
+        // task's runs, each with a "use this run" merge control.
+        if (runs.length) {
+          const cbtn = document.createElement("button");
+          cbtn.className = "mini";
+          cbtn.textContent = runs.length > 1 ? "Compare runs" : "Review run";
+          cbtn.addEventListener("click", () => showCompare(plan, t));
+          row.appendChild(cbtn);
+        }
+
         // Launch affordance: agent + iteration count + Run. Authored-checked
         // tasks are excluded from launching (PRD: `checked` gates launch).
         if (!t.checked) {
@@ -658,6 +714,178 @@
         }
 
         return frag;
+      }
+
+      // The task currently open in the compare view, so a successful "use this
+      // run" can re-render it (and the plan) with fresh acceptance state.
+      let compareCtx = null; // { planId, task }
+
+      async function showCompare(plan, task) {
+        compareCtx = { planId: plan.plan_id, task };
+        compareEl.innerHTML = "";
+        let view;
+        try {
+          view = await invoke("compare_task", {
+            planId: plan.plan_id,
+            taskAnchor: task.anchor,
+          });
+        } catch (e) {
+          setMsg(String(e), "err");
+          return;
+        }
+        renderCompare(view, task);
+        compareEl.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      function renderCompare(view, task) {
+        const box = document.createElement("div");
+        box.className = "timeline";
+
+        const head = document.createElement("div");
+        head.className = "head";
+        const h = document.createElement("h2");
+        h.style.margin = "0";
+        h.textContent = "Compare runs";
+        head.appendChild(h);
+        const sub = document.createElement("span");
+        sub.className = "rid";
+        sub.textContent = task.text;
+        head.appendChild(sub);
+        const close = document.createElement("button");
+        close.className = "mini";
+        close.textContent = "Close";
+        close.addEventListener("click", () => {
+          compareEl.innerHTML = "";
+          compareCtx = null;
+        });
+        head.appendChild(close);
+        box.appendChild(head);
+
+        if (!view.runs.length) {
+          const p = document.createElement("p");
+          p.className = "empty";
+          p.textContent = "No runs to compare yet.";
+          box.appendChild(p);
+        }
+
+        const cols = document.createElement("div");
+        cols.className = "cmpcols";
+        for (const r of view.runs) cols.appendChild(renderRunColumn(r));
+        box.appendChild(cols);
+
+        compareEl.appendChild(box);
+      }
+
+      function renderRunColumn(r) {
+        const col = document.createElement("div");
+        col.className = "cmpcol";
+
+        const head = document.createElement("div");
+        head.className = "cmphead";
+        const dot = document.createElement("span");
+        dot.className = "dot " + (r.accepted ? "accepted" : r.status);
+        dot.textContent = r.accepted ? "accepted" : r.status;
+        head.appendChild(dot);
+        const rid = document.createElement("span");
+        rid.className = "rid";
+        rid.textContent = r.run_id.slice(0, 8) + " · " + r.agent;
+        head.appendChild(rid);
+        col.appendChild(head);
+
+        // The run's final-ref diff (what it produced against its base).
+        const files = r.diff ? r.diff.files : [];
+        const ins = files.reduce((a, f) => a + f.insertions, 0);
+        const del = files.reduce((a, f) => a + f.deletions, 0);
+        const stat = document.createElement("div");
+        stat.className = "stat";
+        stat.textContent = r.diff
+          ? files.length + " file" + (files.length === 1 ? "" : "s") + " · +" + ins + " −" + del
+          : r.final_ref
+          ? "diff unavailable"
+          : "no snapshot";
+        col.appendChild(stat);
+
+        if (files.length) {
+          const fl = document.createElement("div");
+          fl.className = "files";
+          for (const f of files) {
+            const fr = document.createElement("div");
+            fr.className = "filerow";
+            const st = document.createElement("span");
+            st.className = "st";
+            st.textContent = f.status[0].toUpperCase() + " ";
+            fr.appendChild(st);
+            fr.appendChild(
+              document.createTextNode(f.old_path ? f.old_path + " → " + f.path : f.path)
+            );
+            const counts = document.createElement("span");
+            counts.innerHTML =
+              ' <span class="add">+' + f.insertions + '</span> <span class="del">−' +
+              f.deletions + "</span>";
+            fr.appendChild(counts);
+            fl.appendChild(fr);
+          }
+          col.appendChild(fl);
+
+          if (r.diff.patch.trim()) {
+            const details = document.createElement("details");
+            const sm = document.createElement("summary");
+            sm.style.cursor = "pointer";
+            sm.style.fontSize = "12px";
+            sm.style.color = "#8a8f98";
+            sm.textContent = "Patch";
+            details.appendChild(sm);
+            const pre = document.createElement("pre");
+            pre.className = "patch";
+            pre.textContent = r.diff.patch;
+            details.appendChild(pre);
+            col.appendChild(details);
+          }
+        }
+
+        // "Use this run": merge its branch into a user-named target. Never
+        // prefilled (PRD: never targets your main branch by default). Disabled
+        // when there is no snapshot to merge.
+        const use = document.createElement("div");
+        use.className = "userun";
+        const input = document.createElement("input");
+        input.type = "text";
+        input.placeholder = "target branch (e.g. review/task-a)";
+        use.appendChild(input);
+        const ubtn = document.createElement("button");
+        ubtn.className = "mini";
+        ubtn.textContent = "Use this run";
+        ubtn.disabled = !r.final_ref;
+        ubtn.addEventListener("click", async () => {
+          const target = input.value.trim();
+          if (!target) {
+            setMsg("Enter a target branch name.", "err");
+            return;
+          }
+          ubtn.disabled = true;
+          setMsg("");
+          try {
+            const res = await invoke("use_run", { runId: r.run_id, targetBranch: target });
+            setMsg(
+              (res.created ? "Created branch " : "Merged into ") +
+                res.target_branch +
+                (res.up_to_date ? " (already up to date)" : ""),
+              "ok"
+            );
+            if (compareCtx) {
+              await loadPlan(selectedProject);
+              const plan = currentPlans.find((v) => v.plan_id === compareCtx.planId);
+              if (plan) await showCompare(plan, compareCtx.task);
+            }
+          } catch (e) {
+            setMsg(String(e), "err");
+            ubtn.disabled = false;
+          }
+        });
+        use.appendChild(ubtn);
+        col.appendChild(use);
+
+        return col;
       }
 
       async function showTimeline(runId) {

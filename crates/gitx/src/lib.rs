@@ -7,14 +7,16 @@ use std::path::Path;
 
 pub mod actor;
 pub mod diff;
+pub mod merge;
 pub mod shadow;
 pub mod status;
 pub mod worktree;
 pub use actor::GitActor;
 pub use diff::{
-    diff_refs, iteration_diff, iteration_diff_at, run_cumulative_diff, ChangeStatus, DiffError,
-    DiffResult, FileChange,
+    diff_refs, iteration_diff, iteration_diff_at, run_cumulative_diff, run_cumulative_diff_at,
+    ChangeStatus, DiffError, DiffResult, FileChange,
 };
+pub use merge::{merge_run, MergeError, MergeResult};
 pub use shadow::{shadow_ref, Snapshot, SnapshotError};
 pub use status::worktree_changes;
 pub use worktree::{Worktree, WorktreeError};
