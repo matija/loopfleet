@@ -44,6 +44,13 @@
   color: var(--c-text-faint);
 }
 
+.sidebar__section-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-3) var(--space-2) var(--space-4);
+}
+
 .sidebar__section-label {
   padding: var(--space-4) var(--space-4) var(--space-2);
   font-size: var(--text-xs);
@@ -53,6 +60,34 @@
   color: var(--c-text-faint);
 }
 
+.sidebar__section-head .sidebar__section-label {
+  flex: 1;
+  padding: 0;
+}
+
+/* "filter tables…"-style live narrowing over the connections list. */
+.sidebar__filter {
+  display: block;
+  width: calc(100% - 2 * var(--space-3));
+  margin: 0 var(--space-3) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  color: var(--c-text);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.sidebar__filter::placeholder {
+  color: var(--c-text-faint);
+}
+
+.sidebar__filter:focus {
+  outline: none;
+  border-color: var(--c-border-strong);
+}
+
 .sidebar__list {
   flex: 1;
   min-height: 0;
@@ -60,8 +95,11 @@
   padding: 0 var(--space-2);
 }
 
+/* Connection row: status dot + repo name / short-path subtitle. */
 .project-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   width: 100%;
   text-align: left;
   border: 1px solid transparent;
@@ -83,19 +121,44 @@
   color: var(--c-text);
 }
 
+.project-item__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c-text-faint);
+  opacity: 0.45; /* faint when the project has no active run */
+}
+
+.project-item__dot--active {
+  background: var(--c-accent);
+  opacity: 1;
+  box-shadow: 0 0 0 3px var(--c-accent-quiet);
+}
+
+.project-item__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .project-item__name {
   font-size: var(--text-base);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  direction: rtl; /* keep the tail (repo name) visible when the path is long */
-  text-align: left;
 }
 
 .project-item__meta {
   font-size: var(--text-xs);
   color: var(--c-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl; /* keep the tail visible when the parent path is long */
+  text-align: left;
 }
 
 .sidebar__empty {

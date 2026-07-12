@@ -207,6 +207,52 @@
   color: var(--c-danger);
 }
 
+/* Compact "+" header affordance for the connections sidebar. */
+.add-project--compact {
+  position: relative;
+  padding: 0;
+}
+
+.add-project__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: var(--text-md);
+  line-height: 1;
+  border: 1px solid var(--c-border-strong);
+  background: var(--c-surface-2);
+  color: var(--c-text);
+  border-radius: var(--radius-md);
+}
+
+.add-project__icon:hover:not(:disabled) {
+  background: var(--c-surface-3);
+}
+
+.add-project__icon:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Error popover: floats under the button, keeps the header row from reflowing. */
+.add-project--compact .add-project__error {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 10;
+  margin-top: var(--space-1);
+  width: max-content;
+  max-width: 220px;
+  padding: var(--space-1) var(--space-2);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-danger);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-1);
+}
+
 /* --- overview stack --- */
 
 .overview {

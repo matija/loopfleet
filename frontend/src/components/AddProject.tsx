@@ -8,7 +8,13 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { registerProject } from "../commands";
 import type { Project } from "../types";
 
-export function AddProject({ onAdded }: { onAdded: (p: Project) => void }) {
+export function AddProject({
+  onAdded,
+  compact = false,
+}: {
+  onAdded: (p: Project) => void;
+  compact?: boolean;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +38,26 @@ export function AddProject({ onAdded }: { onAdded: (p: Project) => void }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  // Compact form: a header "+" affordance for the connections sidebar. The
+  // registration error (not a git repo, already registered) surfaces in a small
+  // popover under the button so the header layout stays fixed.
+  if (compact) {
+    return (
+      <div className="add-project add-project--compact">
+        <button
+          className="add-project__icon"
+          onClick={pick}
+          disabled={busy}
+          title="Add a git repo…"
+          aria-label="Add project"
+        >
+          {busy ? "…" : "+"}
+        </button>
+        {error && <div className="add-project__error">{error}</div>}
+      </div>
+    );
   }
 
   return (

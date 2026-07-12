@@ -81,7 +81,7 @@ and an environment badge.
   (by kind) + label + close affordance, active-tab accent, horizontal overflow
   scroll — matching the reference's tab styling. New `tabs.css`; add tokens as
   needed. → verify: at the 1200px window, 6+ tabs scroll rather than wrap.
-- [ ] **Sidebar as connections.** Restyle `project-item` into a connection row:
+- [x] **Sidebar as connections.** Restyle `project-item` into a connection row:
   a status dot (accent when the project has an active run, faint otherwise), repo
   name + short-path subtitle; move add-project to a header "+" button; add a
   "filter tables…"-style live filter input over projects/tasks. → verify: the

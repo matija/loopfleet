@@ -2340,3 +2340,53 @@ Verification:
 Next highest-priority task: Workbench task 3 — Sidebar as connections (status
 dot, repo name + short-path subtitle, header "+" add button, live filter over
 projects/tasks).
+
+2026-07-12 — Workbench task 3: Sidebar as connections
+- frontend/src/App.tsx: restyled the projects sidebar into a DB-client
+  "connections" panel. The old full-path project-item became a connection row:
+  a status dot + repo name (title) + parent-path subtitle (the `user@host`
+  analog). Added parentPath() beside repoName() for the subtitle. The dot lights
+  (accent + ring) when the project has an active run, faint otherwise — computed
+  from the dock's run registry (activeProjectNames = names of runs whose status
+  is queued/running; match by repo name, the only project handle a dock run
+  carries). Added a live filter: a `projectFilter` state + a "Filter projects…"
+  input that narrows visibleProjects (case-insensitive substring over repo_path)
+  as you type; a distinct "No projects match …" empty state when the query
+  excludes everything. Moved add-project out of the list into a section header
+  "+" button.
+- frontend/src/components/AddProject.tsx: added a `compact` prop. Compact renders
+  a 24px "+" icon button (aria-label "Add project", title "Add a git repo…")
+  for the sidebar header; the registration error surfaces in a small absolute
+  popover under the button so the header row never reflows. The full "Add
+  project…" button form is unchanged and still available (not currently used).
+- frontend/src/shell.css: new .sidebar__section-head (label + "+" on one row),
+  .sidebar__filter (surface-2 input, focus border), and reworked .project-item
+  into a flex row with .project-item__dot / .project-item__dot--active,
+  .project-item__body, and ellipsis on both name and (rtl) meta. Dropped the
+  old rtl-on-name rule (name is now the short repo name, not a long path).
+- frontend/src/panels.css: .add-project--compact (relative), .add-project__icon
+  (square button reusing the surface-2/border-strong look), and an absolutely
+  positioned .add-project__error popover for the compact variant.
+- No backend change (frontend-only milestone). No new command consumed.
+
+Verification:
+- cd frontend && npm run build — tsc typecheck + vite build clean (54 modules,
+  no type errors). No frontend test suite exists; the filter/dot behavior is the
+  build-verified wiring (filter narrows visibleProjects live; the dot class flips
+  on activeProjectNames membership).
+
+Design notes:
+- The dot matches runs to projects by repo name because ActiveRun only carries
+  projectName (repoName of the path), not a project id — the existing dock data
+  model. Two registered repos with the same leaf name would share a lit dot;
+  acceptable given the current model, and no command surface was widened to fix
+  it (per the frontend-only constraint).
+- The filter is scoped to projects only. The PRD task mentions "projects/tasks",
+  but the plan tree (tasks in the sidebar) is the NEXT task; there are no tasks
+  in the sidebar to filter yet. The filter is placed and styled to extend over
+  the plan tree when it lands.
+
+Next highest-priority task: Workbench — Plan tree with counts: render the
+selected project's tasks as a filterable list with right-aligned run-count
+badges (from plan_overview), grouped like the DB object tree; clicking a task
+opens/focuses its tab.

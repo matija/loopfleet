@@ -94,6 +94,8 @@ function tabReducer(state: TabState, action: TabAction): TabState {
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Live "filter tables…"-style narrowing of the connections list.
+  const [projectFilter, setProjectFilter] = useState("");
   // App-level command errors surface as transient toasts, not a persistent
   // banner. Contextual form errors stay inline in their own components.
   const { toasts, push: pushError, dismiss: dismissToast } = useToasts();
@@ -132,6 +134,16 @@ export default function App() {
   }, []);
 
   const selected = projects.find((p) => p.id === selectedId) ?? null;
+  // A connection's status dot lights while any of its runs is active. The dock
+  // registry tags runs by project name (the only project handle it carries), so
+  // the match is by repo name.
+  const activeProjectNames = new Set(
+    runs.filter((r) => ACTIVE.includes(r.status)).map((r) => r.projectName),
+  );
+  const q = projectFilter.trim().toLowerCase();
+  const visibleProjects = q
+    ? projects.filter((p) => p.repo_path.toLowerCase().includes(q))
+    : projects;
   const { tabs, activeId } = tabState;
   const activeTab = tabs.find((t) => tabId(t) === activeId) ?? tabs[0];
   // The dock highlights whichever run tab is currently active.
@@ -183,15 +195,31 @@ export default function App() {
       }
       sidebar={
         <>
-          <div className="sidebar__section-label">Projects</div>
-          <AddProject onAdded={onAdded} />
+          <div className="sidebar__section-head">
+            <div className="sidebar__section-label">Projects</div>
+            <AddProject onAdded={onAdded} compact />
+          </div>
+          {projects.length > 0 && (
+            <input
+              className="sidebar__filter"
+              type="text"
+              placeholder="Filter projects…"
+              aria-label="Filter projects"
+              value={projectFilter}
+              onChange={(e) => setProjectFilter(e.target.value)}
+            />
+          )}
           {projects.length === 0 ? (
             <div className="sidebar__empty">
               No projects yet. Add a git repo to launch runs against its plan.
             </div>
+          ) : visibleProjects.length === 0 ? (
+            <div className="sidebar__empty">
+              No projects match “{projectFilter.trim()}”.
+            </div>
           ) : (
             <div className="sidebar__list">
-              {projects.map((p) => (
+              {visibleProjects.map((p) => (
                 <button
                   key={p.id}
                   className="project-item"
@@ -204,8 +232,21 @@ export default function App() {
                     });
                   }}
                 >
-                  <div className="project-item__name">{p.repo_path}</div>
-                  <div className="project-item__meta">{p.plan_convention}</div>
+                  <span
+                    className={`project-item__dot${
+                      activeProjectNames.has(repoName(p.repo_path))
+                        ? " project-item__dot--active"
+                        : ""
+                    }`}
+                  />
+                  <span className="project-item__body">
+                    <span className="project-item__name">
+                      {repoName(p.repo_path)}
+                    </span>
+                    <span className="project-item__meta">
+                      {parentPath(p.repo_path)}
+                    </span>
+                  </span>
                 </button>
               ))}
             </div>
@@ -371,9 +412,16 @@ function truncate(s: string, n = 32): string {
   return s.length > n ? `${s.slice(0, n - 1)}…` : s;
 }
 
-// The trailing path segment — the sidebar shows the full path, the header the
-// short repo name.
+// The trailing path segment — the connection row's title.
 function repoName(path: string): string {
   const parts = path.replace(/\/+$/, "").split("/");
   return parts[parts.length - 1] || path;
+}
+
+// Everything before the repo name — the connection row's subtitle (the DB
+// client's `user@host` analog).
+function parentPath(path: string): string {
+  const trimmed = path.replace(/\/+$/, "");
+  const idx = trimmed.lastIndexOf("/");
+  return idx > 0 ? trimmed.slice(0, idx) : trimmed;
 }
