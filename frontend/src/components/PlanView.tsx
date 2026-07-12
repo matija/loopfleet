@@ -22,7 +22,16 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   accepted: "Accepted",
 };
 
-export function PlanView({ projectId }: { projectId: string }) {
+/// What a task launch reports upward for the global run dock.
+export type LaunchedRun = { runId: string; taskText: string; agent: string };
+
+export function PlanView({
+  projectId,
+  onLaunch,
+}: {
+  projectId: string;
+  onLaunch: (run: LaunchedRun) => void;
+}) {
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -74,6 +83,7 @@ export function PlanView({ projectId }: { projectId: string }) {
           installed={installed}
           settings={settings}
           onLaunched={reload}
+          onLaunch={onLaunch}
         />
       ))}
     </div>
@@ -86,12 +96,14 @@ function PlanCard({
   installed,
   settings,
   onLaunched,
+  onLaunch,
 }: {
   plan: Plan;
   projectId: string;
   installed: string[];
   settings: Settings | null;
   onLaunched: () => void;
+  onLaunch: (run: LaunchedRun) => void;
 }) {
   const review = plan.tasks.filter((t) => t.status === "completed-unaccepted");
 
@@ -119,6 +131,7 @@ function PlanCard({
             installed={installed}
             settings={settings}
             onLaunched={onLaunched}
+            onLaunch={onLaunch}
           />
         ))}
       </ul>
@@ -132,12 +145,14 @@ function TaskRow({
   installed,
   settings,
   onLaunched,
+  onLaunch,
 }: {
   task: TaskView;
   projectId: string;
   installed: string[];
   settings: Settings | null;
   onLaunched: () => void;
+  onLaunch: (run: LaunchedRun) => void;
 }) {
   const review = task.status === "completed-unaccepted";
   return (
@@ -167,6 +182,9 @@ function TaskRow({
         installed={installed}
         settings={settings}
         onLaunched={onLaunched}
+        onLaunch={(runId, agent) =>
+          onLaunch({ runId, taskText: task.text, agent })
+        }
       />
     </li>
   );
@@ -178,12 +196,14 @@ function LaunchControl({
   installed,
   settings,
   onLaunched,
+  onLaunch,
 }: {
   projectId: string;
   taskAnchor: string;
   installed: string[];
   settings: Settings | null;
   onLaunched: () => void;
+  onLaunch: (runId: string, agent: string) => void;
 }) {
   const preferred =
     settings && installed.includes(settings.default_agent)
@@ -209,13 +229,14 @@ function LaunchControl({
     setLaunching(true);
     setMsg(null);
     try {
-      await launchRun({
+      const runId = await launchRun({
         projectId,
         taskAnchor,
         agent,
         maxIterations: Math.max(1, iterations || 1),
       });
       setMsg({ text: "Launched", ok: true });
+      onLaunch(runId, agent);
       onLaunched();
     } catch (e) {
       setMsg({ text: String(e), ok: false });

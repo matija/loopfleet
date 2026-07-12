@@ -207,7 +207,7 @@ Tasks (each sized for one agent iteration):
 - [x] App shell + design system: sidebar (projects) / main pane layout, design tokens (color, type scale, spacing, radii), the honest **sandbox-boundary panel** the PRD calls a trust feature. → verify: matches an agreed reference; the "writes-confined, reads/network open" statement is visible.
 - [x] Projects + Agents-status + Settings as components (add-project dialog, agent availability/version-drift chips, settings form, per-project sandbox overrides).
 - [x] Plan view: task list with derived `TaskStatus` badges; **launch control (agent + iterations + Run) on every task regardless of `checked`**; completed-unaccepted surfaced loudly (review queue).
-- [ ] Global run surface: a persistent dock/panel listing active runs across projects, each opening its live view — the always-present "you can run agents here" entry point. → verify: launch, minimize the plan, the run is still visible and stoppable.
+- [x] Global run surface: a persistent dock/panel listing active runs across projects, each opening its live view — the always-present "you can run agents here" entry point. → verify: launch, minimize the plan, the run is still visible and stoppable.
 - [ ] Live run view component: `run_event`/`run_status` subscription, streaming events, live file-changes, Stop.
 - [ ] Run timeline: iterations as rows, per-iteration events + diff/patch viewer.
 - [ ] Compare view: runs side by side, final-ref diffs, "use this run" → user-named target branch.

@@ -1,16 +1,19 @@
 // Presentational app shell: the fixed sidebar / main-pane grid every view lives
-// inside (PRD M7: "sidebar (projects) / main pane layout"). It owns no data —
-// callers pass the sidebar and main content as slots. Later M7 tasks (projects
-// component, plan view, run surfaces) render into these slots.
+// inside (PRD M7: "sidebar (projects) / main pane layout"), plus a persistent
+// bottom `dock` slot spanning the full width — the global run surface. It owns
+// no data — callers pass the sidebar, main content, and dock as slots. The dock
+// lives outside the scrolling main pane so it stays visible regardless of scroll.
 
 import type { ReactNode } from "react";
 
 export function AppShell({
   sidebar,
   children,
+  dock,
 }: {
   sidebar: ReactNode;
   children: ReactNode;
+  dock: ReactNode;
 }) {
   return (
     <div className="app-shell">
@@ -22,6 +25,7 @@ export function AppShell({
         {sidebar}
       </aside>
       <main className="main">{children}</main>
+      {dock}
     </div>
   );
 }

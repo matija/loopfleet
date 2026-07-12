@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { listProjects } from "./commands";
+import { useCallback, useEffect, useState } from "react";
+import { listProjects, stopRun } from "./commands";
+import { onRunStatus } from "./events";
 import type { Project } from "./types";
 import { AppShell } from "./components/AppShell";
 import { AddProject } from "./components/AddProject";
@@ -7,7 +8,8 @@ import { AgentStatusPanel } from "./components/AgentStatusPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SandboxOverrides } from "./components/SandboxOverrides";
 import { SandboxBoundaryPanel } from "./components/SandboxBoundaryPanel";
-import { PlanView } from "./components/PlanView";
+import { PlanView, type LaunchedRun } from "./components/PlanView";
+import { RunDock, type ActiveRun } from "./components/RunDock";
 
 // Composition root for the shell. Loads registered projects into the sidebar
 // (with the add-project affordance) and scopes the main pane to a selection.
@@ -18,6 +20,10 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Session-scoped registry of launched runs (the global run surface). Runs do
+  // not survive a restart in v1, so this is complete for the session.
+  const [runs, setRuns] = useState<ActiveRun[]>([]);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   useEffect(() => {
     listProjects()
@@ -28,6 +34,40 @@ export default function App() {
       .catch((e) => setError(String(e)));
   }, []);
 
+  // Terminal-state updates for any run flow through the dock's registry.
+  useEffect(() => {
+    const un = onRunStatus((p) =>
+      setRuns((prev) =>
+        prev.map((r) =>
+          r.runId === p.run_id ? { ...r, status: p.status } : r,
+        ),
+      ),
+    );
+    return () => {
+      un.then((f) => f());
+    };
+  }, []);
+
+  const selected = projects.find((p) => p.id === selectedId) ?? null;
+
+  // A launched run joins the dock, tagged with the project it ran against.
+  const onLaunch = useCallback(
+    (run: LaunchedRun) => {
+      const projectName = selected ? repoName(selected.repo_path) : "project";
+      setRuns((prev) => [
+        {
+          runId: run.runId,
+          projectName,
+          taskText: run.taskText,
+          agent: run.agent,
+          status: "running",
+        },
+        ...prev,
+      ]);
+    },
+    [selected],
+  );
+
   // A newly registered project joins the list and becomes the selection.
   function onAdded(p: Project) {
     setProjects((prev) =>
@@ -36,10 +76,21 @@ export default function App() {
     setSelectedId(p.id);
   }
 
-  const selected = projects.find((p) => p.id === selectedId) ?? null;
-
   return (
     <AppShell
+      dock={
+        <RunDock
+          runs={runs}
+          selectedRunId={selectedRunId}
+          onOpen={setSelectedRunId}
+          onStop={(id) => {
+            stopRun(id).catch((e) => setError(String(e)));
+          }}
+          onDismiss={(id) =>
+            setRuns((prev) => prev.filter((r) => r.runId !== id))
+          }
+        />
+      }
       sidebar={
         <>
           <div className="sidebar__section-label">Projects</div>
@@ -77,7 +128,11 @@ export default function App() {
       </div>
       <div className="main__body">
         {selected ? (
-          <PlanView key={selected.id} projectId={selected.id} />
+          <PlanView
+            key={selected.id}
+            projectId={selected.id}
+            onLaunch={onLaunch}
+          />
         ) : (
           <p className="main__placeholder">
             Select or add a project to see its plan and launch runs.

@@ -1948,3 +1948,47 @@ Verification:
 Next highest-priority task: M7 — Global run surface: a persistent dock/panel
 listing active runs across projects, each opening its live view (the always-
 present "you can run agents here" entry point).
+
+2026-07-12 — M7: Global run surface (persistent run dock)
+- frontend/src/components/RunDock.tsx: a persistent bottom dock listing every run
+  launched this session, across projects. Each run shows a status chip
+  (queued/running/completed/failed/stopped), the task text, and agent · project.
+  Active runs (queued/running) get a Stop button; terminal runs get a Dismiss
+  (✕). Empty state prompts to launch. Exports the ActiveRun type. Clicking a run
+  fires onOpen (selection) — the live view it opens lands in the next M7 task, so
+  onOpen here only carries the selection + highlights the chip.
+- Scope decision (recorded in the file's header comment): v1 runs do NOT survive
+  an app restart (M6 crash recovery marks still-running runs failed on startup)
+  and there is no global "active runs" backend command, so the dock's registry is
+  exactly the runs launched in this session. This is complete and honest for v1;
+  no backend command was added (PRD M7: "if a view needs data the backend doesn't
+  expose, note it — don't silently widen the command surface"). Only pre-existing
+  commands used: launch_run (already), stop_run, and the run_status event stream.
+- frontend/src/components/AppShell.tsx: added a third `dock` slot rendered below
+  the sidebar/main grid. Shell grid gained a second row (minmax(0,1fr) auto) so
+  the dock spans full width at the bottom, OUTSIDE the scrolling main pane — the
+  verify criterion ("minimize the plan, the run is still visible and stoppable")
+  is met structurally: main scrolls, the dock does not.
+- frontend/src/dock.css: dock + run-chip styles, all off tokens.css (status
+  colors reuse accent/ok/danger/warn). Imported in main.tsx.
+- frontend/src/App.tsx: owns the session run registry (runs: ActiveRun[]) and
+  selectedRunId. onLaunch(run) prepends a new ActiveRun (status "running",
+  tagged with the selected project's short name). Subscribes onRunStatus once to
+  flip a run's status to its terminal state. Renders <RunDock> in the shell's
+  dock slot: onOpen=setSelectedRunId, onStop=stopRun (errors surface in the
+  banner), onDismiss removes the run from the registry.
+- frontend/src/components/PlanView.tsx: threaded a new onLaunch(LaunchedRun)
+  callback down PlanView → PlanCard → TaskRow → LaunchControl. LaunchControl now
+  captures launch_run's returned run id and reports { runId, taskText, agent }
+  upward; the existing onLaunched() (plan reload) is unchanged and still fires.
+  Exported the LaunchedRun type.
+
+Verification:
+- cd frontend && npx tsc --noEmit — clean.
+- npx vite build — built (47 modules), no errors.
+- Backend crates + Tauri command signatures byte-for-byte unchanged (no Rust
+  files touched).
+
+Next highest-priority task: M7 — Live run view component: run_event/run_status
+subscription, streaming events, live file-changes, Stop (the view the dock's
+onOpen will render).
