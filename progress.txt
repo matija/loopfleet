@@ -2390,3 +2390,68 @@ Next highest-priority task: Workbench — Plan tree with counts: render the
 selected project's tasks as a filterable list with right-aligned run-count
 badges (from plan_overview), grouped like the DB object tree; clicking a task
 opens/focuses its tab.
+
+2026-07-12 — Workbench task 4: plan tree with counts (sidebar object list)
+- The selected connection now expands into its plan as the sidebar's object
+  list, mirroring a DB client's filterable table tree. Clicking a task opens (or
+  focuses) a new `task` tab in the main pane.
+- frontend/src/components/PlanTree.tsx (new): fetches plan_overview(projectId)
+  and renders tasks grouped by plan file. Each row: a derived-TaskStatus dot
+  (reusing the badge palette), the task text (ellipsized), and a right-aligned
+  run-count badge (task.run_count — same source PlanView uses, so counts match
+  the overview by construction). completed-unaccepted rows get a loud warn
+  left-accent + warn-tinted count (the review queue). Filtered live by the
+  shared sidebar filter (task text contains query); refetched on a `nonce` bump.
+- frontend/src/components/TaskTab.tsx (new): the single-task main-pane view.
+  Fetches plan_overview + settings + agentStatus, finds the task by planId +
+  anchor, and renders the status badge, plan-file tag, review banner (when
+  completed-unaccepted), the task text, and the launch control + compare button.
+  Reuses PlanView's LaunchControl and STATUS_LABEL (now exported) so launch
+  logic stays in one place — task 5 relocates this into a command bar.
+- frontend/src/components/PlanView.tsx: exported STATUS_LABEL and LaunchControl
+  for reuse by TaskTab. No behavior change to the plan body.
+- frontend/src/App.tsx: added the `task` tab kind
+  ({projectId, planId, taskAnchor, taskText}) with its tabId
+  (`task:<planId>:<anchor>`), tabLabel, and header. The sidebar list wraps each
+  project row in a div and renders <PlanTree> under the selected one; opening a
+  task dispatches an "open" tab action (so a repeat click focuses the existing
+  tab, not a duplicate). The main pane gains a task branch rendering <TaskTab>.
+  The selected project is now pinned into visibleProjects so its tree keeps
+  filtering tasks even when the query doesn't match the project path. planNonce
+  (already bumped on accept) now also feeds the tree + task tab and is bumped on
+  launch, so counts/status refresh across all three surfaces.
+- frontend/src/components/TabStrip.tsx: added "task" to TabKind + a checkbox
+  TabIcon (distinct from the plan list glyph).
+- frontend/src/shell.css: .plan-tree / .plan-tree__group-label / .tree-item
+  (+ __dot status colors, __text, __count, --review). No new tokens needed.
+- frontend/src/plan.css: .task-tab / __meta / __plan / __text / __actions.
+- No backend change (frontend-only milestone). No new command consumed
+  (plan_overview already existed).
+
+Verification:
+- cd frontend && npx tsc --noEmit — clean (0 errors).
+- cd frontend && npm run build — tsc + vite build clean (56 modules). No
+  frontend test suite exists; the counts/click behavior is build-verified
+  wiring: run_count comes straight from plan_overview (matches the overview),
+  and a task click dispatches an open-tab action that pushes/focuses a task tab.
+
+Design notes:
+- Two surfaces now show tasks: the plan tab (full plan body, per-task launch)
+  and per-task tabs opened from the tree. Both coexist by design — the tree is
+  the object list, the tab is the opened object — matching the DB-client model;
+  the plan tab stays the project overview. Left for the polish pass to reconcile
+  if it reads as redundant.
+- The "Runs" group from the domain-mapping table is intentionally NOT added to
+  the tree: the bottom run dock already is the global runs surface, and the task
+  bullet only asks for tasks + counts. Kept the tree to tasks to avoid a second
+  runs list.
+- TaskTab, PlanTree, and PlanView each fetch plan_overview independently rather
+  than sharing lifted state — simplest per-surface data ownership, and a task
+  tab can outlive the sidebar selection (persist across project switches). All
+  three key off the same command, so counts stay consistent; planNonce is the
+  single invalidation signal.
+
+Next highest-priority task: Workbench — Per-tab command bar: a CommandBar for
+run/task tabs (task-name pill, WHERE-style client-side event filter, Run/Re-run
+control, agent status pill, live "Xs ago" stamp), relocating the launch control
+out of the plan body.

@@ -1,5 +1,5 @@
 // The workbench tab strip: browser-style tabs above the main pane, one per open
-// view (Welcome / plan / run / compare). Purely presentational — the tab model
+// view (Welcome / plan / task / run / compare). Purely presentational — the tab model
 // and reducer live in App.tsx; this renders items and reports focus/close.
 //
 // Each tab shows a kind icon + a truncated label + a close affordance; the
@@ -7,7 +7,7 @@
 // full tab session scrolls horizontally rather than folding onto a second row
 // (PRD: "at the 1200px window, 6+ tabs scroll rather than wrap").
 
-export type TabKind = "welcome" | "plan" | "run" | "compare";
+export type TabKind = "welcome" | "plan" | "task" | "run" | "compare";
 
 export type TabStripItem = {
   id: string;
@@ -91,6 +91,13 @@ function TabIcon({ kind }: { kind: TabKind }) {
         <svg {...common}>
           <path d="M5 4h8M5 8h8M5 12h8" />
           <path d="M2.5 4h.01M2.5 8h.01M2.5 12h.01" />
+        </svg>
+      );
+    case "task":
+      return (
+        <svg {...common}>
+          <path d="M3 3h10v10H3z" />
+          <path d="M5.5 8l1.8 1.8L11 6" />
         </svg>
       );
     case "run":

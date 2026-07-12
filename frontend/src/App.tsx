@@ -13,6 +13,8 @@ import {
   type CompareTarget,
   type LaunchedRun,
 } from "./components/PlanView";
+import { PlanTree } from "./components/PlanTree";
+import { TaskTab } from "./components/TaskTab";
 import { RunDock, type ActiveRun } from "./components/RunDock";
 import { LiveRunView } from "./components/LiveRunView";
 import { RunTimeline } from "./components/RunTimeline";
@@ -36,6 +38,13 @@ const ACTIVE: RunStatus[] = ["queued", "running"];
 type WorkbenchTab =
   | { kind: "welcome" }
   | { kind: "plan"; projectId: string }
+  | {
+      kind: "task";
+      projectId: string;
+      planId: string;
+      taskAnchor: string;
+      taskText: string;
+    }
   | { kind: "run"; runId: string }
   | { kind: "compare"; planId: string; taskAnchor: string; taskText: string };
 
@@ -47,6 +56,8 @@ function tabId(t: WorkbenchTab): string {
       return "welcome";
     case "plan":
       return `plan:${t.projectId}`;
+    case "task":
+      return `task:${t.planId}:${t.taskAnchor}`;
     case "run":
       return `run:${t.runId}`;
     case "compare":
@@ -141,8 +152,13 @@ export default function App() {
     runs.filter((r) => ACTIVE.includes(r.status)).map((r) => r.projectName),
   );
   const q = projectFilter.trim().toLowerCase();
+  // The filter narrows both projects (by path) and, within the open connection,
+  // its tasks (in PlanTree). The selected project stays pinned so its tree keeps
+  // filtering tasks even when the query doesn't match its path.
   const visibleProjects = q
-    ? projects.filter((p) => p.repo_path.toLowerCase().includes(q))
+    ? projects.filter(
+        (p) => p.id === selectedId || p.repo_path.toLowerCase().includes(q),
+      )
     : projects;
   const { tabs, activeId } = tabState;
   const activeTab = tabs.find((t) => tabId(t) === activeId) ?? tabs[0];
@@ -220,34 +236,57 @@ export default function App() {
           ) : (
             <div className="sidebar__list">
               {visibleProjects.map((p) => (
-                <button
-                  key={p.id}
-                  className="project-item"
-                  aria-current={p.id === selectedId}
-                  onClick={() => {
-                    setSelectedId(p.id);
-                    dispatch({
-                      type: "open",
-                      tab: { kind: "plan", projectId: p.id },
-                    });
-                  }}
-                >
-                  <span
-                    className={`project-item__dot${
-                      activeProjectNames.has(repoName(p.repo_path))
-                        ? " project-item__dot--active"
-                        : ""
-                    }`}
-                  />
-                  <span className="project-item__body">
-                    <span className="project-item__name">
-                      {repoName(p.repo_path)}
+                <div key={p.id}>
+                  <button
+                    className="project-item"
+                    aria-current={p.id === selectedId}
+                    onClick={() => {
+                      setSelectedId(p.id);
+                      dispatch({
+                        type: "open",
+                        tab: { kind: "plan", projectId: p.id },
+                      });
+                    }}
+                  >
+                    <span
+                      className={`project-item__dot${
+                        activeProjectNames.has(repoName(p.repo_path))
+                          ? " project-item__dot--active"
+                          : ""
+                      }`}
+                    />
+                    <span className="project-item__body">
+                      <span className="project-item__name">
+                        {repoName(p.repo_path)}
+                      </span>
+                      <span className="project-item__meta">
+                        {parentPath(p.repo_path)}
+                      </span>
                     </span>
-                    <span className="project-item__meta">
-                      {parentPath(p.repo_path)}
-                    </span>
-                  </span>
-                </button>
+                  </button>
+                  {p.id === selectedId && (
+                    <PlanTree
+                      projectId={p.id}
+                      filter={projectFilter}
+                      nonce={planNonce}
+                      activeTaskId={
+                        activeTab.kind === "task" ? tabId(activeTab) : null
+                      }
+                      onOpenTask={(t) =>
+                        dispatch({
+                          type: "open",
+                          tab: {
+                            kind: "task",
+                            projectId: p.id,
+                            planId: t.planId,
+                            taskAnchor: t.taskAnchor,
+                            taskText: t.taskText,
+                          },
+                        })
+                      }
+                    />
+                  )}
+                </div>
               ))}
             </div>
           )}
@@ -293,6 +332,27 @@ export default function App() {
             taskText={activeTab.taskText}
             onClose={() => dispatch({ type: "close", id: tabId(activeTab) })}
             onAccepted={() => setPlanNonce((n) => n + 1)}
+          />
+        ) : activeTab.kind === "task" ? (
+          <TaskTab
+            key={tabId(activeTab)}
+            projectId={activeTab.projectId}
+            planId={activeTab.planId}
+            taskAnchor={activeTab.taskAnchor}
+            nonce={planNonce}
+            onLaunch={onLaunch}
+            onLaunched={() => setPlanNonce((n) => n + 1)}
+            onCompare={(target: CompareTarget) =>
+              dispatch({
+                type: "open",
+                tab: {
+                  kind: "compare",
+                  planId: target.planId,
+                  taskAnchor: target.taskAnchor,
+                  taskText: target.taskText,
+                },
+              })
+            }
           />
         ) : activeTab.kind === "plan" ? (
           <>
@@ -370,6 +430,8 @@ function tabLabel(
       const p = projects.find((x) => x.id === t.projectId);
       return p ? repoName(p.repo_path) : "Plan";
     }
+    case "task":
+      return truncate(t.taskText);
     case "run": {
       const r = runs.find((x) => x.runId === t.runId);
       return r ? truncate(r.taskText) : "Run";
@@ -399,6 +461,8 @@ function headerFor(
         subtitle: p ? p.repo_path : "",
       };
     }
+    case "task":
+      return { title: "Task", subtitle: t.taskText };
     case "run": {
       const r = runs.find((x) => x.runId === t.runId);
       return { title: "Run", subtitle: r ? r.taskText : "" };

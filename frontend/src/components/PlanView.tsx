@@ -15,7 +15,7 @@ import type {
   TaskView,
 } from "../types";
 
-const STATUS_LABEL: Record<TaskStatus, string> = {
+export const STATUS_LABEL: Record<TaskStatus, string> = {
   "not-started": "Not started",
   "in-progress": "In progress",
   "completed-unaccepted": "Needs review",
@@ -218,7 +218,7 @@ function TaskRow({
   );
 }
 
-function LaunchControl({
+export function LaunchControl({
   projectId,
   taskAnchor,
   installed,

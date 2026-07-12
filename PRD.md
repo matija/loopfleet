@@ -86,7 +86,7 @@ and an environment badge.
   name + short-path subtitle; move add-project to a header "+" button; add a
   "filter tables…"-style live filter input over projects/tasks. → verify: the
   filter narrows the list live; the dot lights while a run is active.
-- [ ] **Plan tree with counts.** Under the selected project, render tasks as a
+- [x] **Plan tree with counts.** Under the selected project, render tasks as a
   filterable list with a right-aligned **run-count badge** (from `plan_overview`),
   grouped like the DB object tree; clicking a task opens/focuses its tab. Keep the
   derived `TaskStatus` badge; surface completed-unaccepted loudly (the review

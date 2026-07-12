@@ -195,3 +195,36 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* --- single-task tab (opened from the plan tree) --- */
+
+.task-tab {
+  max-width: 72ch;
+}
+
+.task-tab__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.task-tab__plan {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--c-text-faint);
+}
+
+.task-tab__text {
+  color: var(--c-text);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  margin: 0 0 var(--space-4);
+}
+
+.task-tab__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
