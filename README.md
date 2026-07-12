@@ -9,5 +9,5 @@ Loopfleet is an experimental agent cockpit for automatically running loops over 
 ## Run (for now)
 
 ```sh
-cargo run -p loopfleet
+npm run tauri dev
 ```
