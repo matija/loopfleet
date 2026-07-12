@@ -138,8 +138,11 @@ export function LiveRunView({
 }
 
 // One normalized event, rendered by kind. The label is the event vocabulary;
-// the body carries the excerpt/text the adapter produced.
-function EventRow({ event }: { event: NormalizedEvent }) {
+// the body carries the excerpt/text the adapter produced. Exported so the run
+// timeline replays the persisted log with the same vocabulary the live stream
+// uses. LiveRunView routes `file_changed` to its files panel before calling
+// this, so that case only renders in the timeline (which has no side panel).
+export function EventRow({ event }: { event: NormalizedEvent }) {
   switch (event.kind) {
     case "turn_started":
       return <Row kind="turn" label="Turn started" />;
@@ -188,8 +191,9 @@ function EventRow({ event }: { event: NormalizedEvent }) {
     case "ended":
       return <Row kind="turn" label="Ended" />;
     case "file_changed":
-      // Routed to the files panel, not the stream; unreachable here.
-      return null;
+      // In the live view this is routed to the files panel and never reaches
+      // here; in the timeline (no side panel) it renders inline.
+      return <Row kind="file" label="File changed" body={event.path} />;
   }
 }
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { listProjects, stopRun } from "./commands";
 import { onRunStatus } from "./events";
-import type { Project } from "./types";
+import type { Project, RunStatus } from "./types";
 import { AppShell } from "./components/AppShell";
 import { AddProject } from "./components/AddProject";
 import { AgentStatusPanel } from "./components/AgentStatusPanel";
@@ -11,6 +11,13 @@ import { SandboxBoundaryPanel } from "./components/SandboxBoundaryPanel";
 import { PlanView, type LaunchedRun } from "./components/PlanView";
 import { RunDock, type ActiveRun } from "./components/RunDock";
 import { LiveRunView } from "./components/LiveRunView";
+import { RunTimeline } from "./components/RunTimeline";
+
+// A run streams live while active; once terminal, its persisted timeline (with
+// per-iteration events and diffs) is the surface. Opening a run from the dock
+// picks the right one by status, and a still-open live view flips to the
+// timeline automatically when the run ends.
+const ACTIVE: RunStatus[] = ["queued", "running"];
 
 // Composition root for the shell. Loads registered projects into the sidebar
 // (with the add-project affordance) and scopes the main pane to a selection.
@@ -131,14 +138,22 @@ export default function App() {
       </div>
       <div className={`main__body${selectedRun ? " main__body--run" : ""}`}>
         {selectedRun ? (
-          <LiveRunView
-            key={selectedRun.runId}
-            run={selectedRun}
-            onStop={(id) => {
-              stopRun(id).catch((e) => setError(String(e)));
-            }}
-            onClose={() => setSelectedRunId(null)}
-          />
+          ACTIVE.includes(selectedRun.status) ? (
+            <LiveRunView
+              key={selectedRun.runId}
+              run={selectedRun}
+              onStop={(id) => {
+                stopRun(id).catch((e) => setError(String(e)));
+              }}
+              onClose={() => setSelectedRunId(null)}
+            />
+          ) : (
+            <RunTimeline
+              key={selectedRun.runId}
+              run={selectedRun}
+              onClose={() => setSelectedRunId(null)}
+            />
+          )
         ) : (
           <>
             {selected ? (

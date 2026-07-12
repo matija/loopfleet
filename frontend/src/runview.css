@@ -115,6 +115,10 @@
   padding: var(--space-3);
 }
 
+.run-view__stream--full {
+  flex: 1 1 auto;
+}
+
 .run-view__files {
   display: flex;
   flex-direction: column;
@@ -211,6 +215,10 @@
   color: var(--c-warn);
 }
 
+.event-row--file .event-row__body {
+  color: var(--c-text-muted);
+}
+
 .file-list__item {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
@@ -219,4 +227,169 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* --- run timeline: iterations as rows, per-iteration events + diff --- */
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.timeline__iter {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  background: var(--c-surface-2);
+  padding: var(--space-3);
+}
+
+.timeline__iter-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.timeline__iter-n {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.timeline__iter-meta {
+  font-size: var(--text-xs);
+  color: var(--c-text-faint);
+}
+
+.timeline__no-diff {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--c-text-faint);
+}
+
+/* --- diff: per-file summary + collapsible patch --- */
+
+.diff {
+  margin-top: var(--space-2);
+}
+
+.diff__files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.diff__file {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  min-width: 0;
+}
+
+.diff__status {
+  flex: 0 0 auto;
+  width: 1.4em;
+  text-align: center;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  color: var(--c-text-muted);
+  background: var(--c-surface-3);
+}
+
+.diff__file--added .diff__status {
+  color: var(--c-ok);
+}
+
+.diff__file--deleted .diff__status {
+  color: var(--c-danger);
+}
+
+.diff__file--renamed .diff__status,
+.diff__file--copied .diff__status {
+  color: var(--c-accent);
+}
+
+.diff__path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-text);
+}
+
+.diff__stat {
+  flex: 0 0 auto;
+  margin-left: auto;
+  display: flex;
+  gap: var(--space-2);
+}
+
+.diff__ins {
+  color: var(--c-ok);
+}
+
+.diff__del {
+  color: var(--c-danger);
+}
+
+.diff__toggle {
+  margin-top: var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-3);
+  color: var(--c-text-muted);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+}
+
+.diff__toggle:hover {
+  color: var(--c-text);
+}
+
+.patch {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2);
+  overflow-x: auto;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.patch__line {
+  display: block;
+  white-space: pre;
+}
+
+.patch__line--add {
+  color: var(--c-ok);
+  background: rgba(63, 185, 80, 0.08);
+}
+
+.patch__line--del {
+  color: var(--c-danger);
+  background: rgba(248, 81, 73, 0.08);
+}
+
+.patch__line--hunk {
+  color: var(--c-accent);
+}
+
+.patch__line--meta {
+  color: var(--c-text-faint);
+}
+
+.patch__line--ctx {
+  color: var(--c-text-muted);
 }

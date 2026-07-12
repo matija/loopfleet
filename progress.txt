@@ -2050,3 +2050,60 @@ Verification:
 
 Next highest-priority task: M7 — Run timeline: iterations as rows, per-iteration
 events + diff/patch viewer (the replay path via run_timeline).
+
+2026-07-12 — M7: Run timeline (React) — iterations as rows, events + diff/patch
+- frontend/src/components/RunTimeline.tsx: the persisted, read-only counterpart
+  to LiveRunView. Where the live view streams `run_event` and shows only what
+  arrives while it is open, the timeline replays the stored log via the existing
+  `run_timeline` command — the surface for inspecting a run after it has ended.
+  No backend change: it consumes the RunTimeline/IterationView/DiffView types
+  already mirrored in types.ts and the runTimeline() wrapper already in
+  commands.ts. Tauri command signatures byte-for-byte unchanged.
+  - Layout mirrors LiveRunView's header (back · status badge · task · agent ·
+    project) minus the Stop button (the timeline is only shown for terminal
+    runs). Body is a single scrolling column of iteration cards.
+  - Each iteration card: "Iteration N" + an event/file count, the iteration's
+    events rendered by the SAME EventRow vocabulary the live view uses (now
+    exported from LiveRunView), then a Diff block.
+  - Diff block: always-visible per-file summary (status letter, path or
+    old→new for renames, +ins/−del counts) plus a "Show patch" toggle that
+    reveals the full unified patch, colored per line origin (add/del/hunk/meta/
+    context). Handles the three empty shapes distinctly: no diff (missing/
+    unreadable shadow ref), no file changes this iteration, empty patch.
+- LiveRunView.tsx: exported EventRow (was file-private) and made its
+  `file_changed` case render an inline "File changed" row instead of returning
+  null. LiveRunView itself routes file_changed to its files panel BEFORE calling
+  EventRow, so it never passes that kind in — its behavior is unchanged; the new
+  render only fires in the timeline, which has no side panel. Two-line change,
+  no duplication of the ~70-line event switch.
+- App.tsx: opening a run from the dock now picks the view by status —
+  active (queued/running) → LiveRunView (streaming), terminal (completed/failed/
+  stopped) → RunTimeline (replay). A live view left open flips to the timeline
+  automatically when the run ends (status arrives via run_status, `key` remounts).
+  This matches the documented live-vs-replay split (LiveRunView's own scope note
+  says historical events are the timeline's job) and needed no new command —
+  there is still no global "active runs" query, so the dock's session registry
+  is the run source, exactly as before.
+- runview.css: appended .timeline / .diff / .patch structural classes (all
+  values from tokens.css), a .run-view__stream--full modifier so the timeline's
+  scroll container flexes to fill .run-view (the live view gets this from its
+  grid body wrapper; the timeline uses the stream directly), and an
+  .event-row--file body color for the new inline file-changed row.
+
+Verification:
+- cd frontend && npx tsc --noEmit — clean (0 errors).
+- npx vite build — 50 modules transformed, built OK (index-*.js/.css emitted).
+- No Rust touched: no crate or src-tauri edit; command surface unchanged.
+
+Design notes:
+- Reusing EventRow across live and timeline keeps one event vocabulary; the only
+  divergence (file_changed inline vs side panel) is a routing choice made by the
+  caller, not a second renderer.
+- Status-driven view selection (not a manual Live/Timeline tab) is the minimal
+  wiring that makes the timeline reachable: you open a finished run and get its
+  replay; a tab toggle would add chrome for a distinction the run's own lifecycle
+  already draws.
+
+Next highest-priority task: M7 — Compare view: runs side by side, final-ref
+diffs, "use this run" → user-named target branch (compare_task + use_run already
+exist in commands.ts/types.ts).
