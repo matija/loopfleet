@@ -8,6 +8,7 @@
 // filter state, launch logic, and freshness source all live in the host.
 
 import { useEffect, useState, type ReactNode } from "react";
+import { normalizeDisplayText } from "../displayText";
 
 export function CommandBar({
   task,
@@ -29,8 +30,8 @@ export function CommandBar({
 }) {
   return (
     <div className="command-bar">
-      <span className="command-bar__task" title={task}>
-        {task}
+      <span className="command-bar__task" title={normalizeDisplayText(task)}>
+        {normalizeDisplayText(task)}
       </span>
       {filter && (
         <input

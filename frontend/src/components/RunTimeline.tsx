@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { runTimeline } from "../commands";
+import { normalizeDisplayText } from "../displayText";
 import type {
   DiffView,
   IterationView,
@@ -72,8 +73,11 @@ export function RunTimeline({
           <span className={`run-view__status run-view__status--${status}`}>
             {STATUS_LABEL[status]}
           </span>
-          <span className="run-view__task" title={run.taskText}>
-            {run.taskText}
+          <span
+            className="run-view__task"
+            title={normalizeDisplayText(run.taskText)}
+          >
+            {normalizeDisplayText(run.taskText)}
           </span>
           <span className="run-view__meta">
             {run.agent} · {run.projectName}

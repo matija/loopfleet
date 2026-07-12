@@ -10,6 +10,7 @@
 // the next M7 task; here `onOpen` just carries the selection.
 
 import type { RunStatus } from "../types";
+import { normalizeDisplayText } from "../displayText";
 
 /// One run tracked by the dock. Seeded at launch, its `status` updated from the
 /// `run_status` stream.
@@ -63,6 +64,7 @@ export function RunDock({
         <ul className="run-dock__list">
           {runs.map((r) => {
             const active = ACTIVE.includes(r.status);
+            const taskText = normalizeDisplayText(r.taskText);
             return (
               <li
                 key={r.runId}
@@ -72,12 +74,12 @@ export function RunDock({
                   className="run-chip__open"
                   aria-current={r.runId === selectedRunId}
                   onClick={() => onOpen(r.runId)}
-                  title={r.taskText}
+                  title={taskText}
                 >
                   <span className={`run-chip__status run-chip__status--${r.status}`}>
                     {STATUS_LABEL[r.status]}
                   </span>
-                  <span className="run-chip__task">{r.taskText}</span>
+                  <span className="run-chip__task">{taskText}</span>
                   <span className="run-chip__meta">
                     {r.agent} · {r.projectName}
                   </span>

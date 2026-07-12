@@ -26,7 +26,7 @@
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-lg);
-  padding: var(--space-5);
+  padding: var(--space-4);
 }
 
 .plan-card__head {
@@ -71,7 +71,7 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 0;
 }
 
 .task-row {
@@ -80,14 +80,15 @@
   justify-content: space-between;
   gap: var(--space-4);
   flex-wrap: wrap;
-  padding: var(--space-3);
-  border-radius: var(--radius-md);
-  background: var(--c-surface-2);
-  border: 1px solid var(--c-border);
+  padding: var(--space-2) 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--c-border);
 }
 
 .task-row--review {
-  border-color: var(--c-warn);
+  background: rgba(210, 153, 34, 0.08);
 }
 
 .task-row__main {
@@ -147,7 +148,7 @@
 
 .task-badge--in-progress {
   color: var(--c-accent);
-  background: rgba(76, 141, 255, 0.14);
+  background: var(--c-accent-quiet);
 }
 
 .task-badge--completed-unaccepted {
@@ -163,14 +164,14 @@
 /* --- launch control (always present, per task) --- */
 
 .launch {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   flex: none;
 }
 
-.launch__agent,
-.launch__iters {
+.launch__agent {
   font: inherit;
   color: var(--c-text);
   background: var(--c-surface);
@@ -181,31 +182,70 @@
   transition: border-color 0.12s ease, background-color 0.12s ease;
 }
 
-.launch__iters {
-  width: 56px;
-}
-
 /* Agent picker: drop the native chrome, match the dark surface, and ship a
  * quiet custom caret so it reads as a refined chip rather than a form widget. */
 .launch__agent {
   appearance: none;
   -webkit-appearance: none;
   padding-right: var(--space-4);
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 3.5 L5 6.5 L8 3.5' fill='none' stroke='%236a6a73' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 3.5 L5 6.5 L8 3.5' fill='none' stroke='%237d7d86' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>");
   background-repeat: no-repeat;
   background-position: right var(--space-2) center;
   cursor: pointer;
 }
 
-.launch__agent:hover:not(:disabled),
-.launch__iters:hover:not(:disabled) {
+.launch__agent:hover:not(:disabled) {
   border-color: var(--c-border-strong);
 }
 
-.launch__agent:focus,
-.launch__iters:focus {
+.launch__agent:focus {
   border-color: var(--c-accent);
   background-color: var(--c-surface-2);
+}
+
+.launch__count {
+  display: inline-flex;
+  align-items: stretch;
+  height: 28px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--c-surface);
+}
+
+.launch__count-btn {
+  width: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--c-text-muted);
+  padding: 0;
+}
+
+.launch__count-btn:hover:not(:disabled) {
+  background: var(--c-surface-3);
+  color: var(--c-text);
+}
+
+.launch__count-btn:disabled {
+  color: var(--c-text-faint);
+  cursor: default;
+}
+
+.launch__count-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  padding: 0 var(--space-2);
+  border-inline: 1px solid var(--c-border);
+  color: var(--c-text);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.launch__count-label {
+  color: var(--c-text-muted);
 }
 
 /* Run button — a quiet accent chip rather than a loud solid block. Recessed
@@ -213,7 +253,7 @@
  * hover so it stays clearly the primary action without shouting. */
 .btn--accent.launch__go {
   background: var(--c-accent-quiet);
-  border: 1px solid rgba(84, 104, 240, 0.32);
+  border: 1px solid rgba(98, 117, 242, 0.32);
   color: #aeb8ff;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -224,7 +264,7 @@
 
 .btn--accent.launch__go:hover:not(:disabled) {
   background: #2b336a;
-  border-color: rgba(84, 104, 240, 0.5);
+  border-color: rgba(98, 117, 242, 0.5);
   color: #c6cdff;
   filter: none;
 }
@@ -239,7 +279,16 @@
 }
 
 .launch .msg {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + var(--space-1));
+  right: 0;
   max-width: 24ch;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface-2);
+  box-shadow: var(--shadow-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -251,11 +300,21 @@
   max-width: 72ch;
 }
 
+.task-tab__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--c-border);
+}
+
 .task-tab__meta {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-3);
+  min-width: 0;
 }
 
 .task-tab__plan {
@@ -266,9 +325,10 @@
 
 .task-tab__text {
   color: var(--c-text);
-  font-size: var(--text-base);
+  font-size: var(--text-md);
+  font-weight: 500;
   line-height: var(--leading-normal);
-  margin: 0 0 var(--space-4);
+  margin: var(--space-4) 0;
 }
 
 .task-tab__actions {

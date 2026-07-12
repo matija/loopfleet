@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { planOverview } from "../commands";
+import { normalizeDisplayText } from "../displayText";
 import { fuzzyMatch } from "../fuzzy";
 import type { PlanView as Plan, Project, RunStatus } from "../types";
 import type { ActiveRun } from "./RunDock";
@@ -156,7 +157,7 @@ export function CommandPalette({
     const taskItems: Item[] = tasks.map((t) => ({
       id: `task:${t.projectId}:${t.planId}:${t.anchor}`,
       group: "Tasks",
-      title: t.text,
+      title: normalizeDisplayText(t.text),
       subtitle: t.planLabel,
       hint: "task",
       run: () =>
@@ -170,7 +171,7 @@ export function CommandPalette({
     const runItems: Item[] = runs.map((r) => ({
       id: `run:${r.runId}`,
       group: "Runs",
-      title: r.taskText,
+      title: normalizeDisplayText(r.taskText),
       subtitle: `${STATUS_LABEL[r.status]} · ${r.agent} · ${r.projectName}`,
       hint: r.status,
       run: () => onOpenRun(r.runId),

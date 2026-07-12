@@ -4,9 +4,9 @@
  * hues, which are a genuinely new pattern this grid introduces. */
 
 .data-grid {
-  --grid-cols: 2.5em 3.5em minmax(9em, auto) minmax(0, 1fr) 5.5em;
+  --grid-cols: 2em 3em 6em minmax(0, 1fr) 6.5em;
   font-family: var(--font-mono);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
 }
 
 .data-grid__row {
@@ -14,8 +14,13 @@
   grid-template-columns: var(--grid-cols);
   align-items: baseline;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
+  min-height: 24px;
+  padding: 2px var(--space-2);
   border-bottom: 1px solid var(--c-border);
+}
+
+.data-grid__row:not(.data-grid__row--head):hover {
+  background: var(--c-surface-2);
 }
 
 .data-grid__row:last-child {
@@ -63,8 +68,8 @@
 .grid-pill {
   display: inline-block;
   max-width: 100%;
-  padding: 1px var(--space-2);
-  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  border-radius: 4px;
   font-family: var(--font-sans);
   font-size: var(--text-xs);
   font-weight: 600;
@@ -76,28 +81,13 @@
 }
 
 .grid-pill--neutral {
-  color: #8b93b8;
-  background: rgba(139, 147, 184, 0.14);
+  color: var(--c-text-muted);
+  background: var(--c-surface-3);
 }
 
 .grid-pill--text {
   color: var(--c-accent);
   background: var(--c-accent-quiet);
-}
-
-.grid-pill--reasoning {
-  color: #a371f7;
-  background: rgba(163, 113, 247, 0.14);
-}
-
-.grid-pill--tool {
-  color: #39b3a6;
-  background: rgba(57, 179, 166, 0.14);
-}
-
-.grid-pill--command {
-  color: #d8973c;
-  background: rgba(216, 151, 60, 0.14);
 }
 
 .grid-pill--warn {
@@ -108,11 +98,6 @@
 .grid-pill--error {
   color: var(--c-danger);
   background: rgba(248, 81, 73, 0.16);
-}
-
-.grid-pill--file {
-  color: #b366d9;
-  background: rgba(179, 102, 217, 0.14);
 }
 
 /* The muted NULL-style pill for an empty detail or unknown ts. */

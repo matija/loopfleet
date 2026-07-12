@@ -1,13 +1,11 @@
-// Task tab: a single task opened from the plan tree, focused. A per-tab
-// `CommandBar` at the top hosts the task pill, the agent "Connected"/"missing"
-// status pill, and the relocated launch control; the derived `TaskStatus`, task
-// text, and review-queue banner sit below. Reuses `LaunchControl` from the plan
-// body so launch logic lives in one place.
+// Task tab: a single task opened from the plan tree. A compact toolbar keeps its
+// status, plan, and launch controls together; task text and review state follow.
+// Reuses `LaunchControl` from the plan body so launch logic lives in one place.
 
 import { useCallback, useEffect, useState } from "react";
 import { agentStatus, getSettings, planOverview } from "../commands";
+import { normalizeDisplayText } from "../displayText";
 import type { AgentStatus, PlanView as Plan, Settings } from "../types";
-import { CommandBar } from "./CommandBar";
 import {
   LaunchControl,
   STATUS_LABEL,
@@ -70,22 +68,15 @@ export function TaskTab({
   }
 
   const review = task.status === "completed-unaccepted";
-  // The pill's agent is the launch default (settings, falling back to the first
-  // installed CLI, then the raw default so an all-missing setup still names one).
-  const preferred =
-    settings && installed.includes(settings.default_agent)
-      ? settings.default_agent
-      : (installed[0] ?? settings?.default_agent);
   return (
     <div className="task-tab">
-      <CommandBar
-        task={task.text}
-        agent={
-          preferred
-            ? { name: preferred, connected: installed.includes(preferred) }
-            : undefined
-        }
-      >
+      <div className="task-tab__toolbar">
+        <div className="task-tab__meta">
+          <span className={`task-badge task-badge--${task.status}`}>
+            {STATUS_LABEL[task.status]}
+          </span>
+          <span className="task-tab__plan">{plan.title ?? plan.file_path}</span>
+        </div>
         <LaunchControl
           projectId={projectId}
           taskAnchor={task.anchor}
@@ -96,20 +87,14 @@ export function TaskTab({
             onLaunch({ runId, taskText: task.text, agent })
           }
         />
-      </CommandBar>
-      <div className="task-tab__meta">
-        <span className={`task-badge task-badge--${task.status}`}>
-          {STATUS_LABEL[task.status]}
-        </span>
-        <span className="task-tab__plan">{plan.title ?? plan.file_path}</span>
       </div>
+      <h3 className="task-tab__text">{normalizeDisplayText(task.text)}</h3>
       {review && (
         <div className="review-banner" role="status">
           This run is awaiting review — compare its diff and use one, or keep
           iterating.
         </div>
       )}
-      <p className="task-tab__text">{task.text}</p>
       {task.run_count > 0 && (
         <div className="task-tab__actions">
           <button

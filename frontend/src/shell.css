@@ -99,7 +99,7 @@
 }
 
 .sidebar__filter::placeholder {
-  color: var(--c-text-faint);
+  color: var(--c-text-muted);
 }
 
 .sidebar__filter:focus {
@@ -221,7 +221,6 @@
   width: 100%;
   text-align: left;
   border: 1px solid transparent;
-  border-left: 2px solid transparent;
   background: transparent;
   color: var(--c-text-muted);
   padding: var(--space-1) var(--space-2);
@@ -281,7 +280,7 @@
 
 /* Completed-unaccepted: surfaced loudly — the review queue. */
 .tree-item--review {
-  border-left-color: var(--c-warn);
+  background: rgba(210, 153, 34, 0.08);
 }
 
 .tree-item--review .tree-item__count {
@@ -300,7 +299,7 @@
 }
 
 .main__header {
-  padding: var(--space-5) var(--space-6) var(--space-4);
+  padding: var(--space-4) var(--space-5) var(--space-3);
   border-bottom: 1px solid var(--c-border);
 }
 
@@ -318,7 +317,7 @@
  * scroll on their own rather than the whole main pane. */
 
 .main__body {
-  padding: var(--space-6);
+  padding: var(--space-5);
 }
 
 /* Hosting the live run view: fill the pane so the view's internal event stream
@@ -328,6 +327,7 @@
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
+  padding: var(--space-3) var(--space-4);
 }
 
 .main__placeholder {

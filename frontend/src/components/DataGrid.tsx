@@ -20,27 +20,31 @@ type Pill = { label: string; tone: string };
 export function eventPill(e: NormalizedEvent): Pill {
   switch (e.kind) {
     case "turn_started":
-      return { label: "TurnStarted", tone: "neutral" };
+      return { label: "Start", tone: "neutral" };
     case "assistant_text":
-      return { label: "AssistantText", tone: "text" };
+      return { label: "Agent", tone: "text" };
     case "reasoning":
-      return { label: "Reasoning", tone: "reasoning" };
+      return { label: "Thinking", tone: "neutral" };
     case "tool_call":
-      return { label: "ToolCall", tone: "tool" };
+      return { label: "Tool", tone: "neutral" };
     case "tool_result":
-      return { label: "ToolResult", tone: e.ok ? "tool" : "error" };
+      return { label: "Result", tone: e.ok ? "neutral" : "error" };
     case "command_run":
-      return { label: "CommandRun", tone: "command" };
+      return { label: "Command", tone: "neutral" };
     case "turn_completed":
-      return { label: "TurnCompleted", tone: "neutral" };
+      return { label: "Complete", tone: "neutral" };
     case "needs_approval":
-      return { label: "NeedsApproval", tone: "warn" };
+      return { label: "Approval", tone: "warn" };
     case "failed":
-      return { label: "Failed", tone: "error" };
+      return { label: "Error", tone: "error" };
     case "ended":
-      return { label: "Ended", tone: "neutral" };
+      return { label: "End", tone: "neutral" };
     case "file_changed":
-      return { label: "FileChanged", tone: "file" };
+      return { label: "File", tone: "neutral" };
+    default: {
+      const exhaustive: never = e;
+      return exhaustive;
+    }
   }
 }
 
@@ -63,8 +67,14 @@ export function eventDetail(e: NormalizedEvent): string {
       return e.reason;
     case "file_changed":
       return e.path;
-    default:
+    case "turn_started":
+    case "needs_approval":
+    case "ended":
       return "";
+    default: {
+      const exhaustive: never = e;
+      return exhaustive;
+    }
   }
 }
 

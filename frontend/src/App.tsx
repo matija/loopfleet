@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { listProjects, stopRun } from "./commands";
+import { normalizeDisplayText } from "./displayText";
 import { onRunStatus } from "./events";
 import type { Project, RunStatus } from "./types";
 import { AppShell } from "./components/AppShell";
@@ -317,10 +318,14 @@ export default function App() {
       }
     >
       <Toasts toasts={toasts} onDismiss={dismissToast} />
-      <div className="main__header">
-        <h2>{headerFor(view, projects, runs).title}</h2>
-        <p>{headerFor(view, projects, runs).subtitle}</p>
-      </div>
+      {view.kind !== "run" && view.kind !== "compare" && (
+        <div className="main__header">
+          <h2>{headerFor(view, projects, runs).title}</h2>
+          {headerFor(view, projects, runs).subtitle && (
+            <p>{headerFor(view, projects, runs).subtitle}</p>
+          )}
+        </div>
+      )}
       <div
         className={`main__body${
           view.kind === "run" || view.kind === "compare"
@@ -456,13 +461,16 @@ function headerFor(
       };
     }
     case "task":
-      return { title: "Task", subtitle: v.taskText };
+      return { title: "Task", subtitle: "" };
     case "run": {
       const r = runs.find((x) => x.runId === v.runId);
-      return { title: "Run", subtitle: r ? r.taskText : "" };
+      return {
+        title: "Run",
+        subtitle: r ? normalizeDisplayText(r.taskText) : "",
+      };
     }
     case "compare":
-      return { title: "Compare", subtitle: v.taskText };
+      return { title: "Compare", subtitle: normalizeDisplayText(v.taskText) };
   }
 }
 

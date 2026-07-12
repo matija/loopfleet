@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { agentStatus, getSettings, launchRun, planOverview } from "../commands";
+import { normalizeDisplayText } from "../displayText";
 import type {
   AgentStatus,
   PlanView as Plan,
@@ -179,7 +180,9 @@ function TaskRow({
         <span className={`task-badge task-badge--${task.status}`}>
           {STATUS_LABEL[task.status]}
         </span>
-        <span className="task-row__text">{task.text}</span>
+        <span className="task-row__text">
+          {normalizeDisplayText(task.text)}
+        </span>
         {task.checked && (
           <span
             className="task-row__checked"
@@ -252,6 +255,11 @@ export function LaunchControl({
   }, [settings, iterations]);
 
   const noAgents = installed.length === 0;
+  const iterationCount = iterations || 1;
+
+  function changeIterations(delta: number) {
+    setIterations(Math.min(50, Math.max(1, iterationCount + delta)));
+  }
 
   async function launch() {
     setLaunching(true);
@@ -288,17 +296,32 @@ export function LaunchControl({
           </option>
         ))}
       </select>
-      <input
-        className="launch__iters"
-        type="number"
-        min={1}
-        max={50}
-        value={iterations}
-        disabled={noAgents}
-        onChange={(e) => setIterations(Number(e.target.value))}
-        aria-label="Iterations"
-        title="Max iterations"
-      />
+      <div className="launch__count" role="group" aria-label="Maximum passes">
+        <button
+          type="button"
+          className="launch__count-btn"
+          onClick={() => changeIterations(-1)}
+          disabled={noAgents || iterationCount <= 1}
+          aria-label="Decrease maximum passes"
+        >
+          −
+        </button>
+        <span className="launch__count-value" title="Maximum passes">
+          {iterationCount}
+          <span className="launch__count-label">
+            {iterationCount === 1 ? " pass" : " passes"}
+          </span>
+        </span>
+        <button
+          type="button"
+          className="launch__count-btn"
+          onClick={() => changeIterations(1)}
+          disabled={noAgents || iterationCount >= 50}
+          aria-label="Increase maximum passes"
+        >
+          +
+        </button>
+      </div>
       <button
         className="btn btn--accent launch__go"
         onClick={launch}

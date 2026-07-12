@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from "react";
 import { planOverview } from "../commands";
+import { normalizeDisplayText } from "../displayText";
 import type { PlanView as Plan } from "../types";
 
 /// What opening a task from the tree needs to push/focus its tab.
@@ -86,7 +87,9 @@ export function PlanTree({
                   className={`tree-item__dot tree-item__dot--${task.status}`}
                   title={task.status}
                 />
-                <span className="tree-item__text">{task.text}</span>
+                <span className="tree-item__text">
+                  {normalizeDisplayText(task.text)}
+                </span>
                 {task.run_count > 0 && (
                   <span
                     className="tree-item__count"

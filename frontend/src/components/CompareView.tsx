@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { compareTask, useRun } from "../commands";
+import { normalizeDisplayText } from "../displayText";
 import type {
   CompareView as Compare,
   RunCompare,
@@ -63,8 +64,11 @@ export function CompareView({
           ← Back
         </button>
         <div className="run-view__ident">
-          <span className="run-view__task" title={taskText}>
-            {taskText}
+          <span
+            className="run-view__task"
+            title={normalizeDisplayText(taskText)}
+          >
+            {normalizeDisplayText(taskText)}
           </span>
           <span className="run-view__meta">
             {compare ? compare.runs.length : "…"}{" "}

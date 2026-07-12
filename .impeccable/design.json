@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-13T00:24:00+02:00",
+  "title": "Design System: Loopfleet",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Control Indigo",
+        "canonical": "#6275f2",
+        "tonalRamp": ["#171a31", "#23294d", "#303a71", "#4250a2", "#6275f2", "#8a98f7", "#b5befb", "#e3e6ff"]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Cockpit Canvas",
+        "canonical": "#0d0d10",
+        "tonalRamp": ["#0d0d10", "#131316", "#1a1a1f", "#232329", "#37373f", "#7d7d86", "#a0a0a8", "#ececee"]
+      },
+      "success": {
+        "role": "semantic",
+        "displayName": "Success Green",
+        "canonical": "#3fb950",
+        "tonalRamp": ["#102315", "#17351f", "#20502b", "#2a7139", "#3fb950", "#70ce7e", "#a8e4b0", "#e0f6e3"]
+      },
+      "warning": {
+        "role": "semantic",
+        "displayName": "Review Amber",
+        "canonical": "#d29922",
+        "tonalRamp": ["#291f0b", "#43320f", "#674c14", "#966d18", "#d29922", "#e2b457", "#efd18d", "#f9edcf"]
+      },
+      "danger": {
+        "role": "semantic",
+        "displayName": "Failure Red",
+        "canonical": "#f85149",
+        "tonalRamp": ["#301111", "#3a1d1d", "#642421", "#98332e", "#f85149", "#fa837d", "#fcb1ad", "#fee2e0"]
+      }
+    },
+    "typographyMeta": {
+      "title": { "displayName": "View title", "purpose": "Primary page and panel titles." },
+      "body": { "displayName": "Interface body", "purpose": "Tasks, explanations, and controls." },
+      "label": { "displayName": "Compact label", "purpose": "Metadata, statuses, and table headings." }
+    },
+    "shadows": [
+      {
+        "name": "overlay",
+        "value": "0 4px 16px rgba(0, 0, 0, 0.45)",
+        "purpose": "Command palettes, toasts, and other transient overlays only."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-change",
+        "value": "120ms ease",
+        "purpose": "Color, background, border, and shadow feedback without layout movement."
+      }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Quiet indigo action for launching or confirming work.",
+      "html": "<button class=\"ds-btn-primary\">Run</button>",
+      "css": ".ds-btn-primary { background: var(--c-accent-quiet); color: var(--c-text); border: 1px solid var(--c-border-strong); border-radius: var(--radius-md); padding: var(--space-1) var(--space-3); font: 600 var(--text-sm) var(--font-sans); transition: background-color 120ms ease, border-color 120ms ease; } .ds-btn-primary:hover { background: var(--c-surface-3); border-color: var(--c-accent); } .ds-btn-primary:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Neutral compact action for navigation and secondary operations.",
+      "html": "<button class=\"ds-btn-secondary\">Back</button>",
+      "css": ".ds-btn-secondary { background: var(--c-surface-2); color: var(--c-text-muted); border: 1px solid var(--c-border); border-radius: var(--radius-md); padding: var(--space-1) var(--space-3); font: var(--text-sm) var(--font-sans); transition: background-color 120ms ease, color 120ms ease; } .ds-btn-secondary:hover { background: var(--c-surface-3); color: var(--c-text); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Compact neutral field for filtering and short values.",
+      "html": "<input class=\"ds-input\" value=\"Filter events\" aria-label=\"Example input\">",
+      "css": ".ds-input { background: var(--c-surface); color: var(--c-text); border: 1px solid var(--c-border); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2); font: var(--text-sm) var(--font-sans); } .ds-input:hover { border-color: var(--c-border-strong); } .ds-input:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }"
+    },
+    {
+      "name": "Selected Navigation Row",
+      "kind": "nav",
+      "refersTo": "navigation-selected",
+      "description": "Stable selected state for project and task navigation.",
+      "html": "<button class=\"ds-nav\"><span class=\"ds-nav-dot\"></span>Active task</button>",
+      "css": ".ds-nav { display: flex; align-items: center; gap: var(--space-2); width: 220px; background: var(--c-accent-quiet); color: var(--c-text); border: 1px solid var(--c-border-strong); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); font: var(--text-sm) var(--font-sans); text-align: left; } .ds-nav-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c-accent); } .ds-nav:hover { background: var(--c-surface-3); } .ds-nav:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }"
+    },
+    {
+      "name": "Status Chip",
+      "kind": "chip",
+      "description": "Compact semantic state marker.",
+      "html": "<span class=\"ds-chip\">Running</span>",
+      "css": ".ds-chip { display: inline-block; background: var(--c-accent-quiet); color: var(--c-text); border-radius: var(--radius-sm); padding: 2px var(--space-2); font: 600 var(--text-xs) var(--font-sans); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Control Desk",
+    "overview": "Loopfleet is a compact desktop work surface for people supervising autonomous coding work. Tonal near-black layers establish hierarchy without decorative effects; precise spacing, stable controls, and familiar interaction patterns keep attention on tasks and agent state.",
+    "keyCharacteristics": [
+      "Compact, stable, and familiar controls",
+      "Tonal separation with fine borders",
+      "One restrained action accent",
+      "Semantic color only for actionable status",
+      "Dense logs with clear alignment and minimal padding"
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "Indigo is the only non-semantic accent and must remain under roughly ten percent of a screen.", "section": "colors" },
+      { "name": "The Semantic Color Rule", "body": "Green, amber, and red communicate success, warning, and danger only. They are forbidden as decoration.", "section": "colors" },
+      { "name": "The Syntax Boundary Rule", "body": "Markdown delimiters and implementation syntax never appear in user-facing task text.", "section": "typography" },
+      { "name": "The Tonal Layer Rule", "body": "Persistent panels never use shadows to compete for attention.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do preserve the near-black neutral hierarchy and use Control Indigo only for action, focus, and selection.",
+      "Do keep all hover and active states spatially stable.",
+      "Do use compact rows and familiar native input behavior.",
+      "Do normalize authored task text before displaying it.",
+      "Do meet WCAG 2.2 AA contrast and support reduced motion."
+    ],
+    "donts": [
+      "Don't build cluttered dashboards or use decorative SaaS styling.",
+      "Don't imitate a terminal for atmosphere.",
+      "Don't create gratuitous cards or nest padded containers.",
+      "Don't use saturated colors without semantic meaning.",
+      "Don't let hover effects move surrounding content.",
+      "Don't use awkward custom form controls where a familiar stepper or select is clearer.",
+      "Don't expose raw Markdown such as ** in task labels, headers, or run context."
+    ]
+  }
+}

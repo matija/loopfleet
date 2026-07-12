@@ -94,7 +94,7 @@
 .run-chip__status--queued,
 .run-chip__status--running {
   color: var(--c-accent);
-  background: rgba(76, 141, 255, 0.14);
+  background: var(--c-accent-quiet);
 }
 
 .run-chip__status--completed {

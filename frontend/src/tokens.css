@@ -17,10 +17,10 @@
   /* --- color: text --- */
   --c-text: #ececee;
   --c-text-muted: #a0a0a8;
-  --c-text-faint: #6a6a73;
+  --c-text-faint: #7d7d86;
 
   /* --- color: accent + semantic --- */
-  --c-accent: #5468f0;
+  --c-accent: #6275f2;
   --c-accent-quiet: #23294d;
   --c-ok: #3fb950;
   --c-warn: #d29922;
@@ -113,4 +113,15 @@ input {
 :focus-visible {
   outline: 2px solid var(--c-accent);
   outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
