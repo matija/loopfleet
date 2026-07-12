@@ -15,6 +15,7 @@ import { onRunEvent } from "../events";
 import type { AgentStatus, RunStatus } from "../types";
 import { CommandBar } from "./CommandBar";
 import { DataGrid, eventText, type GridRow } from "./DataGrid";
+import { RunSubtabs, type RunSubtab } from "./RunSubtabs";
 import type { ActiveRun } from "./RunDock";
 
 const ACTIVE: RunStatus[] = ["queued", "running"];
@@ -48,6 +49,10 @@ export function LiveRunView({
   const [filter, setFilter] = useState("");
   const [lastAt, setLastAt] = useState(() => Date.now());
   const [agents, setAgents] = useState<AgentStatus[]>([]);
+  // The Events / Diff / Files subtab. Panels stay mounted (toggled with
+  // `hidden`) so switching preserves each panel's scroll — and the one live
+  // `run_event` subscription lives on the parent effect, untouched by the switch.
+  const [subtab, setSubtab] = useState<RunSubtab>("events");
   const listRef = useRef<HTMLDivElement>(null);
 
   // One subscription per run. Reset on run change so switching runs starts clean.
@@ -81,11 +86,12 @@ export function LiveRunView({
       .catch(() => {});
   }, []);
 
-  // Pin the event stream to the newest event as it grows.
+  // Pin the event stream to the newest event as it grows, and re-pin when the
+  // Events subtab is re-shown (a hidden panel can't scroll while display:none).
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [events.length]);
+  }, [events.length, subtab]);
 
   const active = ACTIVE.includes(run.status);
   const q = filter.trim().toLowerCase();
@@ -134,8 +140,19 @@ export function LiveRunView({
         since={active ? lastAt : undefined}
       />
 
-      <div className="run-view__body">
-        <div className="run-view__stream" ref={listRef} aria-label="Run events">
+      <RunSubtabs
+        active={subtab}
+        onSelect={setSubtab}
+        counts={{ events: events.length, diff: null, files: files.length }}
+      />
+
+      <div className="run-view__panels">
+        <div
+          className="run-view__stream"
+          ref={listRef}
+          hidden={subtab !== "events"}
+          aria-label="Run events"
+        >
           {events.length === 0 ? (
             <p className="run-view__empty">
               {active
@@ -151,7 +168,18 @@ export function LiveRunView({
           )}
         </div>
 
-        <aside className="run-view__files" aria-label="Changed files">
+        <div className="run-view__stream" hidden={subtab !== "diff"}>
+          <p className="run-view__empty">
+            This is the live stream — per-iteration diffs appear here in the run
+            timeline once the run finishes and each pass is snapshotted.
+          </p>
+        </div>
+
+        <div
+          className="run-view__files"
+          hidden={subtab !== "files"}
+          aria-label="Changed files"
+        >
           <div className="run-view__files-head">
             Files changed
             <span className="run-view__files-count">{files.length}</span>
@@ -170,7 +198,7 @@ export function LiveRunView({
               ))}
             </ul>
           )}
-        </aside>
+        </div>
       </div>
     </section>
   );

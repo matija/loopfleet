@@ -14,6 +14,7 @@ import type {
 } from "../types";
 import type { ActiveRun } from "./RunDock";
 import { DataGrid } from "./DataGrid";
+import { RunSubtabs, type RunSubtab } from "./RunSubtabs";
 
 const STATUS_LABEL: Record<RunStatus, string> = {
   queued: "Queued",
@@ -32,6 +33,9 @@ export function RunTimeline({
 }) {
   const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The Events / Diff / Files subtab. All three panels stay mounted (toggled
+  // with `hidden`) so switching preserves each panel's scroll position.
+  const [subtab, setSubtab] = useState<RunSubtab>("events");
 
   useEffect(() => {
     setTimeline(null);
@@ -43,6 +47,11 @@ export function RunTimeline({
 
   // Prefer the persisted status once loaded; fall back to the dock's view.
   const status = (timeline?.status as RunStatus) ?? run.status;
+  const iterations = timeline?.iterations ?? [];
+  const eventCount = iterations.reduce((n, it) => n + it.events.length, 0);
+  // The Files subtab flattens every iteration's diff into a de-duplicated list
+  // of touched paths, in first-seen order.
+  const files = uniqueFiles(iterations);
 
   return (
     <section className="run-view">
@@ -63,33 +72,110 @@ export function RunTimeline({
         </div>
       </header>
 
-      <div className="run-view__stream run-view__stream--full" aria-label="Run timeline">
-        {error ? (
+      {error ? (
+        <div className="run-view__stream run-view__stream--full">
           <p className="panel__error">{error}</p>
-        ) : !timeline ? (
+        </div>
+      ) : !timeline ? (
+        <div className="run-view__stream run-view__stream--full">
           <p className="run-view__empty">Loading timeline…</p>
-        ) : timeline.iterations.length === 0 ? (
-          <p className="run-view__empty">
-            This run recorded no iterations. Nothing was snapshotted.
-          </p>
-        ) : (
-          <ol className="timeline">
-            {timeline.iterations.map((it) => (
-              <IterationRow key={it.n} iteration={it} />
-            ))}
-          </ol>
-        )}
-      </div>
+        </div>
+      ) : (
+        <>
+          <RunSubtabs
+            active={subtab}
+            onSelect={setSubtab}
+            counts={{
+              events: eventCount,
+              diff: iterations.length,
+              files: files.length,
+            }}
+          />
+
+          <div className="run-view__panels">
+            <div
+              className="run-view__stream"
+              hidden={subtab !== "events"}
+              aria-label="Run events"
+            >
+              {iterations.length === 0 ? (
+                <p className="run-view__empty">
+                  This run recorded no iterations. Nothing was snapshotted.
+                </p>
+              ) : (
+                <ol className="timeline">
+                  {iterations.map((it) => (
+                    <IterationEvents key={it.n} iteration={it} />
+                  ))}
+                </ol>
+              )}
+            </div>
+
+            <div
+              className="run-view__stream"
+              hidden={subtab !== "diff"}
+              aria-label="Run diffs"
+            >
+              {iterations.length === 0 ? (
+                <p className="run-view__empty">
+                  This run recorded no iterations. Nothing was snapshotted.
+                </p>
+              ) : (
+                <ol className="timeline">
+                  {iterations.map((it) => (
+                    <IterationDiff key={it.n} iteration={it} />
+                  ))}
+                </ol>
+              )}
+            </div>
+
+            <div
+              className="run-view__files"
+              hidden={subtab !== "files"}
+              aria-label="Changed files"
+            >
+              <div className="run-view__files-head">
+                Files changed
+                <span className="run-view__files-count">{files.length}</span>
+              </div>
+              {files.length === 0 ? (
+                <p className="run-view__empty">
+                  No file changes across this run's iterations.
+                </p>
+              ) : (
+                <ul className="file-list">
+                  {files.map((path) => (
+                    <li key={path} className="file-list__item" title={path}>
+                      {path}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </section>
   );
 }
 
-// One iteration: its events (in log order) and the diff it produced. The patch
-// is heavy, so it is collapsed behind a toggle; the per-file summary is always
-// shown.
-function IterationRow({ iteration }: { iteration: IterationView }) {
-  const { files } = iteration.diff ?? { files: [] };
-  const changed = files.length;
+// The de-duplicated set of paths any iteration's diff touched, first-seen order.
+function uniqueFiles(iterations: IterationView[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const it of iterations) {
+    for (const f of it.diff?.files ?? []) {
+      if (!seen.has(f.path)) {
+        seen.add(f.path);
+        out.push(f.path);
+      }
+    }
+  }
+  return out;
+}
+
+// One iteration's events (in log order) under the Events subtab.
+function IterationEvents({ iteration }: { iteration: IterationView }) {
   return (
     <li className="timeline__iter">
       <div className="timeline__iter-head">
@@ -97,16 +183,9 @@ function IterationRow({ iteration }: { iteration: IterationView }) {
         <span className="timeline__iter-meta">
           {iteration.events.length}{" "}
           {iteration.events.length === 1 ? "event" : "events"}
-          {changed > 0 && (
-            <>
-              {" · "}
-              {changed} {changed === 1 ? "file" : "files"}
-            </>
-          )}
         </span>
       </div>
-
-      {iteration.events.length > 0 && (
+      {iteration.events.length > 0 ? (
         <DataGrid
           rows={iteration.events.map((e) => ({
             seq: e.seq,
@@ -114,8 +193,25 @@ function IterationRow({ iteration }: { iteration: IterationView }) {
             event: e.event,
           }))}
         />
+      ) : (
+        <p className="timeline__no-diff">No events this iteration.</p>
       )}
+    </li>
+  );
+}
 
+// One iteration's diff (per-file summary + collapsible patch) under the Diff
+// subtab. The heavy patch text stays behind the `Diff` toggle.
+function IterationDiff({ iteration }: { iteration: IterationView }) {
+  const changed = iteration.diff?.files.length ?? 0;
+  return (
+    <li className="timeline__iter">
+      <div className="timeline__iter-head">
+        <span className="timeline__iter-n">Iteration {iteration.n}</span>
+        <span className="timeline__iter-meta">
+          {changed} {changed === 1 ? "file" : "files"}
+        </span>
+      </div>
       <Diff diff={iteration.diff} />
     </li>
   );

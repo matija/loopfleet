@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { listProjects, stopRun } from "./commands";
 import { onRunStatus } from "./events";
 import type { Project, RunStatus } from "./types";
@@ -19,7 +19,6 @@ import { RunDock, type ActiveRun } from "./components/RunDock";
 import { LiveRunView } from "./components/LiveRunView";
 import { RunTimeline } from "./components/RunTimeline";
 import { CompareView } from "./components/CompareView";
-import { TabStrip } from "./components/TabStrip";
 import { Toasts, useToasts } from "./components/Toasts";
 
 // A run streams live while active; once terminal, its persisted timeline (with
@@ -28,15 +27,16 @@ import { Toasts, useToasts } from "./components/Toasts";
 // timeline automatically when the run ends.
 const ACTIVE: RunStatus[] = ["queued", "running"];
 
-// --- Tab model ------------------------------------------------------------
+// --- View model ------------------------------------------------------------
 //
-// The workbench opens each task/run/compare as an independent, closeable tab
-// instead of the M7 mutually-exclusive `selectedRun` / `compareTarget` switch
-// (which could only ever show one thing). A pinned "Welcome" home is always the
-// first tab and cannot be closed. The TabStrip styling lands in the next task;
-// here the model + a functional tab bar wire the behavior.
-type WorkbenchTab =
-  | { kind: "welcome" }
+// The main pane shows exactly one view at a time, driven by a single `view`
+// state. Selecting a project opens its plan; opening a task / run / compare
+// replaces the current view; the in-view "← Back" control returns to the
+// selected project's plan (or the overview when no project is selected). The
+// sidebar's plan tree and the bottom run dock are the always-present navigators.
+
+type View =
+  | { kind: "overview" }
   | { kind: "plan"; projectId: string }
   | {
       kind: "task";
@@ -48,63 +48,13 @@ type WorkbenchTab =
   | { kind: "run"; runId: string }
   | { kind: "compare"; planId: string; taskAnchor: string; taskText: string };
 
-// Stable identity per tab: opening the same object focuses its tab rather than
-// stacking a duplicate.
-function tabId(t: WorkbenchTab): string {
-  switch (t.kind) {
-    case "welcome":
-      return "welcome";
-    case "plan":
-      return `plan:${t.projectId}`;
-    case "task":
-      return `task:${t.planId}:${t.taskAnchor}`;
-    case "run":
-      return `run:${t.runId}`;
-    case "compare":
-      return `compare:${t.planId}:${t.taskAnchor}`;
-  }
-}
-
-type TabState = { tabs: WorkbenchTab[]; activeId: string };
-type TabAction =
-  | { type: "open"; tab: WorkbenchTab }
-  | { type: "focus"; id: string }
-  | { type: "close"; id: string };
-
-function tabReducer(state: TabState, action: TabAction): TabState {
-  switch (action.type) {
-    case "focus":
-      return { ...state, activeId: action.id };
-    case "open": {
-      const id = tabId(action.tab);
-      const exists = state.tabs.some((t) => tabId(t) === id);
-      return {
-        tabs: exists ? state.tabs : [...state.tabs, action.tab],
-        activeId: id,
-      };
-    }
-    case "close": {
-      const idx = state.tabs.findIndex((t) => tabId(t) === action.id);
-      // idx <= 0 means not found or the pinned Welcome tab (always index 0).
-      if (idx <= 0) return state;
-      const tabs = state.tabs.filter((_, i) => i !== idx);
-      // Closing the active tab falls back to its left neighbor (Welcome at
-      // worst), which always exists since Welcome is pinned at index 0.
-      const activeId =
-        state.activeId === action.id
-          ? tabId(state.tabs[idx - 1])
-          : state.activeId;
-      return { tabs, activeId };
-    }
-  }
-}
-
-// Composition root for the workbench. Loads registered projects into the
-// sidebar (connections analog) and hosts a browser-style tab surface: the
-// active tab drives the main pane, the dock spans the bottom.
+// Composition root. Loads registered projects into the sidebar (connections
+// analog) and hosts a single main pane whose content follows `view`. The dock
+// spans the bottom as the global run surface.
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [view, setView] = useState<View>({ kind: "overview" });
   // Live "filter tables…"-style narrowing of the connections list.
   const [projectFilter, setProjectFilter] = useState("");
   // App-level command errors surface as transient toasts, not a persistent
@@ -113,10 +63,6 @@ export default function App() {
   // Session-scoped registry of launched runs (the global run surface). Runs do
   // not survive a restart in v1, so this is complete for the session.
   const [runs, setRuns] = useState<ActiveRun[]>([]);
-  const [tabState, dispatch] = useReducer(tabReducer, {
-    tabs: [{ kind: "welcome" }],
-    activeId: "welcome",
-  });
   // Bumped to force the plan overview to refetch after a run is accepted (its
   // derived TaskStatus changes).
   const [planNonce, setPlanNonce] = useState(0);
@@ -125,7 +71,11 @@ export default function App() {
     listProjects()
       .then((ps) => {
         setProjects(ps);
-        setSelectedId((cur) => cur ?? ps[0]?.id ?? null);
+        setSelectedId((cur) => {
+          const next = cur ?? ps[0]?.id ?? null;
+          if (next) setView({ kind: "plan", projectId: next });
+          return next;
+        });
       })
       .catch((e) => pushError(String(e)));
   }, [pushError]);
@@ -160,10 +110,20 @@ export default function App() {
         (p) => p.id === selectedId || p.repo_path.toLowerCase().includes(q),
       )
     : projects;
-  const { tabs, activeId } = tabState;
-  const activeTab = tabs.find((t) => tabId(t) === activeId) ?? tabs[0];
-  // The dock highlights whichever run tab is currently active.
-  const selectedRunId = activeTab.kind === "run" ? activeTab.runId : null;
+  // The dock highlights whichever run is currently shown in the main pane.
+  const selectedRunId = view.kind === "run" ? view.runId : null;
+
+  // Return to the selected project's plan, or the overview when nothing is
+  // selected. Used by the in-view "← Back" controls.
+  const goBack = useCallback(() => {
+    setView((cur) => {
+      // Already on a plan/overview — nothing to go back to.
+      if (cur.kind === "plan" || cur.kind === "overview") return cur;
+      return selectedId
+        ? { kind: "plan", projectId: selectedId }
+        : { kind: "overview" };
+    });
+  }, [selectedId]);
 
   // A launched run joins the dock, tagged with the project it ran against.
   const onLaunch = useCallback(
@@ -183,14 +143,20 @@ export default function App() {
     [selected],
   );
 
+  // Selecting a project opens its plan in the main pane.
+  function selectProject(id: string) {
+    setSelectedId(id);
+    setView({ kind: "plan", projectId: id });
+  }
+
   // A newly registered project joins the list, becomes the selection, and opens
-  // its plan tab.
+  // its plan.
   function onAdded(p: Project) {
     setProjects((prev) =>
       prev.some((x) => x.id === p.id) ? prev : [...prev, p],
     );
     setSelectedId(p.id);
-    dispatch({ type: "open", tab: { kind: "plan", projectId: p.id } });
+    setView({ kind: "plan", projectId: p.id });
   }
 
   return (
@@ -199,13 +165,13 @@ export default function App() {
         <RunDock
           runs={runs}
           selectedRunId={selectedRunId}
-          onOpen={(id) => dispatch({ type: "open", tab: { kind: "run", runId: id } })}
+          onOpen={(id) => setView({ kind: "run", runId: id })}
           onStop={(id) => {
             stopRun(id).catch((e) => pushError(String(e)));
           }}
           onDismiss={(id) => {
             setRuns((prev) => prev.filter((r) => r.runId !== id));
-            dispatch({ type: "close", id: `run:${id}` });
+            if (view.kind === "run" && view.runId === id) goBack();
           }}
         />
       }
@@ -240,13 +206,7 @@ export default function App() {
                   <button
                     className="project-item"
                     aria-current={p.id === selectedId}
-                    onClick={() => {
-                      setSelectedId(p.id);
-                      dispatch({
-                        type: "open",
-                        tab: { kind: "plan", projectId: p.id },
-                      });
-                    }}
+                    onClick={() => selectProject(p.id)}
                   >
                     <span
                       className={`project-item__dot${
@@ -270,18 +230,17 @@ export default function App() {
                       filter={projectFilter}
                       nonce={planNonce}
                       activeTaskId={
-                        activeTab.kind === "task" ? tabId(activeTab) : null
+                        view.kind === "task"
+                          ? `task:${view.planId}:${view.taskAnchor}`
+                          : null
                       }
                       onOpenTask={(t) =>
-                        dispatch({
-                          type: "open",
-                          tab: {
-                            kind: "task",
-                            projectId: p.id,
-                            planId: t.planId,
-                            taskAnchor: t.taskAnchor,
-                            taskText: t.taskText,
-                          },
+                        setView({
+                          kind: "task",
+                          projectId: p.id,
+                          planId: t.planId,
+                          taskAnchor: t.taskAnchor,
+                          taskText: t.taskText,
                         })
                       }
                     />
@@ -294,85 +253,69 @@ export default function App() {
       }
     >
       <Toasts toasts={toasts} onDismiss={dismissToast} />
-      <TabStrip
-        tabs={tabs.map((t) => ({
-          id: tabId(t),
-          kind: t.kind,
-          label: tabLabel(t, projects, runs),
-        }))}
-        activeId={activeId}
-        onFocus={(id) => dispatch({ type: "focus", id })}
-        onClose={(id) => dispatch({ type: "close", id })}
-      />
       <div className="main__header">
-        <h2>{headerFor(activeTab, projects, runs).title}</h2>
-        <p>{headerFor(activeTab, projects, runs).subtitle}</p>
+        <h2>{headerFor(view, projects, runs).title}</h2>
+        <p>{headerFor(view, projects, runs).subtitle}</p>
       </div>
       <div
         className={`main__body${
-          activeTab.kind === "run" || activeTab.kind === "compare"
+          view.kind === "run" || view.kind === "compare"
             ? " main__body--run"
             : ""
         }`}
       >
-        {activeTab.kind === "run" ? (
-          <RunTab
-            runId={activeTab.runId}
+        {view.kind === "run" ? (
+          <RunPane
+            runId={view.runId}
             runs={runs}
             onStop={(id) => {
               stopRun(id).catch((e) => pushError(String(e)));
             }}
-            onClose={() => dispatch({ type: "close", id: `run:${activeTab.runId}` })}
+            onClose={goBack}
           />
-        ) : activeTab.kind === "compare" ? (
+        ) : view.kind === "compare" ? (
           <CompareView
-            key={tabId(activeTab)}
-            planId={activeTab.planId}
-            taskAnchor={activeTab.taskAnchor}
-            taskText={activeTab.taskText}
-            onClose={() => dispatch({ type: "close", id: tabId(activeTab) })}
+            key={`compare:${view.planId}:${view.taskAnchor}`}
+            planId={view.planId}
+            taskAnchor={view.taskAnchor}
+            taskText={view.taskText}
+            onClose={goBack}
             onAccepted={() => setPlanNonce((n) => n + 1)}
           />
-        ) : activeTab.kind === "task" ? (
+        ) : view.kind === "task" ? (
           <TaskTab
-            key={tabId(activeTab)}
-            projectId={activeTab.projectId}
-            planId={activeTab.planId}
-            taskAnchor={activeTab.taskAnchor}
+            key={`task:${view.planId}:${view.taskAnchor}`}
+            projectId={view.projectId}
+            planId={view.planId}
+            taskAnchor={view.taskAnchor}
             nonce={planNonce}
             onLaunch={onLaunch}
             onLaunched={() => setPlanNonce((n) => n + 1)}
             onCompare={(target: CompareTarget) =>
-              dispatch({
-                type: "open",
-                tab: {
+              setView({
+                kind: "compare",
+                planId: target.planId,
+                taskAnchor: target.taskAnchor,
+                taskText: target.taskText,
+              })
+            }
+          />
+        ) : view.kind === "plan" ? (
+          <>
+            <PlanView
+              key={`${view.projectId}:${planNonce}`}
+              projectId={view.projectId}
+              onLaunch={onLaunch}
+              onCompare={(target: CompareTarget) =>
+                setView({
                   kind: "compare",
                   planId: target.planId,
                   taskAnchor: target.taskAnchor,
                   taskText: target.taskText,
-                },
-              })
-            }
-          />
-        ) : activeTab.kind === "plan" ? (
-          <>
-            <PlanView
-              key={`${activeTab.projectId}:${planNonce}`}
-              projectId={activeTab.projectId}
-              onLaunch={onLaunch}
-              onCompare={(target: CompareTarget) =>
-                dispatch({
-                  type: "open",
-                  tab: {
-                    kind: "compare",
-                    planId: target.planId,
-                    taskAnchor: target.taskAnchor,
-                    taskText: target.taskText,
-                  },
                 })
               }
             />
-            <SandboxOverrides projectId={activeTab.projectId} />
+            <SandboxOverrides projectId={view.projectId} />
           </>
         ) : (
           <>
@@ -391,11 +334,11 @@ export default function App() {
   );
 }
 
-// A run tab hosts the live view while the run is active, then flips to the
+// The run pane hosts the live view while the run is active, then flips to the
 // persisted timeline once terminal. The run is looked up from the session
-// registry by id; a dismissed run closes its own tab, so a miss is only a
-// transient race and renders a quiet fallback.
-function RunTab({
+// registry by id; a dismissed run navigates back, so a miss is only a transient
+// race and renders a quiet fallback.
+function RunPane({
   runId,
   runs,
   onStop,
@@ -417,63 +360,35 @@ function RunTab({
   );
 }
 
-// Short label shown on a tab.
-function tabLabel(
-  t: WorkbenchTab,
-  projects: Project[],
-  runs: ActiveRun[],
-): string {
-  switch (t.kind) {
-    case "welcome":
-      return "Welcome";
-    case "plan": {
-      const p = projects.find((x) => x.id === t.projectId);
-      return p ? repoName(p.repo_path) : "Plan";
-    }
-    case "task":
-      return truncate(t.taskText);
-    case "run": {
-      const r = runs.find((x) => x.runId === t.runId);
-      return r ? truncate(r.taskText) : "Run";
-    }
-    case "compare":
-      return `Compare · ${truncate(t.taskText)}`;
-  }
-}
-
-// Header title/subtitle for the active tab's context.
+// Header title/subtitle for the active view's context.
 function headerFor(
-  t: WorkbenchTab,
+  v: View,
   projects: Project[],
   runs: ActiveRun[],
 ): { title: string; subtitle: string } {
-  switch (t.kind) {
-    case "welcome":
+  switch (v.kind) {
+    case "overview":
       return {
         title: "Overview",
         subtitle:
           "Supervise looping coding agents in sandboxed git worktrees.",
       };
     case "plan": {
-      const p = projects.find((x) => x.id === t.projectId);
+      const p = projects.find((x) => x.id === v.projectId);
       return {
         title: p ? repoName(p.repo_path) : "Plan",
         subtitle: p ? p.repo_path : "",
       };
     }
     case "task":
-      return { title: "Task", subtitle: t.taskText };
+      return { title: "Task", subtitle: v.taskText };
     case "run": {
-      const r = runs.find((x) => x.runId === t.runId);
+      const r = runs.find((x) => x.runId === v.runId);
       return { title: "Run", subtitle: r ? r.taskText : "" };
     }
     case "compare":
-      return { title: "Compare", subtitle: t.taskText };
+      return { title: "Compare", subtitle: v.taskText };
   }
-}
-
-function truncate(s: string, n = 32): string {
-  return s.length > n ? `${s.slice(0, n - 1)}…` : s;
 }
 
 // The trailing path segment — the connection row's title.

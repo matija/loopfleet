@@ -60,6 +60,7 @@
 
   /* --- layout --- */
   --sidebar-w: 268px;
+  --titlebar-h: 38px;
   --shadow-1: 0 4px 16px rgba(0, 0, 0, 0.45);
 }
 

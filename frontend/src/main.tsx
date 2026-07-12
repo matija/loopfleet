@@ -7,7 +7,6 @@ import "@fontsource/readex-pro/600.css";
 import "@fontsource/readex-pro/700.css";
 import "./tokens.css";
 import "./shell.css";
-import "./tabs.css";
 import "./commandbar.css";
 import "./panels.css";
 import "./plan.css";

@@ -4,21 +4,52 @@
 .app-shell {
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: var(--titlebar-h) minmax(0, 1fr) auto;
   height: 100%;
 }
 
-.sidebar {
-  grid-row: 1 / 2;
+/* --- top window bar ---
+ * Replaces the out-of-place native macOS title bar with a bar drawn in the
+ * app's own tokens. The window uses an overlay title bar (tauri.conf.json),
+ * so the native traffic lights still sit over the left of this bar; the brand
+ * is centered to never collide with them. The whole bar is a drag region. */
+.titlebar {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--titlebar-h);
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
 }
 
-.main {
-  grid-row: 1 / 2;
+.titlebar__brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.titlebar__name {
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--c-text);
+}
+
+.titlebar__sub {
+  font-size: var(--text-xs);
+  color: var(--c-text-faint);
 }
 
 /* --- sidebar --- */
 
 .sidebar {
+  grid-column: 1;
+  grid-row: 2;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -26,22 +57,9 @@
   border-right: 1px solid var(--c-border);
 }
 
-.sidebar__brand {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  padding: var(--space-4) var(--space-4) var(--space-3);
-  border-bottom: 1px solid var(--c-border);
-}
-
-.sidebar__brand h1 {
-  font-size: var(--text-md);
-  letter-spacing: -0.01em;
-}
-
-.sidebar__brand span {
-  font-size: var(--text-xs);
-  color: var(--c-text-faint);
+.main {
+  grid-column: 2;
+  grid-row: 2;
 }
 
 .sidebar__section-head {
@@ -295,7 +313,8 @@
   color: var(--c-text-muted);
 }
 
-/* The styled workbench tab strip lives in tabs.css (TabStrip component). */
+/* The run/task/compare views fill the pane so their internal event streams
+ * scroll on their own rather than the whole main pane. */
 
 .main__body {
   padding: var(--space-6);
