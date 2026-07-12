@@ -186,6 +186,36 @@ Each task below is sized for one agent iteration. Run with ralph-sandbox-exec or
 - [ ] Codesign + notarize (Developer ID, existing Esploro pipeline), DMG build
 - [ ] Run the naming workflow; register domain; replace working name
 
+### M7 — Real frontend (React) and a usable run surface
+
+The M0–M6 backend is done and the full Tauri command surface exists (`launch_run`, `stop_run`, `use_run`, `run_timeline`, `compare_task`, `plan_overview`, settings, sandbox overrides, `agent_status`). What shipped for the UI is a single hand-written 1,338-line static `dist/index.html` (vanilla JS building DOM by hand, one inline `<style>`, `withGlobalTauri`, no build step). Two problems, both frontend-only:
+
+1. **The app looks like it can't run anything.** The only launch affordance is per-task and rendered `if (!t.checked)`. A "done" PRD has every task checked, so zero Run buttons appear. The core feature is gated behind exactly the state the plan is in when you open it. There is also no global view of active/running runs.
+2. **It's dated and unmaintainable.** No component model, no types, no design system.
+
+This milestone rebuilds the WebView as a modern React app on the *unchanged* Rust backend. No Rust command signatures change; if a view needs data the backend doesn't expose, note it — don't silently widen the command surface.
+
+Decisions:
+- **Stack:** Vite + React + TypeScript. Drop `withGlobalTauri`; use `@tauri-apps/api` (`invoke`, `event.listen`) directly. `tauri.conf.json` gets `build.devUrl` + `beforeDevCommand`/`beforeBuildCommand`; `frontendDist` points at the Vite build output. Add `package.json`; gitignore `node_modules`/build output.
+- **Types are hand-maintained** from the Rust structs in `store`/`core` and the `NormalizedEvent` enum — no codegen tool in v1 (small, stable surface). One `commands.ts` typed wrapper over `invoke`; one `events.ts` for the `run_event`/`run_status` streams.
+- **Launch is always available.** Decouple the run affordance from `checked`. `checked` still gates *derived task status*, never the ability to start a run.
+- Pure frontend milestone: no new adapters, no sandbox/git changes.
+
+Tasks (each sized for one agent iteration):
+- [ ] Scaffold Vite + React + TS under `src/` (or `frontend/`); wire `tauri.conf.json` (`devUrl`, before-dev/build commands, `frontendDist` → build dir); drop `withGlobalTauri`; add `package.json` + gitignore. → verify: `tauri dev` boots, project list loads via `@tauri-apps/api`.
+- [ ] `types.ts` mirroring the command payloads (`Project`, `Settings`, `AgentStatus`, `PlanView`, `Task`, `RunSummary`, `RunTimeline`, `CompareView`, `NormalizedEvent`, `UseRunResult`) + typed `commands.ts`/`events.ts` wrappers. → verify: `tsc` clean, one command + one live event round-trip.
+- [ ] App shell + design system: sidebar (projects) / main pane layout, design tokens (color, type scale, spacing, radii), the honest **sandbox-boundary panel** the PRD calls a trust feature. → verify: matches an agreed reference; the "writes-confined, reads/network open" statement is visible.
+- [ ] Projects + Agents-status + Settings as components (add-project dialog, agent availability/version-drift chips, settings form, per-project sandbox overrides).
+- [ ] Plan view: task list with derived `TaskStatus` badges; **launch control (agent + iterations + Run) on every task regardless of `checked`**; completed-unaccepted surfaced loudly (review queue).
+- [ ] Global run surface: a persistent dock/panel listing active runs across projects, each opening its live view — the always-present "you can run agents here" entry point. → verify: launch, minimize the plan, the run is still visible and stoppable.
+- [ ] Live run view component: `run_event`/`run_status` subscription, streaming events, live file-changes, Stop.
+- [ ] Run timeline: iterations as rows, per-iteration events + diff/patch viewer.
+- [ ] Compare view: runs side by side, final-ref diffs, "use this run" → user-named target branch.
+- [ ] Polish pass: empty/loading/error states, toast for command errors, keyboard focus, responsive down to the 1200×800 window. → verify: cold open with no projects reads as intentional, not broken.
+- [ ] Delete the legacy static `dist/index.html` once parity is reached. → verify: no dead references; `tauri build` produces a working bundle.
+
+Success criteria: from a fresh checkout, `tauri dev` boots the React app; a run can be launched on a task whose PRD checkbox is already checked; an active run is visible and stoppable from a surface that does not depend on scrolling into a specific task; the sandbox boundary is stated in the UI. Backend crates and Tauri command signatures are byte-for-byte unchanged.
+
 ### Post-v1 (recorded, not planned)
 - Codex adapter (`codex exec --json`), opencode adapter (HTTP/SSE, validates transport-agnostic trait)
 - Interactive session transports (M5): Claude `--input-format stream-json`, pi `--mode rpc`, cursor-agent (transport TBD)
