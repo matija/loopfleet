@@ -91,7 +91,7 @@ and an environment badge.
   grouped like the DB object tree; clicking a task opens/focuses its tab. Keep the
   derived `TaskStatus` badge; surface completed-unaccepted loudly (the review
   queue). → verify: counts match the overview; a click opens a tab.
-- [ ] **Per-tab command bar.** A `CommandBar` for run/task tabs: a task-name pill,
+- [x] **Per-tab command bar.** A `CommandBar` for run/task tabs: a task-name pill,
   a `WHERE …`-style client-side **event filter**, the **Run / Re-run** control
   (agent + iterations), an agent **status pill** ("Connected" / "missing" from
   `agent_status`), and a live **"Xs ago"** stamp on the active run. This relocates

@@ -1,12 +1,13 @@
-// Task tab: a single task opened from the plan tree, focused. Shows the derived
-// `TaskStatus`, the task text, the review-queue banner when completed-unaccepted,
-// and the launch control (relocation of the launch control into a command bar is
-// the next task). Reuses `LaunchControl` from the plan body so launch logic lives
-// in one place.
+// Task tab: a single task opened from the plan tree, focused. A per-tab
+// `CommandBar` at the top hosts the task pill, the agent "Connected"/"missing"
+// status pill, and the relocated launch control; the derived `TaskStatus`, task
+// text, and review-queue banner sit below. Reuses `LaunchControl` from the plan
+// body so launch logic lives in one place.
 
 import { useCallback, useEffect, useState } from "react";
 import { agentStatus, getSettings, planOverview } from "../commands";
 import type { AgentStatus, PlanView as Plan, Settings } from "../types";
+import { CommandBar } from "./CommandBar";
 import {
   LaunchControl,
   STATUS_LABEL,
@@ -69,8 +70,33 @@ export function TaskTab({
   }
 
   const review = task.status === "completed-unaccepted";
+  // The pill's agent is the launch default (settings, falling back to the first
+  // installed CLI, then the raw default so an all-missing setup still names one).
+  const preferred =
+    settings && installed.includes(settings.default_agent)
+      ? settings.default_agent
+      : (installed[0] ?? settings?.default_agent);
   return (
     <div className="task-tab">
+      <CommandBar
+        task={task.text}
+        agent={
+          preferred
+            ? { name: preferred, connected: installed.includes(preferred) }
+            : undefined
+        }
+      >
+        <LaunchControl
+          projectId={projectId}
+          taskAnchor={task.anchor}
+          installed={installed}
+          settings={settings}
+          onLaunched={onLaunched}
+          onLaunch={(runId, agent) =>
+            onLaunch({ runId, taskText: task.text, agent })
+          }
+        />
+      </CommandBar>
       <div className="task-tab__meta">
         <span className={`task-badge task-badge--${task.status}`}>
           {STATUS_LABEL[task.status]}
@@ -84,18 +110,8 @@ export function TaskTab({
         </div>
       )}
       <p className="task-tab__text">{task.text}</p>
-      <div className="task-tab__actions">
-        <LaunchControl
-          projectId={projectId}
-          taskAnchor={task.anchor}
-          installed={installed}
-          settings={settings}
-          onLaunched={onLaunched}
-          onLaunch={(runId, agent) =>
-            onLaunch({ runId, taskText: task.text, agent })
-          }
-        />
-        {task.run_count > 0 && (
+      {task.run_count > 0 && (
+        <div className="task-tab__actions">
           <button
             className="task-row__compare"
             onClick={() =>
@@ -105,8 +121,8 @@ export function TaskTab({
           >
             {task.run_count} {task.run_count === 1 ? "run" : "runs"} · compare
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

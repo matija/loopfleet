@@ -10,8 +10,10 @@
 // persisted log via `run_timeline`. Here we stream; there we replay.
 
 import { useEffect, useRef, useState } from "react";
+import { agentStatus } from "../commands";
 import { onRunEvent } from "../events";
-import type { NormalizedEvent, RunStatus } from "../types";
+import type { AgentStatus, NormalizedEvent, RunStatus } from "../types";
+import { CommandBar } from "./CommandBar";
 import type { ActiveRun } from "./RunDock";
 
 const ACTIVE: RunStatus[] = ["queued", "running"];
@@ -39,14 +41,22 @@ export function LiveRunView({
   // Changed files accumulate as a set (an agent touches a path repeatedly); we
   // keep insertion order for a stable list.
   const [files, setFiles] = useState<string[]>([]);
+  // Client-side `WHERE …` event filter and the last-activity stamp the command
+  // bar's "Xs ago" freshness ticks against.
+  const [filter, setFilter] = useState("");
+  const [lastAt, setLastAt] = useState(() => Date.now());
+  const [agents, setAgents] = useState<AgentStatus[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
 
   // One subscription per run. Reset on run change so switching runs starts clean.
   useEffect(() => {
     setEvents([]);
     setFiles([]);
+    setFilter("");
+    setLastAt(Date.now());
     const un = onRunEvent((p) => {
       if (p.run_id !== run.runId) return;
+      setLastAt(Date.now());
       if (p.event.kind === "file_changed") {
         const path = p.event.path;
         setFiles((prev) => (prev.includes(path) ? prev : [...prev, path]));
@@ -59,6 +69,13 @@ export function LiveRunView({
     };
   }, [run.runId]);
 
+  // Agent availability drives the command bar's Connected/missing pill.
+  useEffect(() => {
+    agentStatus()
+      .then(setAgents)
+      .catch(() => {});
+  }, []);
+
   // Pin the event stream to the newest event as it grows.
   useEffect(() => {
     const el = listRef.current;
@@ -66,6 +83,10 @@ export function LiveRunView({
   }, [events.length]);
 
   const active = ACTIVE.includes(run.status);
+  const q = filter.trim().toLowerCase();
+  const shown = q
+    ? events.filter((e) => eventText(e.event).toLowerCase().includes(q))
+    : events;
 
   return (
     <section className="run-view">
@@ -76,9 +97,6 @@ export function LiveRunView({
         <div className="run-view__ident">
           <span className={`run-view__status run-view__status--${run.status}`}>
             {STATUS_LABEL[run.status]}
-          </span>
-          <span className="run-view__task" title={run.taskText}>
-            {run.taskText}
           </span>
           <span className="run-view__meta">
             {run.agent} · {run.projectName}
@@ -95,6 +113,22 @@ export function LiveRunView({
         )}
       </header>
 
+      <CommandBar
+        task={run.taskText}
+        filter={{ value: filter, onChange: setFilter }}
+        agent={
+          agents.length
+            ? {
+                name: run.agent,
+                connected: agents.some(
+                  (a) => a.key === run.agent && a.installed,
+                ),
+              }
+            : undefined
+        }
+        since={active ? lastAt : undefined}
+      />
+
       <div className="run-view__body">
         <div className="run-view__stream" ref={listRef} aria-label="Run events">
           {events.length === 0 ? (
@@ -103,9 +137,13 @@ export function LiveRunView({
                 ? "Waiting for events… they stream in as the agent works."
                 : "No events streamed while this view was open."}
             </p>
+          ) : shown.length === 0 ? (
+            <p className="run-view__empty">
+              No events match “{filter.trim()}”.
+            </p>
           ) : (
             <ul className="event-list">
-              {events.map((e) => (
+              {shown.map((e) => (
                 <EventRow key={e.seq} event={e.event} />
               ))}
             </ul>
@@ -194,6 +232,28 @@ export function EventRow({ event }: { event: NormalizedEvent }) {
       // In the live view this is routed to the files panel and never reaches
       // here; in the timeline (no side panel) it renders inline.
       return <Row kind="file" label="File changed" body={event.path} />;
+  }
+}
+
+// The searchable text for the command bar's `WHERE …` filter: the event kind
+// plus whatever payload it carries, so a query matches on type or content.
+function eventText(e: NormalizedEvent): string {
+  switch (e.kind) {
+    case "assistant_text":
+    case "reasoning":
+      return `${e.kind} ${e.text}`;
+    case "tool_call":
+      return `${e.kind} ${e.name} ${e.input_excerpt}`;
+    case "tool_result":
+      return `${e.kind} ${e.output_excerpt}`;
+    case "command_run":
+      return `${e.kind} ${e.cmd}`;
+    case "failed":
+      return `${e.kind} ${e.reason}`;
+    case "file_changed":
+      return `${e.kind} ${e.path}`;
+    default:
+      return e.kind;
   }
 }
 
