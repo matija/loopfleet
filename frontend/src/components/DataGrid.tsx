@@ -122,3 +122,86 @@ export function DataGrid({ rows }: { rows: GridRow[] }) {
     </div>
   );
 }
+
+/// Format a millisecond span the way a database-client footer times a query:
+/// `42ms`, `1.3s`, `2m 05s`, `1h 04m`. `null`/negative (no usable span) → `—`.
+export function formatDuration(ms: number | null): string {
+  if (ms === null || ms < 0 || !Number.isFinite(ms)) return "—";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  const totalSecs = Math.round(s);
+  const m = Math.floor(totalSecs / 60);
+  const rs = totalSecs % 60;
+  if (m < 60) return `${m}m ${rs.toString().padStart(2, "0")}s`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return `${h}h ${rm.toString().padStart(2, "0")}m`;
+}
+
+/// The wall-clock span covered by a set of rows: last ts − first ts across the
+/// rows that carry one. `null` when no row has a ts (e.g. an empty grid). Used
+/// by the grid footer's `· <duration>` segment so live and timeline share one
+/// derivation.
+export function rowsDuration(rows: GridRow[]): number | null {
+  let min = Infinity;
+  let max = -Infinity;
+  let any = false;
+  for (const r of rows) {
+    if (r.ts === null) continue;
+    any = true;
+    if (r.ts < min) min = r.ts;
+    if (r.ts > max) max = r.ts;
+  }
+  return any ? max - min : null;
+}
+
+/// The database-client grid footer: `Showing N events · <duration>`, an
+/// optional iteration label (`Iteration X of Y`), and — in the timeline —
+/// Prev/Next paging through iterations. Structural only; values come from the
+/// caller so this stays a pure presentation leaf shared by both run surfaces.
+export function GridFooter({
+  count,
+  duration,
+  iterLabel,
+  paging,
+}: {
+  count: number;
+  duration: string;
+  iterLabel?: string;
+  paging?: {
+    onPrev: () => void;
+    onNext: () => void;
+    prevDisabled: boolean;
+    nextDisabled: boolean;
+  };
+}) {
+  return (
+    <div className="grid-footer" role="status" aria-live="polite">
+      <span className="grid-footer__count">
+        Showing {count} {count === 1 ? "event" : "events"} · {duration}
+      </span>
+      {iterLabel && <span className="grid-footer__iter">{iterLabel}</span>}
+      {paging && (
+        <span className="grid-footer__paging">
+          <button
+            type="button"
+            className="grid-footer__btn"
+            onClick={paging.onPrev}
+            disabled={paging.prevDisabled}
+          >
+            Prev
+          </button>
+          <button
+            type="button"
+            className="grid-footer__btn"
+            onClick={paging.onNext}
+            disabled={paging.nextDisabled}
+          >
+            Next
+          </button>
+        </span>
+      )}
+    </div>
+  );
+}

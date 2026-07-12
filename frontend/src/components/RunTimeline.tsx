@@ -13,7 +13,7 @@ import type {
   RunTimeline as Timeline,
 } from "../types";
 import type { ActiveRun } from "./RunDock";
-import { DataGrid } from "./DataGrid";
+import { DataGrid, formatDuration, GridFooter, rowsDuration } from "./DataGrid";
 import { RunSubtabs, type RunSubtab } from "./RunSubtabs";
 
 const STATUS_LABEL: Record<RunStatus, string> = {
@@ -36,10 +36,16 @@ export function RunTimeline({
   // The Events / Diff / Files subtab. All three panels stay mounted (toggled
   // with `hidden`) so switching preserves each panel's scroll position.
   const [subtab, setSubtab] = useState<RunSubtab>("events");
+  // Events-subtab iteration paging: one iteration's grid at a time, navigated
+  // via the grid footer's Prev/Next (the DB-client `Prev/Next` analog). The
+  // Diff subtab keeps its stacked per-iteration layout — paging is a grid-only
+  // affordance, so the two stay intentionally independent.
+  const [iterPage, setIterPage] = useState(0);
 
   useEffect(() => {
     setTimeline(null);
     setError(null);
+    setIterPage(0);
     runTimeline(run.runId)
       .then(setTimeline)
       .catch((e) => setError(String(e)));
@@ -52,6 +58,9 @@ export function RunTimeline({
   // The Files subtab flattens every iteration's diff into a de-duplicated list
   // of touched paths, in first-seen order.
   const files = uniqueFiles(iterations);
+  // Clamped events-subtab page: a stale iterPage (after a reload yields fewer
+  // iterations) must never index off the end.
+  const page = iterations.length ? Math.min(iterPage, iterations.length - 1) : 0;
 
   return (
     <section className="run-view">
@@ -94,20 +103,56 @@ export function RunTimeline({
 
           <div className="run-view__panels">
             <div
-              className="run-view__stream"
+              className="run-view__stream run-view__stream--events"
               hidden={subtab !== "events"}
               aria-label="Run events"
             >
               {iterations.length === 0 ? (
-                <p className="run-view__empty">
-                  This run recorded no iterations. Nothing was snapshotted.
-                </p>
+                <div className="run-view__grid-scroll">
+                  <p className="run-view__empty">
+                    This run recorded no iterations. Nothing was snapshotted.
+                  </p>
+                </div>
               ) : (
-                <ol className="timeline">
-                  {iterations.map((it) => (
-                    <IterationEvents key={it.n} iteration={it} />
-                  ))}
-                </ol>
+                <>
+                  <div className="run-view__grid-scroll">
+                    {iterations[page].events.length > 0 ? (
+                      <DataGrid
+                        rows={iterations[page].events.map((e) => ({
+                          seq: e.seq,
+                          ts: e.ts,
+                          event: e.event,
+                        }))}
+                      />
+                    ) : (
+                      <p className="timeline__no-diff">
+                        No events this iteration.
+                      </p>
+                    )}
+                  </div>
+                  <GridFooter
+                    count={iterations[page].events.length}
+                    duration={formatDuration(
+                      rowsDuration(
+                        iterations[page].events.map((e) => ({
+                          seq: e.seq,
+                          ts: e.ts,
+                          event: e.event,
+                        })),
+                      ),
+                    )}
+                    iterLabel={`Iteration ${iterations[page].n} of ${
+                      iterations[iterations.length - 1].n
+                    }`}
+                    paging={{
+                      onPrev: () => setIterPage((p) => Math.max(0, p - 1)),
+                      onNext: () =>
+                        setIterPage((p) => Math.min(iterations.length - 1, p + 1)),
+                      prevDisabled: page === 0,
+                      nextDisabled: page === iterations.length - 1,
+                    }}
+                  />
+                </>
               )}
             </div>
 
@@ -172,32 +217,6 @@ function uniqueFiles(iterations: IterationView[]): string[] {
     }
   }
   return out;
-}
-
-// One iteration's events (in log order) under the Events subtab.
-function IterationEvents({ iteration }: { iteration: IterationView }) {
-  return (
-    <li className="timeline__iter">
-      <div className="timeline__iter-head">
-        <span className="timeline__iter-n">Iteration {iteration.n}</span>
-        <span className="timeline__iter-meta">
-          {iteration.events.length}{" "}
-          {iteration.events.length === 1 ? "event" : "events"}
-        </span>
-      </div>
-      {iteration.events.length > 0 ? (
-        <DataGrid
-          rows={iteration.events.map((e) => ({
-            seq: e.seq,
-            ts: e.ts,
-            event: e.event,
-          }))}
-        />
-      ) : (
-        <p className="timeline__no-diff">No events this iteration.</p>
-      )}
-    </li>
-  );
 }
 
 // One iteration's diff (per-file summary + collapsible patch) under the Diff

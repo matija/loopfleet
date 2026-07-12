@@ -108,7 +108,7 @@ design with global **⌘K search** and an environment badge.
   / Diff / Files** subview bar: Diff hosts the existing per-iteration diff/patch
   viewer, Files the changed-files list, Events the grid above. → verify:
   switching subviews preserves scroll and the run subscription.
-- [ ] **Grid footer.** A footer under the grid: `Showing N events · <duration>`,
+- [x] **Grid footer.** A footer under the grid: `Showing N events · <duration>`,
   the iteration count, and — in the timeline — a Prev/Next for iteration paging.
   → verify: counts and duration match the timeline data.
 - [ ] **⌘K command palette.** A global palette (`Cmd/Ctrl-K`) that fuzzy-searches

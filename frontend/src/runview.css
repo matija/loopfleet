@@ -119,6 +119,22 @@
   flex: 1 1 auto;
 }
 
+/* Events panel: a pinned grid footer at the bottom, so the grid scrolls
+ * inside its own sub-region while the footer stays put — the DB-client layout
+ * where `Showing N rows` sits beneath the data. */
+.run-view__stream--events {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.run-view__grid-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3);
+}
+
 .run-view__files {
   display: flex;
   flex-direction: column;
