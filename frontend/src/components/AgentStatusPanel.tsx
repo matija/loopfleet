@@ -8,13 +8,28 @@ import { agentStatus } from "../commands";
 import type { AgentStatus } from "../types";
 
 export function AgentStatusPanel() {
+  // `loaded` distinguishes "fetching" from "fetched an empty set" — without it,
+  // an in-flight load renders an empty chip row that reads as "no agents".
   const [agents, setAgents] = useState<AgentStatus[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     agentStatus()
-      .then(setAgents)
-      .catch((e) => setError(String(e)));
+      .then((a) => {
+        if (cancelled) return;
+        setAgents(a);
+        setLoaded(true);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setError(String(e));
+        setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
@@ -24,6 +39,13 @@ export function AgentStatusPanel() {
       </div>
       {error ? (
         <p className="panel__error">{error}</p>
+      ) : !loaded ? (
+        <p className="panel__loading">Detecting agent CLIs…</p>
+      ) : agents.length === 0 ? (
+        <p className="panel__empty">
+          No agent CLIs detected. Install <code>claude</code>, <code>pi</code>, or{" "}
+          <code>cursor</code> to launch runs.
+        </p>
       ) : (
         <div className="agent-chips">
           {agents.map((a) => (

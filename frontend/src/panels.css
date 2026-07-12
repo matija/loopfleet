@@ -37,6 +37,20 @@
   color: var(--c-danger);
 }
 
+/* Shared async-state notes for panels that fetch on mount (agents, settings,
+ * sandbox overrides). Mirrors the plan view's loading/empty vocabulary so every
+ * surface reads the same before its data lands. */
+.panel__loading,
+.panel__empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
+}
+
+.panel__empty code {
+  color: var(--c-text);
+}
+
 .panel__actions {
   display: flex;
   align-items: center;
@@ -126,6 +140,14 @@
 .field input:focus,
 .overrides__ta:focus {
   border-color: var(--c-accent);
+}
+
+/* A gated (loading) field reads as inert without a harsh native disabled look. */
+.field select:disabled,
+.field input:disabled,
+.overrides__ta:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .overrides__ta {
