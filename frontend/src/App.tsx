@@ -7,6 +7,7 @@ import { AgentStatusPanel } from "./components/AgentStatusPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SandboxOverrides } from "./components/SandboxOverrides";
 import { SandboxBoundaryPanel } from "./components/SandboxBoundaryPanel";
+import { PlanView } from "./components/PlanView";
 
 // Composition root for the shell. Loads registered projects into the sidebar
 // (with the add-project affordance) and scopes the main pane to a selection.
@@ -75,6 +76,13 @@ export default function App() {
         </p>
       </div>
       <div className="main__body">
+        {selected ? (
+          <PlanView key={selected.id} projectId={selected.id} />
+        ) : (
+          <p className="main__placeholder">
+            Select or add a project to see its plan and launch runs.
+          </p>
+        )}
         <div className="overview">
           <AgentStatusPanel />
           <SettingsPanel />

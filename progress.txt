@@ -1907,3 +1907,44 @@ Verification:
 Next highest-priority task: M7 — Plan view: task list with derived TaskStatus
 badges; launch control (agent + iterations + Run) on EVERY task regardless of
 `checked`; completed-unaccepted surfaced loudly (the review queue).
+
+2026-07-12 — M7: Plan view (task list, status badges, per-task launch control)
+- frontend/src/components/PlanView.tsx: the plan surface for the selected
+  project. Loads plan_overview(projectId) → PlanView[] and renders each plan as
+  a card. Per task: the derived TaskStatus badge (not-started / in-progress /
+  completed-unaccepted="Needs review" / accepted), the task text, an authored-
+  checked marker (muted, non-blocking), a run_count chip, and a launch control.
+- Launch control is on EVERY task regardless of `checked` (the PRD's core M7
+  fix). `checked` only ever gated derived status, never runnability — the badge
+  reads it, the Run button ignores it — so a "done" plan (all boxes checked)
+  still shows a Run button per task. Control = agent <select> (installed agents
+  only, from agent_status) + iterations <input> + Run. Defaults resolve from
+  get_settings (default_agent if installed, else first installed; default_
+  iterations), adopted via empty-string sentinels so a user's choice is never
+  clobbered when settings arrive late. launchRun(projectId, taskAnchor, agent,
+  maxIterations); on success shows "Launched" and reloads plan_overview so the
+  new run's status/run_count appears. No agent installed → control disabled with
+  a "No agent CLI is installed" title (matches the backend's fail-fast refusal).
+- Completed-unaccepted surfaced loudly: a per-plan review banner ("N runs are
+  awaiting review…") when any task is completed-unaccepted, plus a warn-colored
+  border on each such task row. This is the compare/accept backlog the PRD wants
+  foregrounded.
+- frontend/src/plan.css: plan-card, review-banner (warn), task-list/task-row,
+  task-badge--<status> (one color per status), and the launch control styling.
+  Structural only; every value via tokens.css. Imported in main.tsx.
+- App.tsx: main body now renders <PlanView key={project.id}> for the selected
+  project above the existing overview panels (agents/settings/sandbox), or a
+  placeholder when no project is selected. `key` remounts cleanly on project
+  switch. No backend command signatures touched — only plan_overview, get_
+  settings, agent_status, launch_run, all pre-existing.
+- Scope: only this M7 task. The run the button launches is not yet viewable —
+  the global run surface, live run view, timeline, and compare are the next M7
+  tasks. This task delivers "you can always start a run, from any task."
+
+Verification:
+- cd frontend && npx tsc --noEmit — clean.
+- npx vite build — built (43 modules), no errors.
+
+Next highest-priority task: M7 — Global run surface: a persistent dock/panel
+listing active runs across projects, each opening its live view (the always-
+present "you can run agents here" entry point).
