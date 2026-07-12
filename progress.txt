@@ -1801,3 +1801,45 @@ Verification:
 
 Next highest-priority task: M7 — App shell + design system (sidebar/main layout,
 design tokens, the honest sandbox-boundary trust panel).
+
+2026-07-12 — M7: App shell + design system + sandbox-boundary trust panel
+- frontend/src/tokens.css: design tokens as CSS custom properties (PRD M7
+  "color, type scale, spacing, radii") + a small base/reset. Single dark theme
+  (cockpit tool, reads best dark). Palette: layered surfaces bg→surface-3 +
+  borders, text/muted/faint, accent + ok/warn/danger semantics. Type scale 1.25
+  ratio off 13px base (xs..xl), sans + mono stacks. 4px spacing scale, three
+  radii, --sidebar-w layout var. No view hardcodes a raw color/size/radius.
+- frontend/src/shell.css: structural classes only (values via tokens) for the
+  shell grid, sidebar (brand, section label, scrollable project list, project
+  item with active/hover states, empty state), main pane (header + body +
+  placeholder), an error banner, and the sandbox panel.
+- frontend/src/components/AppShell.tsx: presentational sidebar/main grid; owns no
+  data, takes `sidebar` + `children` slots so later M7 views render into it.
+- frontend/src/components/SandboxBoundaryPanel.tsx: the trust feature. States the
+  boundary plainly per the PRD Sandbox section — Confined: writes limited to the
+  worktree + progress dir, parent .git never writable (app-owned commits);
+  Open: reads & network NOT confined, agent can read ~/.ssh/~/.aws/other repos'
+  env and POST out. Foot note: read-scope + egress hardening are post-v1.
+- frontend/src/App.tsx: composition root — loads projects into the sidebar
+  (selection state, auto-selects first), main header shows short repo name +
+  full path, main body carries a placeholder pointing at the coming views plus
+  the SandboxBoundaryPanel. Dropped the scaffold's onRunStatus demo listener
+  (round-trip already proven in the prior task; not part of the shell).
+- frontend/src/main.tsx: import tokens.css + shell.css.
+
+Scope: pure frontend, shell only. Deliberately did NOT build the projects
+component (add-project dialog/chips), plan view, or run surfaces — those are the
+next M7 tasks. Backend untouched: no Rust, no tauri.conf.json changes.
+
+Verification:
+- cd frontend && npx tsc --noEmit — CLEAN (strict, noUnusedLocals/Parameters).
+- npm run build (tsc && vite build) — built; CSS bundled into
+  frontend/dist/assets (index-*.css ~5KB), 35 modules. The
+  "writes-confined / reads+network-open" statement renders in the panel.
+- Live tauri dev (visual match to a reference, in-window render) NOT verifiable
+  here — no tauri CLI/display in this env, same limitation as prior frontend
+  tasks. Compile + bundle half passes.
+
+Next highest-priority task: M7 — Projects + Agents-status + Settings as
+components (add-project dialog, agent availability/version-drift chips, settings
+form, per-project sandbox overrides).

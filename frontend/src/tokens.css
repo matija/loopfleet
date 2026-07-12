@@ -1,0 +1,105 @@
+/* Design tokens for the loopfleet app shell (PRD M7: "design tokens — color,
+ * type scale, spacing, radii"). Everything downstream references these vars;
+ * no view hardcodes a raw color, size, or radius. Single dark theme in v1 — a
+ * supervisor/cockpit tool that lives beside terminals reads best dark. */
+
+:root {
+  /* --- color: surfaces (darkest → lightest, back to front) --- */
+  --c-bg: #0e1116;
+  --c-surface: #161b22;
+  --c-surface-2: #1c232d;
+  --c-surface-3: #232c38;
+  --c-border: #2b333d;
+  --c-border-strong: #3a444f;
+
+  /* --- color: text --- */
+  --c-text: #e6edf3;
+  --c-text-muted: #9aa7b4;
+  --c-text-faint: #6b7684;
+
+  /* --- color: accent + semantic --- */
+  --c-accent: #4c8dff;
+  --c-accent-quiet: #1f3a63;
+  --c-ok: #3fb950;
+  --c-warn: #d29922;
+  --c-danger: #f85149;
+  --c-danger-quiet: #3a1d1d;
+
+  /* --- type scale (1.25 ratio off 13px base) --- */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+
+  --leading-tight: 1.3;
+  --leading-normal: 1.5;
+
+  /* --- spacing (4px base) --- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 48px;
+
+  /* --- radii --- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  /* --- layout --- */
+  --sidebar-w: 260px;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* --- base / reset --- */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--c-text);
+  background: var(--c-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: var(--leading-tight);
+  font-weight: 600;
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
