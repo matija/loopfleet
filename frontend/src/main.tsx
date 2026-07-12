@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./tokens.css";
 import "./shell.css";
+import "./tabs.css";
 import "./panels.css";
 import "./plan.css";
 import "./dock.css";

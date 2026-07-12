@@ -77,7 +77,7 @@ and an environment badge.
   focuses a tab; tabs are closeable; a pinned "Welcome" tab is always first.
   → verify: opening two runs keeps both as switchable tabs; closing one falls
   back to a neighbor.
-- [ ] **Tab strip.** A `TabStrip` component above the main pane: per-tab icon
+- [x] **Tab strip.** A `TabStrip` component above the main pane: per-tab icon
   (by kind) + label + close affordance, active-tab accent, horizontal overflow
   scroll — matching the reference's tab styling. New `tabs.css`; add tokens as
   needed. → verify: at the 1200px window, 6+ tabs scroll rather than wrap.

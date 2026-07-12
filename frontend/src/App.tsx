@@ -17,6 +17,7 @@ import { RunDock, type ActiveRun } from "./components/RunDock";
 import { LiveRunView } from "./components/LiveRunView";
 import { RunTimeline } from "./components/RunTimeline";
 import { CompareView } from "./components/CompareView";
+import { TabStrip } from "./components/TabStrip";
 import { Toasts, useToasts } from "./components/Toasts";
 
 // A run streams live while active; once terminal, its persisted timeline (with
@@ -213,34 +214,16 @@ export default function App() {
       }
     >
       <Toasts toasts={toasts} onDismiss={dismissToast} />
-      <nav className="tab-bar" aria-label="Open views">
-        {tabs.map((t) => {
-          const id = tabId(t);
-          return (
-            <div
-              key={id}
-              className="tab"
-              aria-current={id === activeId}
-            >
-              <button
-                className="tab__label"
-                onClick={() => dispatch({ type: "focus", id })}
-              >
-                {tabLabel(t, projects, runs)}
-              </button>
-              {t.kind !== "welcome" && (
-                <button
-                  className="tab__close"
-                  aria-label="Close tab"
-                  onClick={() => dispatch({ type: "close", id })}
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </nav>
+      <TabStrip
+        tabs={tabs.map((t) => ({
+          id: tabId(t),
+          kind: t.kind,
+          label: tabLabel(t, projects, runs),
+        }))}
+        activeId={activeId}
+        onFocus={(id) => dispatch({ type: "focus", id })}
+        onClose={(id) => dispatch({ type: "close", id })}
+      />
       <div className="main__header">
         <h2>{headerFor(activeTab, projects, runs).title}</h2>
         <p>{headerFor(activeTab, projects, runs).subtitle}</p>

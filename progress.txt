@@ -2301,3 +2301,42 @@ Verification:
 Next highest-priority task: Workbench Task 2 — TabStrip component (per-kind icons,
 active accent, horizontal overflow scroll; new tabs.css) extracting/replacing the
 minimal tab bar added here.
+
+2026-07-12 — Workbench task 2: Tab strip (styled TabStrip component)
+- frontend/src/components/TabStrip.tsx: extracted the M7-era inline tab <nav>
+  from App.tsx into a presentational TabStrip. Props are id/kind/label items +
+  activeId + onFocus/onClose — decoupled from WorkbenchTab, projects, and runs
+  (App maps its tab model to items). Each tab: a kind icon + truncated label
+  (title-attr tooltip for the full text) + a close affordance; Welcome (kind
+  "welcome") is pinned and rendered without a close button, matching the
+  reducer's index-0 pin.
+- TabIcon: a small dependency-free inline SVG per kind (home / task-list / play
+  triangle / split-view), stroked with currentColor so it themes with the tab's
+  text color and lights to --c-accent on the active tab. No icon library added
+  (simplicity; the tree has no icons yet).
+- frontend/src/tabs.css: browser-style tab styling off tokens.css only. The
+  strip is flex-wrap:nowrap + overflow-x:auto, so a full session scrolls
+  horizontally instead of folding to a second row (PRD verify: "6+ tabs scroll
+  rather than wrap"). Tabs are flex:0 0 auto with min-width 140px / max-width
+  220px, so many tabs overflow (scroll) rather than shrink; the label truncates
+  with ellipsis. Active tab: surface-2 fill + an inset top accent bar
+  (box-shadow, so it doesn't shift layout) + brightened text/icon.
+- frontend/src/main.tsx: import "./tabs.css".
+- frontend/src/App.tsx: replaced the inline <nav className="tab-bar"> with
+  <TabStrip …>, mapping tabs → {id, kind, label} via the existing tabId/tabLabel
+  helpers. Behavior unchanged (focus/close still dispatch to tabReducer).
+- frontend/src/shell.css: removed the now-orphaned .tab-bar/.tab/.tab__label/
+  .tab__close block (my change orphaned it; surgical cleanup of only my own
+  orphans), left a one-line pointer to tabs.css.
+
+Verification:
+- npx tsc --noEmit — clean (exit 0).
+- npm run build (tsc && vite build) — built, 54 modules, CSS 21.65 kB.
+- Manual: nowrap + overflow-x on the strip guarantees tabs scroll, never wrap;
+  min-width 140px means 6 tabs (~840px+) exceed the ~940px main pane at a 1200px
+  window and scroll. (No test runner in the frontend; type-check + build are the
+  gates, consistent with M7.)
+
+Next highest-priority task: Workbench task 3 — Sidebar as connections (status
+dot, repo name + short-path subtitle, header "+" add button, live filter over
+projects/tasks).
