@@ -13,7 +13,7 @@ import type {
   RunTimeline as Timeline,
 } from "../types";
 import type { ActiveRun } from "./RunDock";
-import { EventRow } from "./LiveRunView";
+import { DataGrid } from "./DataGrid";
 
 const STATUS_LABEL: Record<RunStatus, string> = {
   queued: "Queued",
@@ -107,11 +107,13 @@ function IterationRow({ iteration }: { iteration: IterationView }) {
       </div>
 
       {iteration.events.length > 0 && (
-        <ul className="event-list">
-          {iteration.events.map((e) => (
-            <EventRow key={e.seq} event={e.event} />
-          ))}
-        </ul>
+        <DataGrid
+          rows={iteration.events.map((e) => ({
+            seq: e.seq,
+            ts: e.ts,
+            event: e.event,
+          }))}
+        />
       )}
 
       <Diff diff={iteration.diff} />

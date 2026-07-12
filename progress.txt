@@ -2455,3 +2455,63 @@ Next highest-priority task: Workbench — Per-tab command bar: a CommandBar for
 run/task tabs (task-name pill, WHERE-style client-side event filter, Run/Re-run
 control, agent status pill, live "Xs ago" stamp), relocating the launch control
 out of the plan body.
+
+## Workbench task 6: typed event grid + enum pills — 2026-07-12
+
+Replaced the live/timeline event list with a reusable DataGrid rendering
+normalized events as a DB-client-style typed grid.
+
+- frontend/src/components/DataGrid.tsx (new): the reusable grid. Columns #, seq,
+  type, detail, ts. `eventPill(event)` maps each NormalizedEvent variant to a
+  PascalCase enum label (TurnStarted, AssistantText, Reasoning, ToolCall,
+  ToolResult, CommandRun, TurnCompleted, NeedsApproval, Failed, Ended,
+  FileChanged) + a stable tone; the type column renders it as a colored pill.
+  `eventDetail(event)` produces the detail cell; an empty detail (turn_started,
+  needs_approval, ended) and an unknown ts both render as a muted `NULL` pill.
+  `eventText(event)` (label + detail, exported) is the command bar's WHERE
+  filter text — moved here from LiveRunView so grid + filter share one mapping.
+  GridRow = { seq, ts: number | null, event }.
+- frontend/src/grid.css (new): grid layout (fixed column template via a
+  --grid-cols var, sticky header, tabular-nums, ellipsized detail) + the enum
+  pill palette. The per-variant pill hues are the one genuinely new pattern this
+  grid introduces (neutral/text/reasoning/tool/command/warn/error/file tones);
+  the PRD allows grid tokens. `.grid-null` is the muted NULL pill.
+- frontend/src/main.tsx: import grid.css.
+- frontend/src/components/LiveRunView.tsx: events state is now GridRow[]; each
+  arriving run_event is stamped with ts = Date.now() (the stream carries no
+  persisted ts, so the ts column shows observed arrival time — matching the
+  timeline's recorded-ts column). Renders <DataGrid rows={shown}/> in place of
+  the <ul className="event-list">. Removed the now-orphaned EventRow, Row, and
+  local eventText (eventText now imported from DataGrid). file_changed events
+  still route to the files side panel, not the grid.
+- frontend/src/components/RunTimeline.tsx: each iteration's events render via
+  <DataGrid rows={...}/> (mapping TimelineEvent → GridRow, real ts) instead of
+  EventRow. Import switched from LiveRunView's EventRow to DataGrid.
+- frontend/src/runview.css: removed the orphaned .event-list / .event-row*
+  rules my change made dead; kept .file-list (still used) by folding the shared
+  reset into it.
+- No backend change (frontend-only milestone). No new command consumed. ts unit
+  confirmed as unix millis (store/event_log.rs now_millis()).
+
+Verification:
+- cd frontend && npx tsc --noEmit — clean (0 errors).
+- cd frontend && npm run build — tsc + vite build clean. No frontend test suite
+  exists; build-verified. Every NormalizedEvent variant maps to a distinct
+  labeled pill (11 labels), and LiveRunView appends a GridRow per streamed
+  run_event so the live stream grows the grid.
+
+Design notes:
+- ts column is always present (both surfaces). Live view has no persisted ts, so
+  it stamps arrival time; this keeps one grid shape and one column set across
+  both surfaces rather than a conditional column. Honest: it's observed time.
+- Per-iteration grids in the timeline each render their own header row. Kept
+  consistent with the single-grid live view rather than adding a headerless
+  variant — each iteration card reads as its own small table.
+- Shared tones across the turn lifecycle (TurnStarted/TurnCompleted/Ended all
+  "neutral") — the PRD asks for a distinct labeled pill per variant and a stable
+  color per variant; labels are all distinct, colors are stable, related
+  variants share a hue by design.
+
+Next highest-priority task: Workbench — Run subtabs (Data / Privileges analog):
+an Events / Diff / Files subtab bar inside a run tab (Diff hosts the
+per-iteration diff/patch viewer, Files the changed-files list, Events the grid).

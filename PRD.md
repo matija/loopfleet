@@ -97,7 +97,7 @@ and an environment badge.
   `agent_status`), and a live **"Xs ago"** stamp on the active run. This relocates
   the launch control out of the plan body. → verify: the filter narrows the event
   grid; launch still works from the bar.
-- [ ] **Typed event grid + enum pills.** Replace the live/timeline event list with
+- [x] **Typed event grid + enum pills.** Replace the live/timeline event list with
   a reusable `DataGrid`: row numbers, columns (`seq`, `type`, `detail`, `ts`), the
   `type` column rendering each `NormalizedEvent` as a **colored enum pill** (stable
   color per variant), empties as a muted `NULL`-style pill. Reuse it in

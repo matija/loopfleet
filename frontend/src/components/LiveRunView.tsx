@@ -12,8 +12,9 @@
 import { useEffect, useRef, useState } from "react";
 import { agentStatus } from "../commands";
 import { onRunEvent } from "../events";
-import type { AgentStatus, NormalizedEvent, RunStatus } from "../types";
+import type { AgentStatus, RunStatus } from "../types";
 import { CommandBar } from "./CommandBar";
+import { DataGrid, eventText, type GridRow } from "./DataGrid";
 import type { ActiveRun } from "./RunDock";
 
 const ACTIVE: RunStatus[] = ["queued", "running"];
@@ -26,8 +27,6 @@ const STATUS_LABEL: Record<RunStatus, string> = {
   stopped: "Stopped",
 };
 
-type StreamedEvent = { seq: number; event: NormalizedEvent };
-
 export function LiveRunView({
   run,
   onStop,
@@ -37,7 +36,10 @@ export function LiveRunView({
   onStop: (runId: string) => void;
   onClose: () => void;
 }) {
-  const [events, setEvents] = useState<StreamedEvent[]>([]);
+  // The stream carries no persisted ts (see file header), so we stamp arrival
+  // time as each event lands — the grid's `ts` column then reflects when it
+  // was observed here, matching the timeline's recorded-ts column.
+  const [events, setEvents] = useState<GridRow[]>([]);
   // Changed files accumulate as a set (an agent touches a path repeatedly); we
   // keep insertion order for a stable list.
   const [files, setFiles] = useState<string[]>([]);
@@ -61,7 +63,10 @@ export function LiveRunView({
         const path = p.event.path;
         setFiles((prev) => (prev.includes(path) ? prev : [...prev, path]));
       } else {
-        setEvents((prev) => [...prev, { seq: p.seq, event: p.event }]);
+        setEvents((prev) => [
+          ...prev,
+          { seq: p.seq, ts: Date.now(), event: p.event },
+        ]);
       }
     });
     return () => {
@@ -142,11 +147,7 @@ export function LiveRunView({
               No events match “{filter.trim()}”.
             </p>
           ) : (
-            <ul className="event-list">
-              {shown.map((e) => (
-                <EventRow key={e.seq} event={e.event} />
-              ))}
-            </ul>
+            <DataGrid rows={shown} />
           )}
         </div>
 
@@ -175,101 +176,3 @@ export function LiveRunView({
   );
 }
 
-// One normalized event, rendered by kind. The label is the event vocabulary;
-// the body carries the excerpt/text the adapter produced. Exported so the run
-// timeline replays the persisted log with the same vocabulary the live stream
-// uses. LiveRunView routes `file_changed` to its files panel before calling
-// this, so that case only renders in the timeline (which has no side panel).
-export function EventRow({ event }: { event: NormalizedEvent }) {
-  switch (event.kind) {
-    case "turn_started":
-      return <Row kind="turn" label="Turn started" />;
-    case "assistant_text":
-      return <Row kind="text" label="Assistant" body={event.text} />;
-    case "reasoning":
-      return <Row kind="reasoning" label="Reasoning" body={event.text} />;
-    case "tool_call":
-      return (
-        <Row
-          kind="tool"
-          label={`Tool · ${event.name}`}
-          body={event.input_excerpt}
-        />
-      );
-    case "tool_result":
-      return (
-        <Row
-          kind={event.ok ? "tool" : "error"}
-          label={event.ok ? "Tool result" : "Tool result · error"}
-          body={event.output_excerpt}
-        />
-      );
-    case "command_run":
-      return (
-        <Row
-          kind="command"
-          label={
-            event.exit === null ? "Command" : `Command · exit ${event.exit}`
-          }
-          body={event.cmd}
-        />
-      );
-    case "turn_completed":
-      return (
-        <Row
-          kind="turn"
-          label="Turn completed"
-          body={`${event.usage.input_tokens} in · ${event.usage.output_tokens} out tokens`}
-        />
-      );
-    case "needs_approval":
-      return <Row kind="warn" label="Needs approval" />;
-    case "failed":
-      return <Row kind="error" label="Failed" body={event.reason} />;
-    case "ended":
-      return <Row kind="turn" label="Ended" />;
-    case "file_changed":
-      // In the live view this is routed to the files panel and never reaches
-      // here; in the timeline (no side panel) it renders inline.
-      return <Row kind="file" label="File changed" body={event.path} />;
-  }
-}
-
-// The searchable text for the command bar's `WHERE …` filter: the event kind
-// plus whatever payload it carries, so a query matches on type or content.
-function eventText(e: NormalizedEvent): string {
-  switch (e.kind) {
-    case "assistant_text":
-    case "reasoning":
-      return `${e.kind} ${e.text}`;
-    case "tool_call":
-      return `${e.kind} ${e.name} ${e.input_excerpt}`;
-    case "tool_result":
-      return `${e.kind} ${e.output_excerpt}`;
-    case "command_run":
-      return `${e.kind} ${e.cmd}`;
-    case "failed":
-      return `${e.kind} ${e.reason}`;
-    case "file_changed":
-      return `${e.kind} ${e.path}`;
-    default:
-      return e.kind;
-  }
-}
-
-function Row({
-  kind,
-  label,
-  body,
-}: {
-  kind: string;
-  label: string;
-  body?: string;
-}) {
-  return (
-    <li className={`event-row event-row--${kind}`}>
-      <span className="event-row__label">{label}</span>
-      {body && <span className="event-row__body">{body}</span>}
-    </li>
-  );
-}
