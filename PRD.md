@@ -202,7 +202,7 @@ Decisions:
 - Pure frontend milestone: no new adapters, no sandbox/git changes.
 
 Tasks (each sized for one agent iteration):
-- [ ] Scaffold Vite + React + TS under `src/` (or `frontend/`); wire `tauri.conf.json` (`devUrl`, before-dev/build commands, `frontendDist` → build dir); drop `withGlobalTauri`; add `package.json` + gitignore. → verify: `tauri dev` boots, project list loads via `@tauri-apps/api`.
+- [x] Scaffold Vite + React + TS under `src/` (or `frontend/`); wire `tauri.conf.json` (`devUrl`, before-dev/build commands, `frontendDist` → build dir); drop `withGlobalTauri`; add `package.json` + gitignore. → verify: `tauri dev` boots, project list loads via `@tauri-apps/api`.
 - [ ] `types.ts` mirroring the command payloads (`Project`, `Settings`, `AgentStatus`, `PlanView`, `Task`, `RunSummary`, `RunTimeline`, `CompareView`, `NormalizedEvent`, `UseRunResult`) + typed `commands.ts`/`events.ts` wrappers. → verify: `tsc` clean, one command + one live event round-trip.
 - [ ] App shell + design system: sidebar (projects) / main pane layout, design tokens (color, type scale, spacing, radii), the honest **sandbox-boundary panel** the PRD calls a trust feature. → verify: matches an agreed reference; the "writes-confined, reads/network open" statement is visible.
 - [ ] Projects + Agents-status + Settings as components (add-project dialog, agent availability/version-drift chips, settings form, per-project sandbox overrides).

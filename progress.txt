@@ -1701,3 +1701,50 @@ Next: M6's remaining items are release/distribution chores explicitly deferred
 until the loop tool is in daily use — codesign+notarize / DMG, and the naming
 workflow (register domain, replace working name). M5 (plan chat) is likewise
 deferred per the build order. No non-deferred tasks remain.
+
+2026-07-12 — M7: Scaffold Vite + React + TS frontend, wire tauri.conf.json
+- First M7 task (real React frontend on the unchanged Rust backend). A partial
+  scaffold already existed under frontend/ (index.html, package.json,
+  tsconfig*.json, vite.config.ts — untracked) but no src/ and tauri.conf.json
+  still pointed at the legacy static ../dist with withGlobalTauri. Completed the
+  scaffold and rewired Tauri.
+- src-tauri/tauri.conf.json: build block now has frontendDist "../frontend/dist"
+  (the Vite build output), devUrl "http://localhost:5173", and object-form
+  beforeDevCommand/beforeBuildCommand ({ cwd: "../frontend", script: "npm run
+  dev"|"npm run build" } — cwd is relative to the config file so the tauri CLI
+  runs npm in frontend/). Removed app.withGlobalTauri — the React app calls
+  @tauri-apps/api directly (invoke from @tauri-apps/api/core), no global bridge.
+- frontend/src/main.tsx: React 19 root (createRoot + StrictMode) mounting App
+  into #root (the existing index.html already had <div id="root"> and the
+  /src/main.tsx module script).
+- frontend/src/App.tsx: minimal scaffold surface — on mount, invoke<Project[]>
+  ("list_projects") and render repo_path + plan_convention, with an error line
+  and an empty state. Deliberately minimal: the design system, hand-maintained
+  types.ts/commands.ts, and the real views are the following M7 tasks; this one
+  only proves the app boots and reaches the unchanged command surface via
+  @tauri-apps/api. Project type inlined here (typed wrappers come next task).
+- frontend/tsconfig.node.json: dropped "noEmit": true — a referenced *composite*
+  project may not disable emit (tsc TS6310); it broke `tsc && vite build`.
+  Composite requires emitting build info; kept "strict". (The pre-existing
+  scaffold had added strict+noEmit here.)
+- .gitignore: added /frontend/node_modules and /frontend/dist (build output +
+  deps not committed).
+- The legacy static dist/index.html is left in place — it is deleted by the last
+  M7 task once parity is reached, not now. frontendDist now points at
+  frontend/dist, so the built React app is what a bundle would ship.
+
+Verification:
+- cd frontend && npm install — 69 packages, 0 vulnerabilities.
+- npm run build (tsc && vite build) — tsc clean, vite built frontend/dist
+  (index.html + assets/index-*.js, 30 modules).
+- CARGO_HOME=/tmp/loopfleet-cargo cargo build -p loopfleet — Finished. This
+  matters: build.rs runs tauri_build::build(), which parses/validates
+  tauri.conf.json at compile time, so a clean build confirms the new devUrl /
+  before-commands / frontendDist config is valid.
+- `tauri dev` boots is NOT verifiable here (no tauri CLI installed, no display in
+  this environment). The checkable portion — conf validates + frontend builds —
+  passes; the interactive boot is left for a desktop run.
+
+Next highest-priority task: M7 — types.ts mirroring the command payloads +
+typed commands.ts/events.ts wrappers over invoke and the run_event/run_status
+event streams.
