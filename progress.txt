@@ -2220,3 +2220,36 @@ Verification:
 Next highest-priority task: M7's last bullet — delete the legacy static
 dist/index.html once parity is reached (verify: no dead references; tauri build
 produces a working bundle).
+
+2026-07-12 — M7: Delete legacy static dist/index.html (completes the React rebuild)
+- The last M7 bullet. tauri.conf.json's frontendDist already points at
+  ../frontend/dist (the Vite build output) and beforeDevCommand/beforeBuildCommand
+  run the frontend's npm dev/build — so the top-level dist/index.html (the old
+  1,338-line hand-written vanilla-JS UI with withGlobalTauri) was already dead
+  weight, referenced by nothing in the build path.
+- Confirmed no dead references before deleting: grepped the tree (excluding
+  node_modules/target/.git/frontend/progress.txt/Cargo.lock) for `../dist`,
+  `dist/index`, a bare `"dist"`, and `withGlobalTauri`. Only hits were PRD.md
+  (the milestone prose describing the legacy file) and the tracked file itself.
+  No src-tauri config, capability, or code points at the top-level dist.
+- git rm dist/index.html — removed the only file; the now-empty dist/ directory
+  is gone from the working tree. .gitignore already ignores /frontend/dist (the
+  real build output) and /frontend/node_modules.
+- Verified the React bundle that frontendDist consumes still builds: from
+  frontend/, `npx tsc --noEmit` clean (strict, 0 errors) and `npx vite build`
+  transformed 52 modules → dist/index.html + assets (index js 221 kB, css 20 kB).
+  So the bundle Tauri packages is produced by the React app, not the deleted file.
+- A full `tauri build` (Rust compile + bundle/codesign) is not runnable in this
+  env (no display/signing, same limitation noted for every prior frontend task);
+  the frontend artifact it embeds is verified, and no Rust was touched.
+
+Scope (Surgical Changes): deleted exactly the one legacy file + checked its PRD
+box. No Rust, no config, no frontend source edited — the deletion stands alone
+because the build was already wired to frontend/dist.
+
+M7 is COMPLETE — the WebView is a modern React app on the unchanged Rust backend;
+the legacy static UI is gone. Remaining PRD work is explicitly DEFERRED, not
+actionable by an agent: M5 (plan chat — "build only after the loop tool is in
+daily use") and two M6 release items (codesign+notarize/DMG; run the naming
+workflow + register domain). Those are human-gated milestones, so there is no
+next autonomous task to pick up.
