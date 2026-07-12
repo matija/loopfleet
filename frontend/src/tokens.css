@@ -4,30 +4,34 @@
  * supervisor/cockpit tool that lives beside terminals reads best dark. */
 
 :root {
-  /* --- color: surfaces (darkest → lightest, back to front) --- */
-  --c-bg: #0e1116;
-  --c-surface: #161b22;
-  --c-surface-2: #1c232d;
-  --c-surface-3: #232c38;
-  --c-border: #2b333d;
-  --c-border-strong: #3a444f;
+  /* --- color: surfaces (darkest → lightest, back to front) ---
+   * Neutral near-black (Esploro-style), not blue-tinted: sidebar and main sit
+   * close in value, separated by a faint divider rather than a filled panel. */
+  --c-bg: #0d0d10;
+  --c-surface: #131316;
+  --c-surface-2: #1a1a1f;
+  --c-surface-3: #232329;
+  --c-border: #26262c;
+  --c-border-strong: #37373f;
 
   /* --- color: text --- */
-  --c-text: #e6edf3;
-  --c-text-muted: #9aa7b4;
-  --c-text-faint: #6b7684;
+  --c-text: #ececee;
+  --c-text-muted: #a0a0a8;
+  --c-text-faint: #6a6a73;
 
   /* --- color: accent + semantic --- */
-  --c-accent: #4c8dff;
-  --c-accent-quiet: #1f3a63;
+  --c-accent: #5468f0;
+  --c-accent-quiet: #23294d;
   --c-ok: #3fb950;
   --c-warn: #d29922;
   --c-danger: #f85149;
   --c-danger-quiet: #3a1d1d;
 
-  /* --- type scale (1.25 ratio off 13px base) --- */
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
-    system-ui, sans-serif;
+  /* --- type scale (1.25 ratio off 13px base) ---
+   * Readex Pro (rounded geometric sans, self-hosted via @fontsource) is the UI
+   * face; system fonts remain as the fallback stack. */
+  --font-sans: "Readex Pro", -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Segoe UI", system-ui, sans-serif;
   --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
 
   --text-xs: 11px;
@@ -49,14 +53,14 @@
   --space-6: 32px;
   --space-8: 48px;
 
-  /* --- radii --- */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
+  /* --- radii (softer, Esploro-style rounding) --- */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
 
   /* --- layout --- */
-  --sidebar-w: 260px;
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --sidebar-w: 268px;
+  --shadow-1: 0 4px 16px rgba(0, 0, 0, 0.45);
 }
 
 /* --- base / reset --- */
@@ -97,6 +101,12 @@ pre {
 button {
   font: inherit;
   cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease,
+    border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+input {
+  transition: border-color 0.12s ease, background-color 0.12s ease;
 }
 
 :focus-visible {
