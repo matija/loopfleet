@@ -210,7 +210,7 @@ Tasks (each sized for one agent iteration):
 - [x] Global run surface: a persistent dock/panel listing active runs across projects, each opening its live view — the always-present "you can run agents here" entry point. → verify: launch, minimize the plan, the run is still visible and stoppable.
 - [x] Live run view component: `run_event`/`run_status` subscription, streaming events, live file-changes, Stop.
 - [x] Run timeline: iterations as rows, per-iteration events + diff/patch viewer.
-- [ ] Compare view: runs side by side, final-ref diffs, "use this run" → user-named target branch.
+- [x] Compare view: runs side by side, final-ref diffs, "use this run" → user-named target branch.
 - [ ] Polish pass: empty/loading/error states, toast for command errors, keyboard focus, responsive down to the 1200×800 window. → verify: cold open with no projects reads as intentional, not broken.
 - [ ] Delete the legacy static `dist/index.html` once parity is reached. → verify: no dead references; `tauri build` produces a working bundle.
 

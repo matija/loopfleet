@@ -119,7 +119,7 @@ function IterationRow({ iteration }: { iteration: IterationView }) {
   );
 }
 
-function Diff({ diff }: { diff: DiffView | null }) {
+export function Diff({ diff }: { diff: DiffView | null }) {
   const [showPatch, setShowPatch] = useState(false);
 
   if (!diff) {

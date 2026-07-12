@@ -393,3 +393,84 @@
 .patch__line--ctx {
   color: var(--c-text-muted);
 }
+
+/* --- compare view: task's runs side by side, each with its produced diff --- */
+
+.compare__runs {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.compare__run {
+  flex: 1 1 0;
+  min-width: 320px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  background: var(--c-surface-2);
+  padding: var(--space-3);
+}
+
+.compare__run--accepted {
+  border-color: var(--c-ok);
+}
+
+.compare__run-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.compare__run-id {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
+}
+
+.compare__run-agent {
+  font-size: var(--text-xs);
+  color: var(--c-text-faint);
+}
+
+.compare__accepted {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--c-ok);
+}
+
+.use-run {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--c-border);
+  padding-top: var(--space-3);
+}
+
+.use-run__row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.use-run__branch {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-surface);
+  color: var(--c-text);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.use-run__result {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--c-ok);
+}
+
+.use-run__error {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--c-danger);
+}

@@ -25,12 +25,21 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 /// What a task launch reports upward for the global run dock.
 export type LaunchedRun = { runId: string; taskText: string; agent: string };
 
+/// What opening the compare view needs: the plan + task and its display text.
+export type CompareTarget = {
+  planId: string;
+  taskAnchor: string;
+  taskText: string;
+};
+
 export function PlanView({
   projectId,
   onLaunch,
+  onCompare,
 }: {
   projectId: string;
   onLaunch: (run: LaunchedRun) => void;
+  onCompare: (target: CompareTarget) => void;
 }) {
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +93,7 @@ export function PlanView({
           settings={settings}
           onLaunched={reload}
           onLaunch={onLaunch}
+          onCompare={onCompare}
         />
       ))}
     </div>
@@ -97,6 +107,7 @@ function PlanCard({
   settings,
   onLaunched,
   onLaunch,
+  onCompare,
 }: {
   plan: Plan;
   projectId: string;
@@ -104,6 +115,7 @@ function PlanCard({
   settings: Settings | null;
   onLaunched: () => void;
   onLaunch: (run: LaunchedRun) => void;
+  onCompare: (target: CompareTarget) => void;
 }) {
   const review = plan.tasks.filter((t) => t.status === "completed-unaccepted");
 
@@ -127,11 +139,13 @@ function PlanCard({
           <TaskRow
             key={task.anchor}
             task={task}
+            planId={plan.plan_id}
             projectId={projectId}
             installed={installed}
             settings={settings}
             onLaunched={onLaunched}
             onLaunch={onLaunch}
+            onCompare={onCompare}
           />
         ))}
       </ul>
@@ -141,18 +155,22 @@ function PlanCard({
 
 function TaskRow({
   task,
+  planId,
   projectId,
   installed,
   settings,
   onLaunched,
   onLaunch,
+  onCompare,
 }: {
   task: TaskView;
+  planId: string;
   projectId: string;
   installed: string[];
   settings: Settings | null;
   onLaunched: () => void;
   onLaunch: (run: LaunchedRun) => void;
+  onCompare: (target: CompareTarget) => void;
 }) {
   const review = task.status === "completed-unaccepted";
   return (
@@ -171,9 +189,19 @@ function TaskRow({
           </span>
         )}
         {task.run_count > 0 && (
-          <span className="task-row__runs">
-            {task.run_count} {task.run_count === 1 ? "run" : "runs"}
-          </span>
+          <button
+            className="task-row__compare"
+            onClick={() =>
+              onCompare({
+                planId,
+                taskAnchor: task.anchor,
+                taskText: task.text,
+              })
+            }
+            title="Compare this task's runs and use one"
+          >
+            {task.run_count} {task.run_count === 1 ? "run" : "runs"} · compare
+          </button>
         )}
       </div>
       <LaunchControl

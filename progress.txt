@@ -2107,3 +2107,66 @@ Design notes:
 Next highest-priority task: M7 — Compare view: runs side by side, final-ref
 diffs, "use this run" → user-named target branch (compare_task + use_run already
 exist in commands.ts/types.ts).
+
+2026-07-12 — M7: Compare view (React) — runs side by side, final-ref diffs, use-run
+- frontend/src/components/CompareView.tsx: the task-scoped compare surface. Loads
+  compare_task(planId, taskAnchor) → CompareView and renders every run bound to
+  the task side by side, each column carrying its status badge, short run id,
+  agent, an accepted marker, and the diff it produced against its base (the final
+  shadow ref). Reuses the timeline's exported Diff component (same per-file
+  summary + collapsible patch), so there is one diff renderer, not a second.
+  The app shows what each run made and never scores — matching the PRD's "the app
+  never scores or judges."
+  - Empty/loading shapes handled distinctly: loading, error (panel__error), no
+    runs on the task, and per-run "no snapshot to diff" when final_ref is null.
+  - "Use this run" (UseRun): a target-branch text input + button per run, calling
+    use_run(runId, targetBranch). The user names the target — never main by
+    default (PRD non-goal: no auto-merge, never targets your main branch). A run
+    with no final_ref (no snapshot) is not mergeable, so the control is disabled;
+    the button is also disabled until a non-empty branch is typed. On success it
+    shows the UseRunResult shape honestly: "already up to date", "(branch
+    created)", or "→ <commit8>". After acceptance it reloads compare_task (the
+    run's accepted flag flips) AND bubbles onAccepted up so the plan's derived
+    TaskStatus refetches.
+- frontend/src/components/RunTimeline.tsx: exported the previously file-private
+  Diff (one-word change: `function Diff` → `export function Diff`). No behavior
+  change; CompareView now shares it.
+- frontend/src/components/PlanView.tsx: added the compare entry point. Threaded
+  an onCompare(CompareTarget) callback PlanView → PlanCard → TaskRow, and passed
+  plan.plan_id down to TaskRow (compare_task is keyed by plan_id + task anchor).
+  The task row's run-count text is now a "N runs · compare" BUTTON (was a static
+  span) shown whenever run_count > 0 — the always-reachable path into the compare
+  surface. Exported the CompareTarget type { planId, taskAnchor, taskText }.
+- frontend/src/App.tsx: owns compareTarget (the task being compared) and a
+  planNonce counter. When a compareTarget is set and no run is open, CompareView
+  takes over the main body (keyed on taskAnchor; main__body--run modifier so it
+  flex-fills like the run views). Selecting a project or opening a run from the
+  dock clears compareTarget (a run always wins the body). onAccepted bumps
+  planNonce, which is folded into the PlanView key so the overview refetches and
+  the accepted run's task flips to "accepted" on return. No new state leaks into
+  the dock; the compare view is orthogonal to the session run registry.
+- frontend/src/runview.css: appended .compare__runs (side-by-side flex, min 320px
+  columns), .compare__run(+--accepted ok-border), the run-head bits, and the
+  .use-run control (branch input + result/error lines). Reuses run-view__status,
+  diff, patch, timeline__no-diff. Structural only; every value via tokens.css.
+- frontend/src/plan.css: repurposed the now-orphaned .task-row__runs rule into
+  .task-row__compare (my change turned that span into a button), giving it a
+  clickable border + accent hover. No other plan styling touched.
+
+Scope (Simplicity First): built exactly this bullet. Reused the existing Diff
+renderer and run-view header vocabulary rather than duplicating them; added no
+backend command (compare_task + use_run already exist in commands.ts/types.ts).
+Only pre-existing commands used. Backend crates + Tauri command signatures are
+byte-for-byte unchanged (no Rust files touched).
+
+Verification:
+- cd frontend && npx tsc --noEmit — clean (strict, 0 errors).
+- npx vite build — 51 modules transformed (was 50), built OK.
+- Live in-window compare/merge (real use_run against a repo) is not verifiable in
+  this env — no tauri CLI/display — same limitation as prior frontend tasks; the
+  wiring type-checks against types.ts/commands.ts (compare_task → CompareView,
+  use_run → UseRunResult).
+
+Next highest-priority task: M7 — Polish pass (empty/loading/error states, toast
+for command errors, keyboard focus, responsive down to 1200×800), then delete the
+legacy static dist/index.html once parity is reached.

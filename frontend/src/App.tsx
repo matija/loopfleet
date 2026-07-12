@@ -8,10 +8,15 @@ import { AgentStatusPanel } from "./components/AgentStatusPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SandboxOverrides } from "./components/SandboxOverrides";
 import { SandboxBoundaryPanel } from "./components/SandboxBoundaryPanel";
-import { PlanView, type LaunchedRun } from "./components/PlanView";
+import {
+  PlanView,
+  type CompareTarget,
+  type LaunchedRun,
+} from "./components/PlanView";
 import { RunDock, type ActiveRun } from "./components/RunDock";
 import { LiveRunView } from "./components/LiveRunView";
 import { RunTimeline } from "./components/RunTimeline";
+import { CompareView } from "./components/CompareView";
 
 // A run streams live while active; once terminal, its persisted timeline (with
 // per-iteration events and diffs) is the surface. Opening a run from the dock
@@ -32,6 +37,12 @@ export default function App() {
   // not survive a restart in v1, so this is complete for the session.
   const [runs, setRuns] = useState<ActiveRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  // The task whose runs are being compared (the compare view takes over the
+  // main body when set, unless a run is open).
+  const [compareTarget, setCompareTarget] = useState<CompareTarget | null>(null);
+  // Bumped to force the plan overview to refetch after a run is accepted (its
+  // derived TaskStatus changes).
+  const [planNonce, setPlanNonce] = useState(0);
 
   useEffect(() => {
     listProjects()
@@ -92,7 +103,10 @@ export default function App() {
         <RunDock
           runs={runs}
           selectedRunId={selectedRunId}
-          onOpen={setSelectedRunId}
+          onOpen={(id) => {
+            setSelectedRunId(id);
+            setCompareTarget(null);
+          }}
           onStop={(id) => {
             stopRun(id).catch((e) => setError(String(e)));
           }}
@@ -116,7 +130,11 @@ export default function App() {
                   key={p.id}
                   className="project-item"
                   aria-current={p.id === selectedId}
-                  onClick={() => setSelectedId(p.id)}
+                  onClick={() => {
+                    setSelectedId(p.id);
+                    setSelectedRunId(null);
+                    setCompareTarget(null);
+                  }}
                 >
                   <div className="project-item__name">{p.repo_path}</div>
                   <div className="project-item__meta">{p.plan_convention}</div>
@@ -136,7 +154,11 @@ export default function App() {
             : "Supervise looping coding agents in sandboxed git worktrees."}
         </p>
       </div>
-      <div className={`main__body${selectedRun ? " main__body--run" : ""}`}>
+      <div
+        className={`main__body${
+          selectedRun || compareTarget ? " main__body--run" : ""
+        }`}
+      >
         {selectedRun ? (
           ACTIVE.includes(selectedRun.status) ? (
             <LiveRunView
@@ -154,13 +176,23 @@ export default function App() {
               onClose={() => setSelectedRunId(null)}
             />
           )
+        ) : compareTarget ? (
+          <CompareView
+            key={compareTarget.taskAnchor}
+            planId={compareTarget.planId}
+            taskAnchor={compareTarget.taskAnchor}
+            taskText={compareTarget.taskText}
+            onClose={() => setCompareTarget(null)}
+            onAccepted={() => setPlanNonce((n) => n + 1)}
+          />
         ) : (
           <>
             {selected ? (
               <PlanView
-                key={selected.id}
+                key={`${selected.id}:${planNonce}`}
                 projectId={selected.id}
                 onLaunch={onLaunch}
+                onCompare={setCompareTarget}
               />
             ) : (
               <p className="main__placeholder">
