@@ -211,7 +211,7 @@ Tasks (each sized for one agent iteration):
 - [x] Live run view component: `run_event`/`run_status` subscription, streaming events, live file-changes, Stop.
 - [x] Run timeline: iterations as rows, per-iteration events + diff/patch viewer.
 - [x] Compare view: runs side by side, final-ref diffs, "use this run" → user-named target branch.
-- [ ] Polish pass: empty/loading/error states, toast for command errors, keyboard focus, responsive down to the 1200×800 window. → verify: cold open with no projects reads as intentional, not broken.
+- [x] Polish pass: empty/loading/error states, toast for command errors, keyboard focus, responsive down to the 1200×800 window. → verify: cold open with no projects reads as intentional, not broken.
 - [ ] Delete the legacy static `dist/index.html` once parity is reached. → verify: no dead references; `tauri build` produces a working bundle.
 
 Success criteria: from a fresh checkout, `tauri dev` boots the React app; a run can be launched on a task whose PRD checkbox is already checked; an active run is visible and stoppable from a surface that does not depend on scrolling into a specific task; the sandbox boundary is stated in the UI. Backend crates and Tauri command signatures are byte-for-byte unchanged.

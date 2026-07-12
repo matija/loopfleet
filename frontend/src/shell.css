@@ -148,16 +148,51 @@
   max-width: 60ch;
 }
 
-/* --- error banner --- */
+/* --- command-error toasts ---
+ * Fixed overlay, top-right, stacked. Floats above the main pane and the dock. */
 
-.banner-error {
-  margin: var(--space-4) var(--space-6) 0;
-  padding: var(--space-2) var(--space-3);
+.toasts {
+  position: fixed;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: min(420px, calc(100vw - var(--space-8)));
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
   background: var(--c-danger-quiet);
   border: 1px solid var(--c-danger);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
   color: var(--c-text);
   font-size: var(--text-sm);
+}
+
+.toast__msg {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.toast__close {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--c-text-muted);
+  padding: 0;
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+
+.toast__close:hover {
+  color: var(--c-text);
 }
 
 /* --- sandbox-boundary trust panel ---

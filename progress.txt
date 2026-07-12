@@ -2170,3 +2170,53 @@ Verification:
 Next highest-priority task: M7 — Polish pass (empty/loading/error states, toast
 for command errors, keyboard focus, responsive down to 1200×800), then delete the
 legacy static dist/index.html once parity is reached.
+
+2026-07-12 — M7: Polish pass (toast for command errors + verify empty/focus/responsive)
+- The frontend already had solid per-view loading/error/empty states (PlanView,
+  CompareView, RunTimeline, AgentStatusPanel each render their own loading and
+  panel__error/empty shapes) and the cold-open reads intentional (sidebar
+  "No projects yet…" + AddProject button; main placeholder "Select or add a
+  project…"; overview panels). The real gap this pass closes: command errors.
+- frontend/src/components/Toasts.tsx: new. useToasts() hook (toasts/push/dismiss,
+  monotonic ref-counter ids, 6s auto-dismiss per toast) + <Toasts> component
+  (fixed top-right overlay, role="region" aria-live="assertive", each toast
+  role="alert" with a ✕ dismiss button aria-label="Dismiss"). Only the app-level
+  command lane uses it — contextual form errors (AddProject, Settings save,
+  SandboxOverrides, use-run) stay INLINE next to their control by design; this
+  replaces the one place App funneled transient command failures.
+- frontend/src/App.tsx: dropped the single persistent `error` state + the
+  `{error && <div className="banner-error">}` render (a banner that never
+  auto-cleared, couldn't be closed, and was silently overwritten by the next
+  error). Now `const { toasts, push: pushError, dismiss } = useToasts()`; the
+  four command-failure sites (initial listProjects load, dock Stop, live-view
+  Stop, and the launch/stop paths) call pushError; <Toasts> renders in the main
+  pane. listProjects effect dep list gains pushError (stable via useCallback).
+- frontend/src/shell.css: removed the now-orphaned .banner-error rule (my change
+  made it dead — surgical cleanup of my own orphan) and added .toasts/.toast/
+  .toast__msg/.toast__close (fixed overlay z-index 100 above main + dock, danger-
+  quiet surface, shadow-1, overflow-wrap:anywhere for long error strings,
+  max-width min(420px, viewport - space-8) so it never overflows the 1200-wide
+  window). Structural only, every value via tokens.css.
+- Keyboard focus: the global :focus-visible outline (tokens.css) already covers
+  every native <button>/<input>/<select>; the toast close button is a native
+  button, so it is focusable and dismissable by keyboard with no extra wiring.
+  aria-live announces the error to screen readers.
+- Responsive: the window is fixed at 1200×800 (tauri.conf). The shell is a
+  260px + 1fr grid; overview panels cap at 72ch (~540px) inside the ~940px main
+  pane; the compare view's columns already wrap at min 320px; the toast overlay
+  is viewport-clamped. No speculative media queries added — the fixed window IS
+  the design target and nothing overflows it.
+
+Scope (Simplicity First): built exactly the missing piece (a toast surface) plus
+verified the other three sub-items were already satisfied, rather than rebuilding
+states that already existed. No backend touched — no crate or src-tauri edit;
+Tauri command signatures byte-for-byte unchanged.
+
+Verification:
+- cd frontend && npx tsc --noEmit — clean (strict, 0 errors).
+- npx vite build — 52 modules transformed (was 51), built OK.
+- grep confirms no remaining banner-error / setError references in App.tsx.
+
+Next highest-priority task: M7's last bullet — delete the legacy static
+dist/index.html once parity is reached (verify: no dead references; tauri build
+produces a working bundle).

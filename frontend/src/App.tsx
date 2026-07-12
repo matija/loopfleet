@@ -17,6 +17,7 @@ import { RunDock, type ActiveRun } from "./components/RunDock";
 import { LiveRunView } from "./components/LiveRunView";
 import { RunTimeline } from "./components/RunTimeline";
 import { CompareView } from "./components/CompareView";
+import { Toasts, useToasts } from "./components/Toasts";
 
 // A run streams live while active; once terminal, its persisted timeline (with
 // per-iteration events and diffs) is the surface. Opening a run from the dock
@@ -32,7 +33,9 @@ const ACTIVE: RunStatus[] = ["queued", "running"];
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // App-level command errors surface as transient toasts, not a persistent
+  // banner. Contextual form errors stay inline in their own components.
+  const { toasts, push: pushError, dismiss: dismissToast } = useToasts();
   // Session-scoped registry of launched runs (the global run surface). Runs do
   // not survive a restart in v1, so this is complete for the session.
   const [runs, setRuns] = useState<ActiveRun[]>([]);
@@ -50,8 +53,8 @@ export default function App() {
         setProjects(ps);
         setSelectedId((cur) => cur ?? ps[0]?.id ?? null);
       })
-      .catch((e) => setError(String(e)));
-  }, []);
+      .catch((e) => pushError(String(e)));
+  }, [pushError]);
 
   // Terminal-state updates for any run flow through the dock's registry.
   useEffect(() => {
@@ -108,7 +111,7 @@ export default function App() {
             setCompareTarget(null);
           }}
           onStop={(id) => {
-            stopRun(id).catch((e) => setError(String(e)));
+            stopRun(id).catch((e) => pushError(String(e)));
           }}
           onDismiss={(id) =>
             setRuns((prev) => prev.filter((r) => r.runId !== id))
@@ -145,7 +148,7 @@ export default function App() {
         </>
       }
     >
-      {error && <div className="banner-error">{error}</div>}
+      <Toasts toasts={toasts} onDismiss={dismissToast} />
       <div className="main__header">
         <h2>{selected ? repoName(selected.repo_path) : "Overview"}</h2>
         <p>
@@ -165,7 +168,7 @@ export default function App() {
               key={selectedRun.runId}
               run={selectedRun}
               onStop={(id) => {
-                stopRun(id).catch((e) => setError(String(e)));
+                stopRun(id).catch((e) => pushError(String(e)));
               }}
               onClose={() => setSelectedRunId(null)}
             />
