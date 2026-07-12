@@ -92,11 +92,13 @@ export function compareTask(
   return invoke("compare_task", { planId, taskAnchor });
 }
 
-/// "Use this run": merge the run's final state into `targetBranch` (created if
-/// absent) and mark the run accepted.
+/// "Use this run": merge the run's final state into a target branch and mark
+/// the run accepted. `targetBranch = null` (or empty) merges into the repo's
+/// currently checked-out branch under a descriptive merge commit — the default.
+/// A non-empty `targetBranch` names a custom branch (created if absent).
 export function useRun(
   runId: string,
-  targetBranch: string,
+  targetBranch: string | null,
 ): Promise<UseRunResult> {
-  return invoke("use_run", { runId, targetBranch });
+  return invoke("use_run", { runId, targetBranch: targetBranch ?? null });
 }

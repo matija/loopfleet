@@ -62,8 +62,9 @@ export type TaskView = {
   anchor: string;
   line_hint: number;
   text: string;
-  /// Authored input only: a pre-checked task is excluded from launching.
-  /// (M7: the launch control ignores this; it only gates derived status.)
+  /// Authored `- [x]` state: the "implemented" baseline — read as `Accepted`
+  /// by the derived status when no outranking run exists. Still runnable;
+  /// launching is never gated by it.
   checked: boolean;
   status: TaskStatus;
   /// How many runs are bound to this task.

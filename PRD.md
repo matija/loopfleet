@@ -1,4 +1,4 @@
-# PRD: Workbench UI — a database-client-style surface for loopfleet
+# PRD: Workbench UI — a panel-style workbench surface for loopfleet
 
 loopfleet is a macOS desktop app (Tauri + Rust) that runs looping coding agents
 against PRD-style plans in sandboxed git worktrees, with a full timeline of what
@@ -13,12 +13,11 @@ single-view model: the main pane shows exactly one view at a time, with the
 sidebar's plan tree and the bottom run dock as the always-present navigators and
 an in-view "← Back" control returning to the project's plan.
 
-This plan reshapes that surface into a **database-client-style workbench**
-modeled on a modern database client: a connections-style sidebar, a filterable
-object tree with counts, a per-view command bar, typed data grids with enum
-badges, and ⌘K. The domain fit is exact — loopfleet's normalized event enum and
-derived `TaskStatus` are the natural analog of a DB client's typed columns and
-enum values.
+This plan reshapes that surface into a **workbench UI**: a connections-style
+sidebar, a filterable object tree with counts, a per-view command bar, typed
+data grids with enum badges, and ⌘K. The domain fit is exact — loopfleet's
+normalized event enum and derived `TaskStatus` map naturally onto typed columns
+and enum values.
 
 **This is a frontend-only milestone**, the same constraint as M7: no Rust command
 signatures change. Every task consumes the existing command surface
@@ -28,9 +27,9 @@ expose, note it — don't silently widen the command surface.
 
 ---
 
-## Reference — the interface being borrowed from
+## Reference — the workbench design
 
-A modern database client with: a **connections sidebar** (status dot, `name` +
+A workbench layout with: a **connections sidebar** (status dot, `name` +
 `user@host` subtitle, a "+" to add, a filter box); a **filterable object list**
 with per-object **row counts**; a **per-view command bar** (object-name
 pill, a `WHERE …` filter, a **Run** button, a **Connected** status pill, an "Xs
@@ -42,7 +41,7 @@ design with global **⌘K search** and an environment badge.
 
 ## Domain mapping — what each borrowed feature becomes
 
-| Database client | loopfleet |
+| Workbench element | loopfleet |
 |---|---|
 | Connection (status dot, `user@host`) | **Project** — repo name + short path; dot lit when it has active runs |
 | Object list with row counts | **Plan tree** — tasks with run-count badges; a "Runs" group |
@@ -59,7 +58,7 @@ design with global **⌘K search** and an environment badge.
 
 - **No backend changes.** No new or altered Tauri commands (same as M7). Backend
   crates and command signatures stay byte-for-byte unchanged.
-- **No SQL / query language.** The `WHERE …` analog is a plain client-side filter
+- **No query language.** The `WHERE …` analog is a plain client-side filter
   over the already-loaded events/tasks, not a query surface.
 - **No new theme system.** Reuse the existing `tokens.css` dark palette; add
   tokens only where a genuinely new pattern needs one (grid, palette).
@@ -89,7 +88,7 @@ design with global **⌘K search** and an environment badge.
   filter narrows the list live; the dot lights while a run is active.
 - [x] **Plan tree with counts.** Under the selected project, render tasks as a
   filterable list with a right-aligned **run-count badge** (from `plan_overview`),
-  grouped like the DB object tree; clicking a task opens it in the main pane.
+  grouped like the object tree; clicking a task opens it in the main pane.
   Keep the derived `TaskStatus` badge; surface completed-unaccepted loudly (the
   review queue). → verify: counts match the overview; a click opens the task.
 - [x] **Per-view command bar.** A `CommandBar` for run/task views: a task-name

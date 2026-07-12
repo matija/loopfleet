@@ -3,7 +3,8 @@
 //! Plans and their tasks are synced from the parsed plan file so a run can bind
 //! to a stable `(plan_id, task_anchor)`. Per-task live state is DERIVED from run
 //! records at read time (see `loopfleet_core::task_status`), never stored here;
-//! `checked` is authored input only.
+//! `checked` is the authored "implemented" baseline (read as `Accepted` by
+//! `derive_status`), not a live progress signal.
 
 use rusqlite::{params, Connection};
 

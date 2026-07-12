@@ -1,6 +1,7 @@
 -- Initial schema for the loopfleet data model (PRD "Data model" section).
 -- Per-task live state (TaskStatus) is DERIVED from run records at read time and
--- is intentionally NOT stored here. `checked` is authored input only.
+-- is intentionally NOT stored here. `checked` is the authored "implemented"
+-- baseline (read as `Accepted` by `derive_status`), not a live signal.
 
 CREATE TABLE projects (
     id              TEXT PRIMARY KEY,
@@ -21,7 +22,7 @@ CREATE TABLE tasks (
     normalized_text TEXT NOT NULL,
     line_hint       INTEGER,
     text            TEXT NOT NULL,
-    checked         INTEGER NOT NULL,       -- authored input only, 0/1
+    checked         INTEGER NOT NULL,       -- authored "implemented" baseline, 0/1
     PRIMARY KEY (plan_id, normalized_text)
 );
 

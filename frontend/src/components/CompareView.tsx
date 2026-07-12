@@ -1,8 +1,9 @@
 // Compare view (PRD M7): every run bound to one task, side by side, each with
 // the diff it produced against its base (final shadow ref). The app never scores
 // or judges — it shows what each run made. "Use this run" merges the chosen run's
-// branch into a user-named target branch (created if absent, never your main by
-// default) and marks the run accepted. Read-only otherwise.
+// branch into the repo's current branch by default (a descriptive merge commit),
+// or into a custom branch you name, and marks the run accepted. Read-only
+// otherwise.
 //
 // Reuses the Diff component from the run timeline (same per-file summary +
 // collapsible patch) and the run-view header/status vocabulary. Consumes only
@@ -135,8 +136,10 @@ function RunColumn({
   );
 }
 
-// "Use this run": merge the run's final state into a user-named target branch.
-// Never targets the main branch by default — the user types the target.
+// "Use this run": by default merge the run's final state into the repo's
+// currently checked-out branch under a descriptive commit message. A custom
+// target branch is optional — name it only to land the run somewhere other than
+// the current branch (created if absent). Never scores or judges runs.
 function UseRun({
   run,
   onAccepted,
@@ -151,13 +154,14 @@ function UseRun({
 
   // Only a run that produced a snapshot can be merged.
   const mergeable = run.final_ref !== null;
+  const custom = branch.trim() !== "";
 
   async function apply() {
     setBusy(true);
     setError(null);
     setResult(null);
     try {
-      const r = await useRun(run.run_id, branch.trim());
+      const r = await useRun(run.run_id, custom ? branch.trim() : null);
       setResult(r);
       onAccepted();
     } catch (e) {
@@ -173,21 +177,27 @@ function UseRun({
         <input
           className="use-run__branch"
           type="text"
-          placeholder="target branch"
+          placeholder="current branch (optional)"
           value={branch}
           disabled={!mergeable || busy}
           onChange={(e) => setBranch(e.target.value)}
           aria-label="Target branch"
+          title="Leave empty to merge into your current branch. Name a branch to land the run elsewhere."
         />
         <button
-          className="btn btn--accent"
+          className="btn btn--accent use-run__go"
           onClick={apply}
-          disabled={!mergeable || busy || branch.trim() === ""}
+          disabled={!mergeable || busy}
           title={!mergeable ? "No snapshot to merge" : undefined}
         >
           {busy ? "Merging…" : "Use this run"}
         </button>
       </div>
+      <p className="use-run__hint">
+        {custom
+          ? <>Merges into <code>{branch.trim()}</code>.</>
+          : <>Merges into your current branch.</>}
+      </p>
       {result && (
         <p className="use-run__result">
           Merged into <code>{result.target_branch}</code>{" "}

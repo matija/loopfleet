@@ -80,18 +80,23 @@ impl GitActor {
             .await
     }
 
-    /// Merge a run's final commit into `target_branch` ("use this run",
-    /// `merge::merge_run`) through the actor. `scratch_root` roots the throwaway
-    /// worktree used when the target already exists.
+    /// Merge a run's final commit into a target branch ("use this run",
+    /// `merge::merge_run`) through the actor. `target_branch = None` merges into
+    /// the repo's current branch; `Some(name)` names a custom target.
+    /// `commit_message` is the merge commit message. `scratch_root` roots the
+    /// throwaway worktree used when a custom target already exists.
     pub async fn merge_run(
         &self,
         repo: PathBuf,
         source_rev: String,
-        target_branch: String,
+        target_branch: Option<String>,
+        commit_message: String,
         scratch_root: PathBuf,
     ) -> Result<MergeResult, MergeError> {
-        self.exec(move || merge::merge_run(&repo, &source_rev, &target_branch, &scratch_root))
-            .await
+        self.exec(move || {
+            merge::merge_run(&repo, &source_rev, target_branch.as_deref(), &commit_message, &scratch_root)
+        })
+        .await
     }
 
     /// Run one mutation on the actor thread and await its result. Private: the

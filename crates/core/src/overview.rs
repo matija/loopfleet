@@ -36,7 +36,9 @@ pub struct TaskView {
     pub anchor: String,
     pub line_hint: u32,
     pub text: String,
-    /// Authored input only: a pre-checked task is excluded from launching.
+    /// Authored `- [x]` state: reads as "implemented" in the derived status
+    /// (the `Accepted` baseline), and is still runnable — launching is never
+    /// gated by it.
     pub checked: bool,
     pub status: TaskStatus,
     /// How many runs are bound to this task (context for the compare queue).
@@ -118,11 +120,16 @@ pub fn plan_overview(
                     line_hint: t.anchor.line_hint,
                     text: t.text.clone(),
                     checked: t.checked,
-                    status: derive_status(&task_runs),
+                    status: derive_status(&task_runs, t.checked),
                     run_count: task_runs.len(),
                 }
             })
             .collect();
+        // Implemented tasks (Accepted — either an accepted run or an authored
+        // `- [x]`) sink below not-yet-implemented ones so the work left to do
+        // reads first; document order is preserved within each group.
+        let mut tasks: Vec<TaskView> = tasks;
+        tasks.sort_by_key(|t| t.status == TaskStatus::Accepted);
 
         views.push(PlanView {
             plan_id: pid,
@@ -178,16 +185,22 @@ mod tests {
         let (project, _dir) =
             project_with_prd(&conn, "# Plan\n- [ ] alpha\n- [ ] beta\n- [x] gamma\n");
 
-        // First call syncs the plan + tasks; no runs yet → all not-started.
+        // First call syncs the plan + tasks; no runs yet. alpha/beta are
+        // not-started; gamma is authored-checked → Accepted (implemented).
         let views = plan_overview(&conn, &project).unwrap();
         assert_eq!(views.len(), 1);
         let v = &views[0];
         assert_eq!(v.title.as_deref(), Some("Plan"));
         assert!(v.markdown.contains("- [ ] alpha"));
         assert_eq!(v.tasks.len(), 3);
-        assert!(v.tasks.iter().all(|t| t.status == TaskStatus::NotStarted));
-        // gamma was authored-checked (excluded from launching).
-        assert!(v.tasks.iter().find(|t| t.anchor == "gamma").unwrap().checked);
+        let gamma = v.tasks.iter().find(|t| t.anchor == "gamma").unwrap();
+        assert!(gamma.checked);
+        assert_eq!(gamma.status, TaskStatus::Accepted);
+        // Implemented tasks sink below not-yet-implemented ones: alpha, beta,
+        // then gamma — even though gamma is authored-third, it's last here.
+        assert_eq!(v.tasks[0].anchor, "alpha");
+        assert_eq!(v.tasks[1].anchor, "beta");
+        assert_eq!(v.tasks[2].anchor, "gamma");
 
         // A completed run on "alpha" → completed-unaccepted overlay on re-read.
         loopfleet_store::insert_run(&conn, &run_row(&v.plan_id, "alpha", "completed")).unwrap();
@@ -197,9 +210,13 @@ mod tests {
         let tasks = &views[0].tasks;
         let alpha = tasks.iter().find(|t| t.anchor == "alpha").unwrap();
         let beta = tasks.iter().find(|t| t.anchor == "beta").unwrap();
+        let gamma = tasks.iter().find(|t| t.anchor == "gamma").unwrap();
         assert_eq!(alpha.status, TaskStatus::CompletedUnaccepted);
         assert_eq!(alpha.run_count, 1);
         assert_eq!(beta.status, TaskStatus::InProgress);
+        assert_eq!(gamma.status, TaskStatus::Accepted);
+        // gamma (implemented) still sinks below alpha/beta (not implemented).
+        assert_eq!(tasks.last().unwrap().anchor, "gamma");
     }
 
     #[test]

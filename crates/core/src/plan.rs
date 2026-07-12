@@ -6,9 +6,11 @@
 //! `{ normalized_text, line_hint }` anchor whose **identity is the normalized
 //! text**; the line is a hint/tiebreaker, never the key (PRD: Plans, Data model).
 //!
-//! The authored `checked` state is INPUT ONLY (you may pre-check a task to
-//! exclude it from launching); it is never a live progress signal. Live per-task
-//! state is derived from run records elsewhere, not read from the file.
+//! The authored `checked` state is the "implemented" baseline for derived
+//! `TaskStatus` (a pre-checked task reads as `Accepted`); it is never a live
+//! progress signal. Live per-task state is derived from run records elsewhere,
+//! not read from the file. A checked task stays runnable — launching is never
+//! gated by it.
 
 use std::fs;
 use std::io;
@@ -27,8 +29,9 @@ pub struct ParsedPlan {
     pub tasks: Vec<ParsedTask>,
 }
 
-/// One checkbox task. `text` is the authored display text; `checked` is authored
-/// input only; `anchor` is the stable identity used to bind runs to this task.
+/// One checkbox task. `text` is the authored display text; `checked` is the
+/// authored "implemented" baseline; `anchor` is the stable identity used to
+/// bind runs to this task.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ParsedTask {
     pub anchor: TaskAnchor,
@@ -280,17 +283,13 @@ mod tests {
     #[test]
     fn parses_the_repo_prd() {
         // Real-world round-trip against this repo's own PRD.md: the parser must
-        // survive contact with the actual authored plan.
+        // survive contact with the actual authored plan. Asserts structure that
+        // holds across PRD edits, not specific task text.
         let prd = concat!(env!("CARGO_MANIFEST_DIR"), "/../../PRD.md");
         let plan = parse_plan_file(Path::new(prd)).unwrap();
-        assert!(plan.title.as_deref().unwrap().contains("Agent Cockpit"));
-        // The milestone checklists give many tasks; M0's are authored-checked.
-        assert!(plan.tasks.len() > 20);
-        let m0 = plan
-            .tasks
-            .iter()
-            .find(|t| t.anchor.normalized_text.contains("scaffold tauri"))
-            .expect("M0 scaffold task present");
-        assert!(m0.checked);
+        assert!(plan.title.as_deref().unwrap().contains("Workbench UI"));
+        assert!(!plan.tasks.is_empty());
+        assert!(plan.tasks.iter().any(|t| t.checked));
+        assert!(plan.tasks.iter().any(|t| !t.checked));
     }
 }

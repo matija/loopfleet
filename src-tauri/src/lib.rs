@@ -399,24 +399,27 @@ struct UseRunResult {
     up_to_date: bool,
 }
 
-/// "Use this run": merge the run's final state into `target_branch` (created if
-/// absent) and mark the run accepted. Never targets a branch by default — the
-/// user names it. The run's work lives in its final shadow ref; the merge runs
-/// through the serialized git actor, in a throwaway worktree when the target
-/// already exists, so the user's own checkout is never touched.
+/// "Use this run": merge the run's final state into a target branch and mark
+/// the run accepted. `target_branch = None` (or empty) merges into the repo's
+/// currently checked-out branch — the default, landing the run's work where the
+/// user is working under a descriptive merge commit. A non-empty `target_branch`
+/// names a custom branch (created if absent). The merge runs through the
+/// serialized git actor; the current-branch default merges in the main worktree
+/// (guarded by a clean tree), a custom target uses a throwaway worktree so the
+/// user's own checkout is never touched.
 #[tauri::command]
 async fn use_run(
     run_id: String,
-    target_branch: String,
+    target_branch: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<UseRunResult, String> {
-    let target = target_branch.trim().to_string();
-    if target.is_empty() {
-        return Err("target branch name is required".into());
-    }
+    let target = target_branch
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty());
 
-    // Resolve the run's parent repo and its final shadow ref (its produced state).
-    let (repo_path, source_ref) = {
+    // Resolve the run's parent repo, its final shadow ref, and the identity
+    // pieces that make the merge commit message descriptive.
+    let (repo_path, source_ref, agent, task_anchor) = {
         let conn = state.db.lock().unwrap();
         let detail = loopfleet_store::load_run(&conn, &run_id)
             .map_err(|e| e.to_string())?
@@ -427,8 +430,13 @@ async fn use_run(
             .rev()
             .find_map(|it| it.shadow_ref)
             .ok_or_else(|| "run has no snapshot to use".to_string())?;
-        (detail.repo_path, source_ref)
+        (detail.repo_path, source_ref, detail.agent, detail.task_anchor)
     };
+
+    // A nice merge commit message: subject names the run and agent, body carries
+    // the task so the history reads as what the run accomplished.
+    let short = &run_id[..run_id.len().min(8)];
+    let message = format!("Apply loopfleet run {short} ({agent})\n\n{task_anchor}");
 
     let scratch_root = state.data_dir.join("worktrees");
     let merge = state
@@ -437,6 +445,7 @@ async fn use_run(
             PathBuf::from(&repo_path),
             source_ref,
             target,
+            message,
             scratch_root,
         )
         .await

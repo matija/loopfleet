@@ -183,7 +183,7 @@ function TaskRow({
         {task.checked && (
           <span
             className="task-row__checked"
-            title="Authored as checked — excluded from derived status, but still runnable."
+            title="Authored as checked — counts as implemented (Accepted), still runnable."
           >
             authored ✓
           </span>
