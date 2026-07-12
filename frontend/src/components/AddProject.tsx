@@ -8,6 +8,18 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { registerProject } from "../commands";
 import type { Project } from "../types";
 
+/// The shared pick-and-register flow: native folder picker → the unchanged
+/// `register_project` command. Used by the compact sidebar button and by the
+/// ⌘K palette's "Add project" action so the flow lives in one place.
+/// Returns the registered project, or `null` if the picker was cancelled.
+export async function pickAndRegisterProject(): Promise<Project | null> {
+  const folder = (await open({ directory: true, multiple: false })) as
+    | string
+    | null;
+  if (!folder) return null; // picker cancelled
+  return registerProject(folder);
+}
+
 export function AddProject({
   onAdded,
   compact = false,
@@ -20,19 +32,10 @@ export function AddProject({
 
   async function pick() {
     setError(null);
-    let folder: string | null;
-    try {
-      folder = (await open({ directory: true, multiple: false })) as
-        | string
-        | null;
-    } catch (e) {
-      setError(String(e));
-      return;
-    }
-    if (!folder) return; // picker cancelled
     setBusy(true);
     try {
-      onAdded(await registerProject(folder));
+      const p = await pickAndRegisterProject();
+      if (p) onAdded(p);
     } catch (e) {
       setError(String(e));
     } finally {

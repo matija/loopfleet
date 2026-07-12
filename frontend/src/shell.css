@@ -14,6 +14,7 @@
  * so the native traffic lights still sit over the left of this bar; the brand
  * is centered to never collide with them. The whole bar is a drag region. */
 .titlebar {
+  position: relative;
   grid-column: 1 / -1;
   grid-row: 1;
   display: flex;

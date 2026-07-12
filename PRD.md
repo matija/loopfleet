@@ -110,7 +110,7 @@ design with global **⌘K search** and an environment badge.
 - [x] **Grid footer.** A footer under the grid: `Showing N events · <duration>`,
   the iteration count, and — in the timeline — a Prev/Next for iteration paging.
   → verify: counts and duration match the timeline data.
-- [ ] **⌘K command palette.** A global palette (`Cmd/Ctrl-K`) that fuzzy-searches
+- [x] **⌘K command palette.** A global palette (`Cmd/Ctrl-K`) that fuzzy-searches
   projects, tasks, and runs and opens the match in the main pane, plus quick
   actions (add project, open settings). → verify: keyboard-only open → navigate
   → select; Esc closes.
