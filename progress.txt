@@ -1843,3 +1843,67 @@ Verification:
 Next highest-priority task: M7 — Projects + Agents-status + Settings as
 components (add-project dialog, agent availability/version-drift chips, settings
 form, per-project sandbox overrides).
+
+2026-07-12 — M7: Projects + Agents-status + Settings as components
+- Fourth M7 task: turned the overview surface (add-project, agent chips,
+  settings, per-project sandbox overrides) into typed React components on the
+  unchanged Rust backend. No Rust touched; no tauri.conf.json/capability change.
+- frontend/src/components/AddProject.tsx: the add-project affordance. Native
+  folder picker via @tauri-apps/plugin-dialog `open({ directory: true })` (the
+  same dialog plugin the legacy static UI used — already registered on the Rust
+  side and covered by the existing `dialog:default` capability, which includes
+  allow-open in plugin-dialog v2, so no capability edit was needed) → the
+  unchanged `register_project` command. Registration errors (NotAGitRepo /
+  AlreadyRegistered, returned as strings by core) surface inline; a cancelled
+  picker is a no-op. onAdded callback hands the new Project up to App.
+- frontend/src/components/AgentStatusPanel.tsx: agent availability + version
+  drift, one chip per agent from `agent_status`. Green dot + version when
+  installed; yellow dot + "tested <v>" warning (title tooltip) when
+  version_matches===false; red dot + detail when missing. Mirrors the legacy
+  chip semantics as a component.
+- frontend/src/components/SettingsPanel.tsx: default agent (select over the v1
+  agent keys), default iterations, concurrency cap (0=unlimited). Loads via
+  `get_settings` on mount (falls back to in-state defaults on failure), saves
+  via `save_settings` with an inline ok/err message; clamps iterations>=1 and
+  cap>=0 before saving (matches the legacy Math.max guards).
+- frontend/src/components/SandboxOverrides.tsx: per-project extra write paths,
+  one absolute path per line, scoped to the selected project (reloads on
+  projectId change). Reads `project_sandbox_writes`, writes
+  `set_project_sandbox_writes` (Rust setter rejects relative paths → inline
+  error, so a bad override can't silently weaken the boundary). Hint states
+  never to list the parent .git (commits stay app-owned).
+- frontend/src/panels.css: the shared primitives these components use — .panel,
+  .btn/.btn--accent, .msg/.msg--ok/--err, .form-grid/.field, .agent-chip* (dot
+  colored by on/drift/off), .overrides__ta, .add-project*, .overview stack.
+  Structural only; every value via tokens.css (no hardcoded color/size/radius),
+  consistent with shell.css.
+- frontend/src/App.tsx: composition — AddProject sits under the sidebar
+  "Projects" label; onAdded appends the returned Project and selects it. The
+  main body is now an .overview column: AgentStatusPanel, SettingsPanel,
+  SandboxOverrides (only when a project is selected — it needs project context),
+  then the existing SandboxBoundaryPanel. Replaced the shell placeholder text.
+- frontend/src/main.tsx: import panels.css alongside tokens.css/shell.css.
+- frontend/package.json: added @tauri-apps/plugin-dialog ^2 (frontend-only dep;
+  the Rust plugin was already present from M0).
+
+Scope (Simplicity First): built exactly the four overview pieces this bullet
+names, as components. Did NOT touch the plan view, run surfaces, or backend —
+those are later M7 tasks. Agent select uses a small constant key list rather
+than deriving from agent_status (keeps SettingsPanel from double-loading).
+
+Verification:
+- cd frontend && npx tsc --noEmit — CLEAN (strict, noUnusedLocals/Parameters).
+- npm run build (tsc && vite build) — built frontend/dist (41 modules;
+  index-*.css 7.82KB, index-*.js 202.81KB). tsc is the real check: every
+  component's props, command args/returns and App composition type-check
+  against types.ts/commands.ts.
+- Live tauri dev (the native folder picker opening, chips/settings/overrides
+  round-tripping in-window) is NOT verifiable here — no tauri CLI/display in
+  this env, same limitation as the prior frontend tasks. Compile+bundle passes;
+  the interactive round-trip is left for a desktop run.
+- Backend untouched: no Rust files, tauri.conf.json, or capability changes, so
+  no cargo build needed.
+
+Next highest-priority task: M7 — Plan view: task list with derived TaskStatus
+badges; launch control (agent + iterations + Run) on EVERY task regardless of
+`checked`; completed-unaccepted surfaced loudly (the review queue).

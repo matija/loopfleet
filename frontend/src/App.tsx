@@ -2,13 +2,17 @@ import { useEffect, useState } from "react";
 import { listProjects } from "./commands";
 import type { Project } from "./types";
 import { AppShell } from "./components/AppShell";
+import { AddProject } from "./components/AddProject";
+import { AgentStatusPanel } from "./components/AgentStatusPanel";
+import { SettingsPanel } from "./components/SettingsPanel";
+import { SandboxOverrides } from "./components/SandboxOverrides";
 import { SandboxBoundaryPanel } from "./components/SandboxBoundaryPanel";
 
-// Composition root for the shell. Loads the registered projects into the
-// sidebar and drives which one the main pane is scoped to. The main pane is
-// intentionally minimal here — the plan view, run surfaces and settings render
-// into it in the following M7 tasks. What must be present now is the honest
-// sandbox-boundary panel (a trust feature), visible on the overview.
+// Composition root for the shell. Loads registered projects into the sidebar
+// (with the add-project affordance) and scopes the main pane to a selection.
+// The main pane is the overview: agent availability, settings, the selected
+// project's sandbox overrides, and the honest sandbox-boundary trust panel. The
+// plan view and run surfaces render here in the following M7 tasks.
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -23,6 +27,14 @@ export default function App() {
       .catch((e) => setError(String(e)));
   }, []);
 
+  // A newly registered project joins the list and becomes the selection.
+  function onAdded(p: Project) {
+    setProjects((prev) =>
+      prev.some((x) => x.id === p.id) ? prev : [...prev, p],
+    );
+    setSelectedId(p.id);
+  }
+
   const selected = projects.find((p) => p.id === selectedId) ?? null;
 
   return (
@@ -30,9 +42,10 @@ export default function App() {
       sidebar={
         <>
           <div className="sidebar__section-label">Projects</div>
+          <AddProject onAdded={onAdded} />
           {projects.length === 0 ? (
             <div className="sidebar__empty">
-              No projects yet. Registering a project lands in the next view.
+              No projects yet. Add a git repo to launch runs against its plan.
             </div>
           ) : (
             <div className="sidebar__list">
@@ -62,11 +75,10 @@ export default function App() {
         </p>
       </div>
       <div className="main__body">
-        <p className="main__placeholder">
-          The plan view, live runs and compare surface land in the next M7
-          tasks. Every run spawns under the boundary below.
-        </p>
-        <div style={{ marginTop: "var(--space-5)" }}>
+        <div className="overview">
+          <AgentStatusPanel />
+          <SettingsPanel />
+          {selected && <SandboxOverrides projectId={selected.id} />}
           <SandboxBoundaryPanel />
         </div>
       </div>

@@ -1,0 +1,60 @@
+// Agent CLI availability + version-drift chips. One chip per v1 agent: green +
+// version when installed, a yellow "tested <v>" drift warning when the detected
+// version differs from the one the adapter was tested against, red + reason when
+// missing (a run with a missing CLI is refused, so this is a launch guardrail).
+
+import { useEffect, useState } from "react";
+import { agentStatus } from "../commands";
+import type { AgentStatus } from "../types";
+
+export function AgentStatusPanel() {
+  const [agents, setAgents] = useState<AgentStatus[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    agentStatus()
+      .then(setAgents)
+      .catch((e) => setError(String(e)));
+  }, []);
+
+  return (
+    <section className="panel">
+      <div className="panel__head">
+        <h3>Agents</h3>
+      </div>
+      {error ? (
+        <p className="panel__error">{error}</p>
+      ) : (
+        <div className="agent-chips">
+          {agents.map((a) => (
+            <AgentChip key={a.key} agent={a} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AgentChip({ agent }: { agent: AgentStatus }) {
+  const drift = agent.installed && agent.version_matches === false;
+  const state = !agent.installed ? "off" : drift ? "drift" : "on";
+  return (
+    <div className={`agent-chip agent-chip--${state}`}>
+      <span className="agent-chip__dot" />
+      <span className="agent-chip__name">{agent.display}</span>
+      <span className="agent-chip__ver">
+        {agent.installed
+          ? (agent.version ?? "installed")
+          : (agent.detail ?? "not installed")}
+      </span>
+      {drift && (
+        <span
+          className="agent-chip__warn"
+          title={`Adapter tested against ${agent.tested_version}; you have ${agent.version}`}
+        >
+          tested {agent.tested_version}
+        </span>
+      )}
+    </div>
+  );
+}
