@@ -133,6 +133,15 @@
   padding: var(--space-6);
 }
 
+/* Hosting the live run view: fill the pane so the view's internal event stream
+ * scrolls on its own rather than the whole main pane. */
+.main__body--run {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .main__placeholder {
   color: var(--c-text-muted);
   font-size: var(--text-base);

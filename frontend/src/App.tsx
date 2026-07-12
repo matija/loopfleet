@@ -10,6 +10,7 @@ import { SandboxOverrides } from "./components/SandboxOverrides";
 import { SandboxBoundaryPanel } from "./components/SandboxBoundaryPanel";
 import { PlanView, type LaunchedRun } from "./components/PlanView";
 import { RunDock, type ActiveRun } from "./components/RunDock";
+import { LiveRunView } from "./components/LiveRunView";
 
 // Composition root for the shell. Loads registered projects into the sidebar
 // (with the add-project affordance) and scopes the main pane to a selection.
@@ -49,6 +50,8 @@ export default function App() {
   }, []);
 
   const selected = projects.find((p) => p.id === selectedId) ?? null;
+  // A run opened from the dock takes over the main body with its live view.
+  const selectedRun = runs.find((r) => r.runId === selectedRunId) ?? null;
 
   // A launched run joins the dock, tagged with the project it ran against.
   const onLaunch = useCallback(
@@ -126,24 +129,37 @@ export default function App() {
             : "Supervise looping coding agents in sandboxed git worktrees."}
         </p>
       </div>
-      <div className="main__body">
-        {selected ? (
-          <PlanView
-            key={selected.id}
-            projectId={selected.id}
-            onLaunch={onLaunch}
+      <div className={`main__body${selectedRun ? " main__body--run" : ""}`}>
+        {selectedRun ? (
+          <LiveRunView
+            key={selectedRun.runId}
+            run={selectedRun}
+            onStop={(id) => {
+              stopRun(id).catch((e) => setError(String(e)));
+            }}
+            onClose={() => setSelectedRunId(null)}
           />
         ) : (
-          <p className="main__placeholder">
-            Select or add a project to see its plan and launch runs.
-          </p>
+          <>
+            {selected ? (
+              <PlanView
+                key={selected.id}
+                projectId={selected.id}
+                onLaunch={onLaunch}
+              />
+            ) : (
+              <p className="main__placeholder">
+                Select or add a project to see its plan and launch runs.
+              </p>
+            )}
+            <div className="overview">
+              <AgentStatusPanel />
+              <SettingsPanel />
+              {selected && <SandboxOverrides projectId={selected.id} />}
+              <SandboxBoundaryPanel />
+            </div>
+          </>
         )}
-        <div className="overview">
-          <AgentStatusPanel />
-          <SettingsPanel />
-          {selected && <SandboxOverrides projectId={selected.id} />}
-          <SandboxBoundaryPanel />
-        </div>
       </div>
     </AppShell>
   );

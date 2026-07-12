@@ -1992,3 +1992,61 @@ Verification:
 Next highest-priority task: M7 — Live run view component: run_event/run_status
 subscription, streaming events, live file-changes, Stop (the view the dock's
 onOpen will render).
+
+2026-07-12 — M7: Live run view component (streaming events + file-changes + Stop)
+- frontend/src/components/LiveRunView.tsx: the surface the run dock's onOpen
+  renders. Subscribes to the run_event stream (via events.ts onRunEvent),
+  filters to the one open run by run_id, and renders two lanes side by side:
+  the normalized adapter events as they arrive (left) and the set of files the
+  run has touched (right, the app-sourced file_changed lane). A Stop button in
+  the header fires while the run is active (queued/running); the status badge
+  and Stop visibility come from the run prop, which App already keeps current
+  from the run_status stream — no second subscription. Back button (onClose)
+  clears the selection and returns to the plan.
+  - EventRow renders each NormalizedEvent by kind: turn_started/completed/ended,
+    assistant_text, reasoning (muted italic), tool_call (name+input_excerpt),
+    tool_result (ok→normal / !ok→error styling), command_run (cmd + "exit N"
+    when the exit code is present — only cursor supplies it), turn_completed
+    (usage tokens), needs_approval (warn), failed (danger + reason). file_changed
+    is routed to the files panel, not the stream (returns null in EventRow).
+  - file_changed accumulates into an insertion-ordered, de-duplicated path list
+    (an agent touches a path repeatedly). The panel copy states the app watches
+    the worktree, so it catches shell edits too (the PRD's app-sourced lane).
+  - Stream auto-pins to the newest event (scrollTop = scrollHeight on length
+    change). Subscription resets its events/files on run change so switching
+    runs starts clean; effect keyed on run.runId, unlisten on cleanup.
+  - SCOPE / honesty note (in the file header): run_event is NOT replayed on
+    subscribe (record_event in src-tauri emits live only), so this view shows
+    events from mount forward. Historical replay for a run opened long after it
+    started is the Run timeline task's job (next M7 bullet) via run_timeline,
+    which reads the persisted log. Streaming here; replay there. No backend
+    command added or changed (PRD M7 constraint honored).
+- frontend/src/App.tsx: a selected run (selectedRunId → runs registry lookup)
+  now takes over the main body with <LiveRunView>, keyed on runId; onStop wraps
+  the existing stopRun (errors to the banner), onClose clears selectedRunId back
+  to the plan+overview. main__body gets a --run modifier when hosting the view.
+- frontend/src/shell.css: .main__body--run makes the body a flex-fill column
+  (flex:1; min-height:0) so the live view's internal event stream scrolls on its
+  own instead of the whole main pane.
+- frontend/src/runview.css: run-view head/status/stop, the stream+files grid
+  (minmax(0,1fr) 280px), event-row per-kind coloring (reasoning muted, tool/
+  command accent, error danger, warn), file-list. Structural only, every value
+  via tokens.css. Imported in main.tsx.
+
+Scope (Simplicity First): built exactly this bullet — the live streaming view.
+Did NOT seed from run_timeline (that's the next task's replay path), add a
+backend "active runs"/history command, or touch the timeline/compare surfaces.
+Status is driven off the shared run prop rather than a duplicate run_status
+listener in the component.
+
+Verification:
+- cd frontend && npx tsc --noEmit — CLEAN (strict).
+- npx vite build — built (49 modules), no errors.
+- Backend crates + Tauri command signatures byte-for-byte unchanged (no Rust
+  files touched). Live in-window streaming (real run_event traffic) is not
+  verifiable in this env — no tauri CLI/display — same limitation as prior
+  frontend tasks; the compile+bundle pass and the event/command wiring type-
+  check against types.ts/events.ts.
+
+Next highest-priority task: M7 — Run timeline: iterations as rows, per-iteration
+events + diff/patch viewer (the replay path via run_timeline).

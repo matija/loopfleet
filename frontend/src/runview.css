@@ -1,0 +1,222 @@
+/* Live run view: streaming event log + changed-files panel for one run.
+ * Structural classes only; every value comes from tokens.css. */
+
+.run-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  gap: var(--space-3);
+}
+
+.run-view__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 0 0 auto;
+}
+
+.run-view__back {
+  flex: 0 0 auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-2);
+  color: var(--c-text-muted);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.run-view__back:hover {
+  background: var(--c-surface-3);
+  color: var(--c-text);
+}
+
+.run-view__ident {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.run-view__status {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.run-view__status--queued,
+.run-view__status--running {
+  color: var(--c-accent);
+  background: rgba(76, 141, 255, 0.14);
+}
+
+.run-view__status--completed {
+  color: var(--c-ok);
+  background: rgba(63, 185, 80, 0.12);
+}
+
+.run-view__status--failed {
+  color: var(--c-danger);
+  background: rgba(248, 81, 73, 0.14);
+}
+
+.run-view__status--stopped {
+  color: var(--c-warn);
+  background: rgba(210, 153, 34, 0.12);
+}
+
+.run-view__task {
+  font-size: var(--text-md);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.run-view__meta {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  color: var(--c-text-faint);
+  white-space: nowrap;
+}
+
+.run-view__stop {
+  flex: 0 0 auto;
+  border: 1px solid var(--c-danger);
+  border-radius: var(--radius-md);
+  background: var(--c-danger-quiet);
+  color: var(--c-text);
+  padding: var(--space-1) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.run-view__stop:hover {
+  background: var(--c-danger);
+}
+
+.run-view__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: var(--space-3);
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.run-view__stream {
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+}
+
+.run-view__files {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+}
+
+.run-view__files-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--c-text-faint);
+  margin-bottom: var(--space-2);
+}
+
+.run-view__files-count {
+  color: var(--c-text-muted);
+}
+
+.run-view__empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--c-text-faint);
+}
+
+/* --- event stream --- */
+
+.event-list,
+.file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.file-list {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.event-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.event-row:last-child {
+  border-bottom: none;
+}
+
+.event-row__label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--c-text-muted);
+}
+
+.event-row__body {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--c-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.event-row--reasoning .event-row__body {
+  color: var(--c-text-muted);
+  font-style: italic;
+}
+
+.event-row--command .event-row__body,
+.event-row--tool .event-row__body {
+  color: var(--c-accent);
+}
+
+.event-row--error .event-row__label {
+  color: var(--c-danger);
+}
+
+.event-row--error .event-row__body {
+  color: var(--c-danger);
+}
+
+.event-row--warn .event-row__label {
+  color: var(--c-warn);
+}
+
+.file-list__item {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--c-text);
+  padding: var(--space-1) 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
