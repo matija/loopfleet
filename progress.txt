@@ -1748,3 +1748,56 @@ Verification:
 Next highest-priority task: M7 — types.ts mirroring the command payloads +
 typed commands.ts/events.ts wrappers over invoke and the run_event/run_status
 event streams.
+
+2026-07-12 — M7: types.ts + typed commands.ts/events.ts wrappers
+- Second M7 task: hand-maintained TypeScript mirror of the command surface (PRD
+  decision: no codegen in v1 — small, stable surface) plus one typed wrapper
+  layer over invoke and the two live event streams. No Rust touched; backend
+  command signatures are byte-for-byte unchanged.
+- frontend/src/types.ts: every serde-Serialize payload the command layer returns
+  or emits, field names matching the Rust serde output (snake_case), each type
+  annotated with its source struct so drift is traceable:
+  - store: Project, Settings, RunSummary. adapters: AgentStatus (version/
+    version_matches/detail are nullable — Option<...> in Rust).
+  - core: TaskStatus (kebab-case union: not-started | in-progress |
+    completed-unaccepted | accepted), TaskView, PlanView, RunStatus (the
+    RunState::as_str tokens), FileChangeView, DiffView, TimelineEvent,
+    IterationView, RunTimeline, RunCompare, CompareView, Usage.
+  - NormalizedEvent as a discriminated union on `kind` (snake_case tag), one
+    arm per Rust variant — the internally-tagged {"kind":…} shape the store
+    persists and the run_event stream carries; command_run.exit and the nullable
+    Option fields modeled as `T | null`.
+  - src-tauri payloads: UseRunResult, RunEventPayload, RunStatusPayload.
+  - NB (per PRD "note it, don't silently widen"): the plan-view task type is
+    actually TaskView (anchor/line_hint/text/checked/status/run_count), not the
+    PRD's shorthand "Task" — mirrored as-is, the command surface is unchanged.
+- frontend/src/commands.ts: exactly one typed async wrapper per command in
+  src-tauri's generate_handler! (register_project, list_projects, agent_status,
+  get/save_settings, project/set_project_sandbox_writes, plan_overview,
+  launch_run, stop_run, plan_runs, run_timeline, compare_task, use_run). Arg
+  keys are camelCase (Tauri v2 maps them to the Rust snake_case params — matches
+  the legacy dist/index.html calls: runId, projectId, taskAnchor, …). This is
+  the only module that calls invoke.
+- frontend/src/events.ts: onRunEvent / onRunStatus over listen<T>("run_event")
+  / listen<T>("run_status"), each returning the UnlistenFn promise for effect
+  cleanup.
+- frontend/src/App.tsx: rewired off the inlined Project type to import from the
+  wrappers — listProjects() (one command) + onRunStatus subscription with
+  cleanup (one live event stream), satisfying the task's round-trip criterion at
+  the wrapper boundary.
+
+Verification:
+- cd frontend && npm run build (tsc && vite build) — tsc CLEAN (strict,
+  noUnusedLocals/Parameters), vite built frontend/dist (33 modules). The tsc
+  pass is the real check: every wrapper's arg/return type and the App.tsx
+  consumption type-check against types.ts.
+- Live tauri dev round-trip (actually invoking the command + receiving an event
+  in the WebView) is NOT verifiable here (no tauri CLI / display in this env,
+  same limitation as the scaffold task). The compile-time half — tsc clean,
+  wrappers consumed by App — passes; the interactive round-trip is left for a
+  desktop run.
+- Backend untouched: no Rust files changed, tauri.conf.json unchanged, so no
+  cargo build needed.
+
+Next highest-priority task: M7 — App shell + design system (sidebar/main layout,
+design tokens, the honest sandbox-boundary trust panel).

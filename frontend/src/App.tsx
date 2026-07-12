@@ -1,24 +1,28 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { listProjects } from "./commands";
+import { onRunStatus } from "./events";
+import type { Project } from "./types";
 
-// Minimal scaffold surface: proves the React app boots inside the Tauri WebView
-// and can call the unchanged Rust command surface via @tauri-apps/api (no
-// withGlobalTauri). The real UI (design system, types, views) lands in the
-// following M7 tasks.
-type Project = {
-  id: string;
-  repo_path: string;
-  plan_convention: string;
-};
-
+// Scaffold surface: proves the React app boots inside the Tauri WebView and
+// reaches the unchanged Rust command surface through the typed wrappers
+// (commands.ts / events.ts / types.ts), one command + one live event stream. The
+// real UI (design system, views) lands in the following M7 tasks.
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [lastStatus, setLastStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    invoke<Project[]>("list_projects")
+    listProjects()
       .then(setProjects)
       .catch((e) => setError(String(e)));
+
+    const unlisten = onRunStatus((p) =>
+      setLastStatus(`${p.run_id}: ${p.status}`),
+    );
+    return () => {
+      unlisten.then((off) => off());
+    };
   }, []);
 
   return (
@@ -36,6 +40,7 @@ export default function App() {
           ))}
         </ul>
       )}
+      {lastStatus && <p><small>last run status — {lastStatus}</small></p>}
     </main>
   );
 }
