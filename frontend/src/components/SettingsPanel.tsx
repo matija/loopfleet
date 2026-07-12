@@ -16,14 +16,31 @@ export function SettingsPanel() {
     default_iterations: 5,
     concurrency_cap: 3,
   });
+  // `loaded` gates the form until the persisted settings arrive, so a user
+  // can't edit the placeholder defaults and have their edits overwritten when
+  // the load resolves. `loadError` surfaces a load failure instead of the
+  // previous silent swallow (which left the user editing stale defaults).
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   useEffect(() => {
-    // Fall back to the defaults already in state if the load fails.
+    let cancelled = false;
     getSettings()
-      .then(setSettings)
-      .catch(() => {});
+      .then((s) => {
+        if (cancelled) return;
+        setSettings(s);
+        setLoaded(true);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setLoadError(String(e));
+        setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function save() {
@@ -50,11 +67,20 @@ export function SettingsPanel() {
       <div className="panel__head">
         <h3>Settings</h3>
       </div>
+      {loadError ? (
+        <p className="panel__error">
+          Couldn’t load settings: {loadError}. Showing defaults — saving will
+          overwrite them.
+        </p>
+      ) : !loaded ? (
+        <p className="panel__loading">Loading settings…</p>
+      ) : null}
       <div className="form-grid">
         <label className="field">
           <span>Default agent</span>
           <select
             value={settings.default_agent}
+            disabled={!loaded}
             onChange={(e) =>
               setSettings({ ...settings, default_agent: e.target.value })
             }
@@ -73,6 +99,7 @@ export function SettingsPanel() {
             min={1}
             max={50}
             value={settings.default_iterations}
+            disabled={!loaded}
             onChange={(e) =>
               setSettings({
                 ...settings,
@@ -90,6 +117,7 @@ export function SettingsPanel() {
             min={0}
             max={20}
             value={settings.concurrency_cap}
+            disabled={!loaded}
             onChange={(e) =>
               setSettings({
                 ...settings,
@@ -100,7 +128,7 @@ export function SettingsPanel() {
         </label>
       </div>
       <div className="panel__actions">
-        <button className="btn" onClick={save} disabled={saving}>
+        <button className="btn" onClick={save} disabled={saving || !loaded}>
           {saving ? "Saving…" : "Save settings"}
         </button>
         {msg && (

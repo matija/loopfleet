@@ -79,6 +79,9 @@ export function CommandPalette({
   const [tasks, setTasks] = useState<
     { projectId: string; planId: string; planLabel: string; anchor: string; text: string }[]
   >([]);
+  // True while the per-project `plan_overview` fan-out is in flight, so the
+  // Tasks group can signal it is still indexing rather than reading as empty.
+  const [tasksLoading, setTasksLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -90,6 +93,7 @@ export function CommandPalette({
     if (!open) return;
     setQuery("");
     setSelected(0);
+    setTasksLoading(true);
     let cancelled = false;
     Promise.all(
       projects.map((p) =>
@@ -110,6 +114,7 @@ export function CommandPalette({
     ).then((groups) => {
       if (cancelled) return;
       setTasks(groups.flat());
+      setTasksLoading(false);
     });
     return () => {
       cancelled = true;
@@ -294,6 +299,9 @@ export function CommandPalette({
           )}
         </div>
         <div className="palette__foot">
+          {tasksLoading && (
+            <span className="palette__foot-loading">Indexing tasks…</span>
+          )}
           <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
           <span><kbd>↵</kbd> open</span>
           <span><kbd>esc</kbd> close</span>

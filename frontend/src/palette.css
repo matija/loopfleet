@@ -160,6 +160,13 @@
   gap: var(--space-1);
 }
 
+/* Subtle "still indexing" hint shown while the per-project task fan-out is in
+ * flight, so the Tasks group doesn't read as empty before its rows arrive. */
+.palette__foot-loading {
+  color: var(--c-text-muted);
+  font-style: italic;
+}
+
 .palette__foot kbd {
   font-family: var(--font-mono);
   font-size: 10px;
