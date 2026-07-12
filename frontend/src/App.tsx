@@ -3,7 +3,7 @@ import { listProjects, stopRun } from "./commands";
 import { onRunStatus } from "./events";
 import type { Project, RunStatus } from "./types";
 import { AppShell } from "./components/AppShell";
-import { AddProject } from "./components/AddProject";
+import { AddProject, pickAndRegisterProject } from "./components/AddProject";
 import { AgentStatusPanel } from "./components/AgentStatusPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SandboxOverrides } from "./components/SandboxOverrides";
@@ -20,6 +20,10 @@ import { LiveRunView } from "./components/LiveRunView";
 import { RunTimeline } from "./components/RunTimeline";
 import { CompareView } from "./components/CompareView";
 import { Toasts, useToasts } from "./components/Toasts";
+import {
+  CommandPalette,
+  type PaletteOpenTask,
+} from "./components/CommandPalette";
 
 // A run streams live while active; once terminal, its persisted timeline (with
 // per-iteration events and diffs) is the surface. Opening a run from the dock
@@ -66,6 +70,9 @@ export default function App() {
   // Bumped to force the plan overview to refetch after a run is accepted (its
   // derived TaskStatus changes).
   const [planNonce, setPlanNonce] = useState(0);
+  // ⌘K command palette — global keyboard-first navigator across projects,
+  // tasks, runs, and quick actions. Toggled by Cmd/Ctrl-K anywhere.
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     listProjects()
@@ -92,6 +99,19 @@ export default function App() {
     return () => {
       un.then((f) => f());
     };
+  }, []);
+
+  // Global ⌘K / Ctrl-K toggles the command palette from anywhere. preventDefault
+  // stops the browser's default "focus search" behavior on Ctrl-K.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const selected = projects.find((p) => p.id === selectedId) ?? null;
@@ -159,8 +179,52 @@ export default function App() {
     setView({ kind: "plan", projectId: p.id });
   }
 
+  // ⌘K palette actions. Each opens the match in the main pane and closes the
+  // palette. Opening a task also selects its project so the sidebar tree stays
+  // in sync. The "add project" action reuses the shared pick-and-register flow.
+  const paletteOpenProject = useCallback(
+    (id: string) => selectProject(id),
+    [],
+  );
+  const paletteOpenTask = useCallback((t: PaletteOpenTask) => {
+    setSelectedId(t.projectId);
+    setView({
+      kind: "task",
+      projectId: t.projectId,
+      planId: t.planId,
+      taskAnchor: t.taskAnchor,
+      taskText: t.taskText,
+    });
+  }, []);
+  const paletteOpenRun = useCallback(
+    (runId: string) => setView({ kind: "run", runId }),
+    [],
+  );
+  const paletteAddProject = useCallback(() => {
+    pickAndRegisterProject()
+      .then((p) => {
+        if (p) onAdded(p);
+      })
+      .catch((e) => pushError(String(e)));
+  }, [pushError]);
+  const paletteOpenOverview = useCallback(
+    () => setView({ kind: "overview" }),
+    [],
+  );
+
   return (
     <AppShell
+      titlebarTrailing={
+        <button
+          className="titlebar__k"
+          onClick={() => setPaletteOpen(true)}
+          title="Command palette"
+          aria-label="Open command palette"
+        >
+          <span>Search</span>
+          <kbd>⌘K</kbd>
+        </button>
+      }
       dock={
         <RunDock
           runs={runs}
@@ -330,6 +394,17 @@ export default function App() {
           </>
         )}
       </div>
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        projects={projects}
+        runs={runs}
+        onOpenProject={paletteOpenProject}
+        onOpenTask={paletteOpenTask}
+        onOpenRun={paletteOpenRun}
+        onAddProject={paletteAddProject}
+        onOpenOverview={paletteOpenOverview}
+      />
     </AppShell>
   );
 }

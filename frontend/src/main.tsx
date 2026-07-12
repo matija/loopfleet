@@ -13,6 +13,7 @@ import "./plan.css";
 import "./dock.css";
 import "./runview.css";
 import "./grid.css";
+import "./palette.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

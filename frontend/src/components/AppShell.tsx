@@ -17,10 +17,14 @@ export function AppShell({
   sidebar,
   children,
   dock,
+  titlebarTrailing,
 }: {
   sidebar: ReactNode;
   children: ReactNode;
   dock: ReactNode;
+  /// Right-aligned content in the top window bar (the ⌘K entry point). Sits
+  /// over the drag region but its buttons opt out of dragging.
+  titlebarTrailing?: ReactNode;
 }) {
   return (
     <div className="app-shell">
@@ -29,6 +33,7 @@ export function AppShell({
           <span className="titlebar__name">loopfleet</span>
           <span className="titlebar__sub">agent cockpit</span>
         </div>
+        {titlebarTrailing}
       </div>
       <aside className="sidebar">{sidebar}</aside>
       <main className="main">{children}</main>
