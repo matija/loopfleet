@@ -14,7 +14,7 @@ import { agentStatus } from "../commands";
 import { onRunEvent } from "../events";
 import type { AgentStatus, RunStatus } from "../types";
 import { CommandBar } from "./CommandBar";
-import { DataGrid, eventText, type GridRow } from "./DataGrid";
+import { DataGrid, eventText, formatDuration, rowsDuration, GridFooter, type GridRow } from "./DataGrid";
 import { RunSubtabs, type RunSubtab } from "./RunSubtabs";
 import type { ActiveRun } from "./RunDock";
 
@@ -148,24 +148,29 @@ export function LiveRunView({
 
       <div className="run-view__panels">
         <div
-          className="run-view__stream"
-          ref={listRef}
+          className="run-view__stream run-view__stream--events"
           hidden={subtab !== "events"}
           aria-label="Run events"
         >
-          {events.length === 0 ? (
-            <p className="run-view__empty">
-              {active
-                ? "Waiting for events… they stream in as the agent works."
-                : "No events streamed while this view was open."}
-            </p>
-          ) : shown.length === 0 ? (
-            <p className="run-view__empty">
-              No events match “{filter.trim()}”.
-            </p>
-          ) : (
-            <DataGrid rows={shown} />
-          )}
+          <div className="run-view__grid-scroll" ref={listRef}>
+            {events.length === 0 ? (
+              <p className="run-view__empty">
+                {active
+                  ? "Waiting for events… they stream in as the agent works."
+                  : "No events streamed while this view was open."}
+              </p>
+            ) : shown.length === 0 ? (
+              <p className="run-view__empty">
+                No events match “{filter.trim()}”.
+              </p>
+            ) : (
+              <DataGrid rows={shown} />
+            )}
+          </div>
+          <GridFooter
+            count={shown.length}
+            duration={formatDuration(rowsDuration(shown))}
+          />
         </div>
 
         <div className="run-view__stream" hidden={subtab !== "diff"}>
