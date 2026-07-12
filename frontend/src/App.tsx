@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useReducer, useState } from "react";
 import { listProjects, stopRun } from "./commands";
 import { onRunStatus } from "./events";
 import type { Project, RunStatus } from "./types";
@@ -25,11 +25,71 @@ import { Toasts, useToasts } from "./components/Toasts";
 // timeline automatically when the run ends.
 const ACTIVE: RunStatus[] = ["queued", "running"];
 
-// Composition root for the shell. Loads registered projects into the sidebar
-// (with the add-project affordance) and scopes the main pane to a selection.
-// The main pane is the overview: agent availability, settings, the selected
-// project's sandbox overrides, and the honest sandbox-boundary trust panel. The
-// plan view and run surfaces render here in the following M7 tasks.
+// --- Tab model ------------------------------------------------------------
+//
+// The workbench opens each task/run/compare as an independent, closeable tab
+// instead of the M7 mutually-exclusive `selectedRun` / `compareTarget` switch
+// (which could only ever show one thing). A pinned "Welcome" home is always the
+// first tab and cannot be closed. The TabStrip styling lands in the next task;
+// here the model + a functional tab bar wire the behavior.
+type WorkbenchTab =
+  | { kind: "welcome" }
+  | { kind: "plan"; projectId: string }
+  | { kind: "run"; runId: string }
+  | { kind: "compare"; planId: string; taskAnchor: string; taskText: string };
+
+// Stable identity per tab: opening the same object focuses its tab rather than
+// stacking a duplicate.
+function tabId(t: WorkbenchTab): string {
+  switch (t.kind) {
+    case "welcome":
+      return "welcome";
+    case "plan":
+      return `plan:${t.projectId}`;
+    case "run":
+      return `run:${t.runId}`;
+    case "compare":
+      return `compare:${t.planId}:${t.taskAnchor}`;
+  }
+}
+
+type TabState = { tabs: WorkbenchTab[]; activeId: string };
+type TabAction =
+  | { type: "open"; tab: WorkbenchTab }
+  | { type: "focus"; id: string }
+  | { type: "close"; id: string };
+
+function tabReducer(state: TabState, action: TabAction): TabState {
+  switch (action.type) {
+    case "focus":
+      return { ...state, activeId: action.id };
+    case "open": {
+      const id = tabId(action.tab);
+      const exists = state.tabs.some((t) => tabId(t) === id);
+      return {
+        tabs: exists ? state.tabs : [...state.tabs, action.tab],
+        activeId: id,
+      };
+    }
+    case "close": {
+      const idx = state.tabs.findIndex((t) => tabId(t) === action.id);
+      // idx <= 0 means not found or the pinned Welcome tab (always index 0).
+      if (idx <= 0) return state;
+      const tabs = state.tabs.filter((_, i) => i !== idx);
+      // Closing the active tab falls back to its left neighbor (Welcome at
+      // worst), which always exists since Welcome is pinned at index 0.
+      const activeId =
+        state.activeId === action.id
+          ? tabId(state.tabs[idx - 1])
+          : state.activeId;
+      return { tabs, activeId };
+    }
+  }
+}
+
+// Composition root for the workbench. Loads registered projects into the
+// sidebar (connections analog) and hosts a browser-style tab surface: the
+// active tab drives the main pane, the dock spans the bottom.
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -39,10 +99,10 @@ export default function App() {
   // Session-scoped registry of launched runs (the global run surface). Runs do
   // not survive a restart in v1, so this is complete for the session.
   const [runs, setRuns] = useState<ActiveRun[]>([]);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  // The task whose runs are being compared (the compare view takes over the
-  // main body when set, unless a run is open).
-  const [compareTarget, setCompareTarget] = useState<CompareTarget | null>(null);
+  const [tabState, dispatch] = useReducer(tabReducer, {
+    tabs: [{ kind: "welcome" }],
+    activeId: "welcome",
+  });
   // Bumped to force the plan overview to refetch after a run is accepted (its
   // derived TaskStatus changes).
   const [planNonce, setPlanNonce] = useState(0);
@@ -71,8 +131,10 @@ export default function App() {
   }, []);
 
   const selected = projects.find((p) => p.id === selectedId) ?? null;
-  // A run opened from the dock takes over the main body with its live view.
-  const selectedRun = runs.find((r) => r.runId === selectedRunId) ?? null;
+  const { tabs, activeId } = tabState;
+  const activeTab = tabs.find((t) => tabId(t) === activeId) ?? tabs[0];
+  // The dock highlights whichever run tab is currently active.
+  const selectedRunId = activeTab.kind === "run" ? activeTab.runId : null;
 
   // A launched run joins the dock, tagged with the project it ran against.
   const onLaunch = useCallback(
@@ -92,12 +154,14 @@ export default function App() {
     [selected],
   );
 
-  // A newly registered project joins the list and becomes the selection.
+  // A newly registered project joins the list, becomes the selection, and opens
+  // its plan tab.
   function onAdded(p: Project) {
     setProjects((prev) =>
       prev.some((x) => x.id === p.id) ? prev : [...prev, p],
     );
     setSelectedId(p.id);
+    dispatch({ type: "open", tab: { kind: "plan", projectId: p.id } });
   }
 
   return (
@@ -106,16 +170,14 @@ export default function App() {
         <RunDock
           runs={runs}
           selectedRunId={selectedRunId}
-          onOpen={(id) => {
-            setSelectedRunId(id);
-            setCompareTarget(null);
-          }}
+          onOpen={(id) => dispatch({ type: "open", tab: { kind: "run", runId: id } })}
           onStop={(id) => {
             stopRun(id).catch((e) => pushError(String(e)));
           }}
-          onDismiss={(id) =>
-            setRuns((prev) => prev.filter((r) => r.runId !== id))
-          }
+          onDismiss={(id) => {
+            setRuns((prev) => prev.filter((r) => r.runId !== id));
+            dispatch({ type: "close", id: `run:${id}` });
+          }}
         />
       }
       sidebar={
@@ -135,8 +197,10 @@ export default function App() {
                   aria-current={p.id === selectedId}
                   onClick={() => {
                     setSelectedId(p.id);
-                    setSelectedRunId(null);
-                    setCompareTarget(null);
+                    dispatch({
+                      type: "open",
+                      tab: { kind: "plan", projectId: p.id },
+                    });
                   }}
                 >
                   <div className="project-item__name">{p.repo_path}</div>
@@ -149,63 +213,91 @@ export default function App() {
       }
     >
       <Toasts toasts={toasts} onDismiss={dismissToast} />
+      <nav className="tab-bar" aria-label="Open views">
+        {tabs.map((t) => {
+          const id = tabId(t);
+          return (
+            <div
+              key={id}
+              className="tab"
+              aria-current={id === activeId}
+            >
+              <button
+                className="tab__label"
+                onClick={() => dispatch({ type: "focus", id })}
+              >
+                {tabLabel(t, projects, runs)}
+              </button>
+              {t.kind !== "welcome" && (
+                <button
+                  className="tab__close"
+                  aria-label="Close tab"
+                  onClick={() => dispatch({ type: "close", id })}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </nav>
       <div className="main__header">
-        <h2>{selected ? repoName(selected.repo_path) : "Overview"}</h2>
-        <p>
-          {selected
-            ? selected.repo_path
-            : "Supervise looping coding agents in sandboxed git worktrees."}
-        </p>
+        <h2>{headerFor(activeTab, projects, runs).title}</h2>
+        <p>{headerFor(activeTab, projects, runs).subtitle}</p>
       </div>
       <div
         className={`main__body${
-          selectedRun || compareTarget ? " main__body--run" : ""
+          activeTab.kind === "run" || activeTab.kind === "compare"
+            ? " main__body--run"
+            : ""
         }`}
       >
-        {selectedRun ? (
-          ACTIVE.includes(selectedRun.status) ? (
-            <LiveRunView
-              key={selectedRun.runId}
-              run={selectedRun}
-              onStop={(id) => {
-                stopRun(id).catch((e) => pushError(String(e)));
-              }}
-              onClose={() => setSelectedRunId(null)}
-            />
-          ) : (
-            <RunTimeline
-              key={selectedRun.runId}
-              run={selectedRun}
-              onClose={() => setSelectedRunId(null)}
-            />
-          )
-        ) : compareTarget ? (
+        {activeTab.kind === "run" ? (
+          <RunTab
+            runId={activeTab.runId}
+            runs={runs}
+            onStop={(id) => {
+              stopRun(id).catch((e) => pushError(String(e)));
+            }}
+            onClose={() => dispatch({ type: "close", id: `run:${activeTab.runId}` })}
+          />
+        ) : activeTab.kind === "compare" ? (
           <CompareView
-            key={compareTarget.taskAnchor}
-            planId={compareTarget.planId}
-            taskAnchor={compareTarget.taskAnchor}
-            taskText={compareTarget.taskText}
-            onClose={() => setCompareTarget(null)}
+            key={tabId(activeTab)}
+            planId={activeTab.planId}
+            taskAnchor={activeTab.taskAnchor}
+            taskText={activeTab.taskText}
+            onClose={() => dispatch({ type: "close", id: tabId(activeTab) })}
             onAccepted={() => setPlanNonce((n) => n + 1)}
           />
+        ) : activeTab.kind === "plan" ? (
+          <>
+            <PlanView
+              key={`${activeTab.projectId}:${planNonce}`}
+              projectId={activeTab.projectId}
+              onLaunch={onLaunch}
+              onCompare={(target: CompareTarget) =>
+                dispatch({
+                  type: "open",
+                  tab: {
+                    kind: "compare",
+                    planId: target.planId,
+                    taskAnchor: target.taskAnchor,
+                    taskText: target.taskText,
+                  },
+                })
+              }
+            />
+            <SandboxOverrides projectId={activeTab.projectId} />
+          </>
         ) : (
           <>
-            {selected ? (
-              <PlanView
-                key={`${selected.id}:${planNonce}`}
-                projectId={selected.id}
-                onLaunch={onLaunch}
-                onCompare={setCompareTarget}
-              />
-            ) : (
-              <p className="main__placeholder">
-                Select or add a project to see its plan and launch runs.
-              </p>
-            )}
+            <p className="main__placeholder">
+              Select or add a project to see its plan and launch runs.
+            </p>
             <div className="overview">
               <AgentStatusPanel />
               <SettingsPanel />
-              {selected && <SandboxOverrides projectId={selected.id} />}
               <SandboxBoundaryPanel />
             </div>
           </>
@@ -213,6 +305,87 @@ export default function App() {
       </div>
     </AppShell>
   );
+}
+
+// A run tab hosts the live view while the run is active, then flips to the
+// persisted timeline once terminal. The run is looked up from the session
+// registry by id; a dismissed run closes its own tab, so a miss is only a
+// transient race and renders a quiet fallback.
+function RunTab({
+  runId,
+  runs,
+  onStop,
+  onClose,
+}: {
+  runId: string;
+  runs: ActiveRun[];
+  onStop: (runId: string) => void;
+  onClose: () => void;
+}) {
+  const run = runs.find((r) => r.runId === runId);
+  if (!run) {
+    return <p className="main__placeholder">This run is no longer available.</p>;
+  }
+  return ACTIVE.includes(run.status) ? (
+    <LiveRunView key={run.runId} run={run} onStop={onStop} onClose={onClose} />
+  ) : (
+    <RunTimeline key={run.runId} run={run} onClose={onClose} />
+  );
+}
+
+// Short label shown on a tab.
+function tabLabel(
+  t: WorkbenchTab,
+  projects: Project[],
+  runs: ActiveRun[],
+): string {
+  switch (t.kind) {
+    case "welcome":
+      return "Welcome";
+    case "plan": {
+      const p = projects.find((x) => x.id === t.projectId);
+      return p ? repoName(p.repo_path) : "Plan";
+    }
+    case "run": {
+      const r = runs.find((x) => x.runId === t.runId);
+      return r ? truncate(r.taskText) : "Run";
+    }
+    case "compare":
+      return `Compare · ${truncate(t.taskText)}`;
+  }
+}
+
+// Header title/subtitle for the active tab's context.
+function headerFor(
+  t: WorkbenchTab,
+  projects: Project[],
+  runs: ActiveRun[],
+): { title: string; subtitle: string } {
+  switch (t.kind) {
+    case "welcome":
+      return {
+        title: "Overview",
+        subtitle:
+          "Supervise looping coding agents in sandboxed git worktrees.",
+      };
+    case "plan": {
+      const p = projects.find((x) => x.id === t.projectId);
+      return {
+        title: p ? repoName(p.repo_path) : "Plan",
+        subtitle: p ? p.repo_path : "",
+      };
+    }
+    case "run": {
+      const r = runs.find((x) => x.runId === t.runId);
+      return { title: "Run", subtitle: r ? r.taskText : "" };
+    }
+    case "compare":
+      return { title: "Compare", subtitle: t.taskText };
+  }
+}
+
+function truncate(s: string, n = 32): string {
+  return s.length > n ? `${s.slice(0, n - 1)}…` : s;
 }
 
 // The trailing path segment — the sidebar shows the full path, the header the

@@ -2253,3 +2253,51 @@ actionable by an agent: M5 (plan chat — "build only after the loop tool is in
 daily use") and two M6 release items (codesign+notarize/DMG; run the naming
 workflow + register domain). Those are human-gated milestones, so there is no
 next autonomous task to pick up.
+
+2026-07-12 — Workbench UI, Task 1: Tab model (WorkbenchTab union + tab store)
+- New milestone: PRD.md is now the Workbench-UI plan (reshape M7's flat, one-view-
+  at-a-time surface into a tabbed, DB-client-style workbench). Picked the first
+  and foundational task: the tab model everything else builds on.
+- App.tsx: introduced a `WorkbenchTab` union — `welcome | plan | run | compare` —
+  each with a stable `tabId()` (welcome, plan:<projectId>, run:<runId>,
+  compare:<planId>:<taskAnchor>) so opening the same object focuses its existing
+  tab instead of stacking a duplicate. A `tabReducer` (useReducer) is the tab
+  store: `open` (push-or-focus), `focus`, `close`. This replaces the M7
+  mutually-exclusive `selectedRun` / `compareTarget` useState switch, which could
+  only ever render one thing.
+- Welcome is pinned at index 0 and uncloseable (close is a no-op for idx <= 0).
+  Closing the active tab falls back to its LEFT neighbor, which always exists
+  because Welcome is pinned first — matching the verify ("closing one falls back
+  to a neighbor").
+- Wiring: sidebar project click and onAdded open a plan tab; PlanView.onCompare
+  opens a compare tab; RunDock.onOpen opens a run tab; RunDock.onDismiss both
+  drops the run from the session registry AND closes its run tab. The dock's
+  selected highlight (selectedRunId) is now DERIVED from the active tab, not
+  separate state.
+- Main pane renders the active tab: a new `RunTab` helper looks the run up in the
+  session registry and picks LiveRunView (active) vs RunTimeline (terminal), so a
+  live view still auto-flips to the timeline when the run ends. Compare/plan/
+  welcome render inline. `main__body--run` (fills pane) now keys off run|compare
+  active kinds. Header title/subtitle derive from the active tab via `headerFor`.
+- Layout split by tab: the global overview panels (AgentStatusPanel, SettingsPanel,
+  SandboxBoundaryPanel) live on the Welcome home; the per-project SandboxOverrides
+  moved onto that project's plan tab (kept with its plan). planNonce still forces
+  the plan overview to refetch after a run is accepted.
+- A minimal functional tab bar (nav.tab-bar in App + .tab/.tab__label/.tab__close
+  in shell.css, all tokens) makes tabs switchable/closeable for the verify. The
+  STYLED TabStrip (icons per kind, overflow scroll, tabs.css) is deliberately the
+  NEXT task, not built here (Simplicity First / one task only).
+- No backend touched: no crate or src-tauri edit; every Tauri command signature
+  byte-for-byte unchanged. Still consumes the same command surface.
+
+Verification:
+- cd frontend && npx tsc --noEmit — clean (strict, 0 errors).
+- npx vite build — 52 modules transformed, built OK.
+- Logic trace of the verify: open run A then run B → tabs [welcome, run:A, run:B],
+  both switchable via the bar; close active run:B → idx 2, neighbor tabs[1]=run:A
+  becomes active; closing a non-active tab leaves the active one; closing welcome
+  is a no-op (pinned).
+
+Next highest-priority task: Workbench Task 2 — TabStrip component (per-kind icons,
+active accent, horizontal overflow scroll; new tabs.css) extracting/replacing the
+minimal tab bar added here.

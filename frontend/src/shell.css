@@ -129,6 +129,56 @@
   color: var(--c-text-muted);
 }
 
+/* --- workbench tab bar ---
+ * The functional tab surface for the tab model; the styled TabStrip (icons,
+ * overflow, tabs.css) lands in the next task. */
+.tab-bar {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-1);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--c-border);
+  overflow-x: auto;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.tab[aria-current="true"] {
+  border-bottom-color: var(--c-accent);
+}
+
+.tab__label {
+  border: none;
+  background: transparent;
+  color: var(--c-text-muted);
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.tab[aria-current="true"] .tab__label {
+  color: var(--c-text);
+}
+
+.tab__close {
+  border: none;
+  background: transparent;
+  color: var(--c-text-faint);
+  font-size: var(--text-md);
+  line-height: 1;
+  padding: 0 var(--space-2) 0 0;
+  cursor: pointer;
+}
+
+.tab__close:hover {
+  color: var(--c-text);
+}
+
 .main__body {
   padding: var(--space-6);
 }

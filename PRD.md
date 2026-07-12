@@ -71,7 +71,7 @@ and an environment badge.
 
 ## Tasks (each sized for one agent iteration)
 
-- [ ] **Tab model.** Introduce a `WorkbenchTab` union (`welcome | plan | run |
+- [x] **Tab model.** Introduce a `WorkbenchTab` union (`welcome | plan | run |
   compare`) and a tab store in `App.tsx`, replacing the mutually-exclusive
   `selectedRun` / `compareTarget` switch. Opening a task/run/compare pushes or
   focuses a tab; tabs are closeable; a pinned "Welcome" tab is always first.
