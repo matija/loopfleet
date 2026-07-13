@@ -389,7 +389,9 @@ export default function App() {
         ) : (
           <>
             <p className="main__placeholder">
-              Select or add a project to see its plan and launch runs.
+              {projects.length === 0
+                ? "Add a git repo in the sidebar to launch looping agents against its plan. Below: the agents on this machine, your run defaults, and the sandbox boundary every run is confined by."
+                : "Pick a project in the sidebar to open its plan and launch runs. Below: the agents on this machine, your run defaults, and the sandbox boundary every run is confined by."}
             </p>
             <div className="overview">
               <AgentStatusPanel />

@@ -247,7 +247,17 @@ export function CommandPalette({
   );
 
   return (
-    <div className="palette__overlay" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div
+      className="palette__overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Command palette"
+      onMouseDown={(e) => {
+        // Click on the dimmed backdrop (not the panel) dismisses — the standard
+        // command-palette gesture, alongside Esc.
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="palette">
         <input
           ref={inputRef}

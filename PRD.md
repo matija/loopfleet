@@ -120,7 +120,7 @@ design with global **⌘K search** and an environment badge.
   it; the bar carries the drag region and a centered brand, and will host the ⌘K
   entry point and an environment badge. → verify: the bar reads as part of the
   app, not the OS; dragging the bar moves the window.
-- [ ] **Polish + parity pass.** Empty / loading / error states for every new
+- [x] **Polish + parity pass.** Empty / loading / error states for every new
   surface; keyboard focus order across views and palette; responsive to 1200×800;
   confirm the overview reads as an intentional home, not a blank pane. Remove
   only the M7 code the view model orphans (its own orphans, per surgical-changes).

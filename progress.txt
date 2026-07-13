@@ -2515,3 +2515,47 @@ Design notes:
 Next highest-priority task: Workbench — Run subtabs (Data / Privileges analog):
 an Events / Diff / Files subtab bar inside a run tab (Diff hosts the
 per-iteration diff/patch viewer, Files the changed-files list, Events the grid).
+
+2026-07-13 — Workbench task 10 (final): polish + parity pass
+- The last unchecked Workbench task. This was a verification pass first: every
+  new surface already carried loading / error / empty states (PlanTree,
+  CommandPalette, TaskTab, DataGrid/LiveRunView, RunTimeline, CompareView all
+  branch on null-data → "Loading…", caught-error → panel__error, and
+  empty/filtered-empty → a quiet note), tsc runs with noUnusedLocals +
+  noUnusedParameters and is clean (so "no dead imports" holds — the single-view
+  model left no orphaned component files; TabStrip and the tab store were removed
+  when the view model landed), and the shell is responsive (fixed --sidebar-w +
+  fluid main, palette/toasts clamped to the viewport) at the 1200×800 default
+  window. So the surface was substantially done; this pass fixed the two genuine
+  gaps the criteria named.
+- frontend/src/App.tsx: the overview now reads as an intentional home rather than
+  a blank-state prompt. The old placeholder always said "Select or add a
+  project…" even when projects existed and the user deliberately opened the
+  overview via ⌘K "Go to overview". It now frames the three home panels (agents
+  on this machine, run defaults, sandbox boundary) as the point of the view, and
+  the lead-in adapts: a cold open with no projects nudges "Add a git repo in the
+  sidebar…"; with projects it reads "Pick a project in the sidebar…". Both cold
+  open and a full session now read as deliberate.
+- frontend/src/components/CommandPalette.tsx: click-outside now dismisses the
+  palette (onMouseDown on the overlay, closing only when the target is the
+  backdrop itself, not the panel) — the standard command-palette gesture,
+  alongside the existing Esc. Keyboard flow (⌘K/titlebar-button open → input
+  autofocus → ↑/↓ navigate → ↵ open → Esc close) was already complete.
+- Scope: no environment badge added to the top bar. The domain-mapping table
+  lists one, but the top-bar task's verify (task 9) did not require it and the
+  polish task's explicit deliverables (empty/loading/error states, focus order,
+  responsiveness, an intentional overview, orphan removal) do not either —
+  keeping the change surgical rather than widening scope.
+- No backend change (frontend-only milestone, byte-for-byte per the constraint):
+  git status shows only App.tsx + CommandPalette.tsx modified.
+
+Verification:
+- cd frontend && npx tsc --noEmit — clean (0 errors), noUnusedLocals on ⇒ no
+  dead imports.
+- cd frontend && npm run build — tsc + vite build clean (built in ~360ms). No
+  frontend test suite exists; the two changes are build-verified UI wiring.
+
+M "Workbench UI" is COMPLETE — all ten tasks done: view model, connections
+sidebar, plan tree with counts, command bar, typed event grid + enum pills, run
+subviews, grid footer, ⌘K palette, top window bar, and this polish pass. Every
+Tauri command signature is unchanged.
