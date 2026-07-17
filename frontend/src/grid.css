@@ -86,7 +86,7 @@
 }
 
 .grid-pill--text {
-  color: var(--c-accent);
+  color: var(--c-accent-text);
   background: var(--c-accent-quiet);
 }
 

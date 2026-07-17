@@ -49,7 +49,7 @@
 
 .run-view__status--queued,
 .run-view__status--running {
-  color: var(--c-accent);
+  color: var(--c-accent-text);
   background: var(--c-accent-quiet);
 }
 
@@ -329,7 +329,7 @@
 
 .diff__file--renamed .diff__status,
 .diff__file--copied .diff__status {
-  color: var(--c-accent);
+  color: var(--c-accent-text);
 }
 
 .diff__path {
@@ -498,7 +498,7 @@
 .use-run__go {
   background: var(--c-accent-quiet);
   border: 1px solid rgba(98, 117, 242, 0.32);
-  color: #aeb8ff;
+  color: var(--c-accent-text);
   font-weight: 600;
   letter-spacing: 0.01em;
   padding: var(--space-1) var(--space-3);

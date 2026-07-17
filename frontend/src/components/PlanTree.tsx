@@ -57,7 +57,11 @@ export function PlanTree({
     .filter((g) => g.tasks.length > 0);
 
   if (groups.length === 0) {
-    return <div className="plan-tree__note">No tasks match the filter.</div>;
+    return (
+      <div className="plan-tree__note">
+        {q ? "No tasks match the filter." : "No tasks in this plan."}
+      </div>
+    );
   }
 
   return (

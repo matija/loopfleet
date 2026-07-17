@@ -17,11 +17,15 @@
   /* --- color: text --- */
   --c-text: #ececee;
   --c-text-muted: #a0a0a8;
-  --c-text-faint: #7d7d86;
+  --c-text-faint: #828289;
 
   /* --- color: accent + semantic --- */
   --c-accent: #6275f2;
   --c-accent-quiet: #23294d;
+  /* Accent as *text* on the recessed accent-quiet fill: the base accent only
+   * hits 3.57:1 there (below AA), so status pills and the primary-action chips
+   * use this lighter step (≈6.1:1) instead. */
+  --c-accent-text: #98a5ff;
   --c-ok: #3fb950;
   --c-warn: #d29922;
   --c-danger: #f85149;

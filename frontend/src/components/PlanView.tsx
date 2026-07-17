@@ -135,21 +135,28 @@ function PlanCard({
         </div>
       )}
 
-      <ul className="task-list">
-        {plan.tasks.map((task) => (
-          <TaskRow
-            key={task.anchor}
-            task={task}
-            planId={plan.plan_id}
-            projectId={projectId}
-            installed={installed}
-            settings={settings}
-            onLaunched={onLaunched}
-            onLaunch={onLaunch}
-            onCompare={onCompare}
-          />
-        ))}
-      </ul>
+      {plan.tasks.length === 0 ? (
+        <p className="plan-card__empty">
+          No tasks in this plan yet — add checklist items to this plan file to
+          launch runs against them.
+        </p>
+      ) : (
+        <ul className="task-list">
+          {plan.tasks.map((task) => (
+            <TaskRow
+              key={task.anchor}
+              task={task}
+              planId={plan.plan_id}
+              projectId={projectId}
+              installed={installed}
+              settings={settings}
+              onLaunched={onLaunched}
+              onLaunch={onLaunch}
+              onCompare={onCompare}
+            />
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
@@ -309,7 +316,7 @@ export function LaunchControl({
         <span className="launch__count-value" title="Maximum passes">
           {iterationCount}
           <span className="launch__count-label">
-            {iterationCount === 1 ? " pass" : " passes"}
+            {iterationCount === 1 ? "pass" : "passes"}
           </span>
         </span>
         <button
