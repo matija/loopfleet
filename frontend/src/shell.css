@@ -186,6 +186,10 @@
   color: var(--c-text-faint);
 }
 
+.sidebar__empty--error {
+  color: var(--c-danger);
+}
+
 /* --- plan tree ---
  * The open connection's tasks as the sidebar's object list: grouped by plan
  * file, a status dot + a right-aligned run-count badge per row. */
