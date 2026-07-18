@@ -66,8 +66,12 @@
   color: var(--c-text-faint);
 }
 
+/* A boxed outline ring would draw a rectangle inside the rounded palette panel
+ * on this borderless, always-auto-focused header input, so we suppress it and
+ * signal focus by turning the bottom rule indigo instead. */
 .palette__input:focus {
   outline: none;
+  border-bottom-color: var(--c-accent);
 }
 
 .palette__list {
