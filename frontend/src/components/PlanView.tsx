@@ -296,19 +296,21 @@ export function LaunchControl({
 
   return (
     <div className="launch">
-      <select
-        className="launch__agent"
-        value={agent}
-        disabled={noAgents}
-        onChange={(e) => setAgent(e.target.value)}
-        aria-label="Agent"
-      >
+      <div className="launch__agents" role="radiogroup" aria-label="Agent">
         {installed.map((k) => (
-          <option key={k} value={k}>
+          <button
+            key={k}
+            type="button"
+            role="radio"
+            aria-checked={agent === k}
+            className={`launch__agent${agent === k ? " launch__agent--on" : ""}`}
+            disabled={noAgents}
+            onClick={() => setAgent(k)}
+          >
             {k}
-          </option>
+          </button>
         ))}
-      </select>
+      </div>
       <div className="launch__count" role="group" aria-label="Maximum passes">
         <button
           type="button"
