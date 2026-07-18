@@ -66,6 +66,17 @@
   --sidebar-w: 268px;
   --titlebar-h: 38px;
   --shadow-1: 0 4px 16px rgba(0, 0, 0, 0.45);
+
+  /* --- motion ---
+   * Restrained by design: two short durations and one standard ease. A cockpit
+   * tool shouldn't feel animated, just un-jarring — hovers settle, surfaces that
+   * appear (toasts, the palette, run chips) ease in rather than pop. Everything
+   * that references these is neutralized by the prefers-reduced-motion guard at
+   * the foot of this file. --motion-fast is for state/hover, --motion-base for
+   * entrances that travel a short distance. */
+  --motion-fast: 0.12s;
+  --motion-base: 0.18s;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* --- base / reset --- */
@@ -106,12 +117,15 @@ pre {
 button {
   font: inherit;
   cursor: pointer;
-  transition: background-color 0.12s ease, color 0.12s ease,
-    border-color 0.12s ease, box-shadow 0.12s ease;
+  transition: background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
 }
 
 input {
-  transition: border-color 0.12s ease, background-color 0.12s ease;
+  transition: border-color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out);
 }
 
 :focus-visible {

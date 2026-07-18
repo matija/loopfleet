@@ -505,7 +505,8 @@
   color: var(--c-text);
   padding: var(--space-1) var(--space-2);
   font-size: var(--text-sm);
-  transition: border-color 0.12s ease, background-color 0.12s ease;
+  transition: border-color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out);
 }
 
 .use-run__branch::placeholder {
