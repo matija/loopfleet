@@ -24,7 +24,12 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
 };
 
 /// What a task launch reports upward for the global run dock.
-export type LaunchedRun = { runId: string; taskText: string; agent: string };
+export type LaunchedRun = {
+  runId: string;
+  taskText: string;
+  agent: string;
+  maxIterations: number;
+};
 
 /// What opening the compare view needs: the plan + task and its display text.
 export type CompareTarget = {
@@ -220,8 +225,8 @@ function TaskRow({
         installed={installed}
         settings={settings}
         onLaunched={onLaunched}
-        onLaunch={(runId, agent) =>
-          onLaunch({ runId, taskText: task.text, agent })
+        onLaunch={(runId, agent, maxIterations) =>
+          onLaunch({ runId, taskText: task.text, agent, maxIterations })
         }
       />
     </li>
@@ -241,7 +246,7 @@ export function LaunchControl({
   installed: string[];
   settings: Settings | null;
   onLaunched: () => void;
-  onLaunch: (runId: string, agent: string) => void;
+  onLaunch: (runId: string, agent: string, maxIterations: number) => void;
 }) {
   const preferred =
     settings && installed.includes(settings.default_agent)
@@ -271,15 +276,16 @@ export function LaunchControl({
   async function launch() {
     setLaunching(true);
     setMsg(null);
+    const maxIterations = Math.max(1, iterations || 1);
     try {
       const runId = await launchRun({
         projectId,
         taskAnchor,
         agent,
-        maxIterations: Math.max(1, iterations || 1),
+        maxIterations,
       });
       setMsg({ text: "Launched", ok: true });
-      onLaunch(runId, agent);
+      onLaunch(runId, agent, maxIterations);
       onLaunched();
     } catch (e) {
       setMsg({ text: String(e), ok: false });

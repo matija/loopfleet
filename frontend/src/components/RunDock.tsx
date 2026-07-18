@@ -19,6 +19,9 @@ export type ActiveRun = {
   projectName: string;
   taskText: string;
   agent: string;
+  /// Max passes the loop was launched with. Optional so runs seeded from
+  /// sources without the count still render.
+  maxIterations?: number;
   status: RunStatus;
 };
 

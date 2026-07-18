@@ -98,20 +98,16 @@ export function DataGrid({ rows }: { rows: GridRow[] }) {
   return (
     <div className="data-grid" role="table" aria-label="Events">
       <div className="data-grid__row data-grid__row--head" role="row">
-        <span className="data-grid__cell data-grid__cell--num">#</span>
-        <span className="data-grid__cell data-grid__cell--seq">seq</span>
         <span className="data-grid__cell data-grid__cell--type">type</span>
         <span className="data-grid__cell data-grid__cell--detail">detail</span>
         <span className="data-grid__cell data-grid__cell--ts">ts</span>
       </div>
-      {rows.map((r, i) => {
+      {rows.map((r) => {
         const pill = eventPill(r.event);
         const detail = eventDetail(r.event);
         const ts = formatTs(r.ts);
         return (
           <div className="data-grid__row" role="row" key={r.seq}>
-            <span className="data-grid__cell data-grid__cell--num">{i + 1}</span>
-            <span className="data-grid__cell data-grid__cell--seq">{r.seq}</span>
             <span className="data-grid__cell data-grid__cell--type">
               <span className={`grid-pill grid-pill--${pill.tone}`}>
                 {pill.label}

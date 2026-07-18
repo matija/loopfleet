@@ -25,7 +25,7 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             default_agent: "claude".into(),
-            default_iterations: 5,
+            default_iterations: 1,
             concurrency_cap: 3,
         }
     }

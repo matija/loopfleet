@@ -156,6 +156,7 @@ export default function App() {
           projectName,
           taskText: run.taskText,
           agent: run.agent,
+          maxIterations: run.maxIterations,
           status: "running",
         },
         ...prev,
@@ -341,6 +342,7 @@ export default function App() {
               stopRun(id).catch((e) => pushError(String(e)));
             }}
             onClose={goBack}
+            onAccepted={() => setPlanNonce((n) => n + 1)}
           />
         ) : view.kind === "compare" ? (
           <CompareView
@@ -425,11 +427,13 @@ function RunPane({
   runs,
   onStop,
   onClose,
+  onAccepted,
 }: {
   runId: string;
   runs: ActiveRun[];
   onStop: (runId: string) => void;
   onClose: () => void;
+  onAccepted: () => void;
 }) {
   const run = runs.find((r) => r.runId === runId);
   if (!run) {
@@ -438,7 +442,7 @@ function RunPane({
   return ACTIVE.includes(run.status) ? (
     <LiveRunView key={run.runId} run={run} onStop={onStop} onClose={onClose} />
   ) : (
-    <RunTimeline key={run.runId} run={run} onClose={onClose} />
+    <RunTimeline key={run.runId} run={run} onClose={onClose} onAccepted={onAccepted} />
   );
 }
 

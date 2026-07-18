@@ -16,6 +16,9 @@ import type {
 import type { ActiveRun } from "./RunDock";
 import { DataGrid, formatDuration, GridFooter, rowsDuration } from "./DataGrid";
 import { RunSubtabs, type RunSubtab } from "./RunSubtabs";
+import { UseRun } from "./UseRun";
+
+const ACTIVE: RunStatus[] = ["queued", "running"];
 
 const STATUS_LABEL: Record<RunStatus, string> = {
   queued: "Queued",
@@ -28,9 +31,13 @@ const STATUS_LABEL: Record<RunStatus, string> = {
 export function RunTimeline({
   run,
   onClose,
+  onAccepted,
 }: {
   run: ActiveRun;
   onClose: () => void;
+  // Called after a run is accepted from here so any open plan can refresh its
+  // derived status. Optional — the timeline is reachable without a plan open.
+  onAccepted?: () => void;
 }) {
   const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,9 +63,15 @@ export function RunTimeline({
   const status = (timeline?.status as RunStatus) ?? run.status;
   const iterations = timeline?.iterations ?? [];
   const eventCount = iterations.reduce((n, it) => n + it.events.length, 0);
-  // The Files subtab flattens every iteration's diff into a de-duplicated list
-  // of touched paths, in first-seen order.
-  const files = uniqueFiles(iterations);
+  // Passes the run was launched with (from the persisted timeline, falling back
+  // to the dock's seed) and whether it produced a snapshot to merge.
+  const passes = timeline?.max_iterations ?? run.maxIterations;
+  const passLabel =
+    passes !== undefined
+      ? `${passes} ${passes === 1 ? "pass" : "passes"}`
+      : null;
+  const mergeable = iterations.some((it) => it.shadow_ref !== null);
+  const canUse = !ACTIVE.includes(status) && mergeable;
   // Clamped events-subtab page: a stale iterPage (after a reload yields fewer
   // iterations) must never index off the end.
   const page = iterations.length ? Math.min(iterPage, iterations.length - 1) : 0;
@@ -80,10 +93,21 @@ export function RunTimeline({
             {normalizeDisplayText(run.taskText)}
           </span>
           <span className="run-view__meta">
-            {run.agent} · {run.projectName}
+            <span className="run-view__agent">{run.agent}</span>
+            {passLabel && <> · {passLabel}</>} · {run.projectName}
           </span>
         </div>
       </header>
+
+      {canUse && (
+        <div className="run-view__use">
+          <UseRun
+            runId={run.runId}
+            mergeable={mergeable}
+            onAccepted={() => onAccepted?.()}
+          />
+        </div>
+      )}
 
       {error ? (
         <div className="run-view__stream run-view__stream--full">
@@ -101,7 +125,6 @@ export function RunTimeline({
             counts={{
               events: eventCount,
               diff: iterations.length,
-              files: files.length,
             }}
           />
 
@@ -177,50 +200,11 @@ export function RunTimeline({
                 </ol>
               )}
             </div>
-
-            <div
-              className="run-view__files"
-              hidden={subtab !== "files"}
-              aria-label="Changed files"
-            >
-              <div className="run-view__files-head">
-                Files changed
-                <span className="run-view__files-count">{files.length}</span>
-              </div>
-              {files.length === 0 ? (
-                <p className="run-view__empty">
-                  No file changes across this run's iterations.
-                </p>
-              ) : (
-                <ul className="file-list">
-                  {files.map((path) => (
-                    <li key={path} className="file-list__item" title={path}>
-                      {path}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
           </div>
         </>
       )}
     </section>
   );
-}
-
-// The de-duplicated set of paths any iteration's diff touched, first-seen order.
-function uniqueFiles(iterations: IterationView[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const it of iterations) {
-    for (const f of it.diff?.files ?? []) {
-      if (!seen.has(f.path)) {
-        seen.add(f.path);
-        out.push(f.path);
-      }
-    }
-  }
-  return out;
 }
 
 // One iteration's diff (per-file summary + collapsible patch) under the Diff

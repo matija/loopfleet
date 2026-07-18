@@ -4,7 +4,7 @@
  * hues, which are a genuinely new pattern this grid introduces. */
 
 .data-grid {
-  --grid-cols: 2em 3em 6em minmax(0, 1fr) 6.5em;
+  --grid-cols: 6em minmax(0, 1fr) 6.5em;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
 }
@@ -41,13 +41,6 @@
 
 .data-grid__cell {
   min-width: 0;
-}
-
-.data-grid__cell--num,
-.data-grid__cell--seq {
-  color: var(--c-text-faint);
-  text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
 .data-grid__cell--detail {

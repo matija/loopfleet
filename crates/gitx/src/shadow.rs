@@ -13,9 +13,11 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Fixed identity for app-owned shadow commits. The commit belongs to the app,
-/// not the agent or the user, so it uses a stable synthetic identity rather than
-/// the repo's `user.*` config (which may be unset — `commit-tree` would fail).
+/// Fallback identity for shadow commits when the repo has no `user.*` configured.
+/// Shadow commits are normally stamped with the user's own git identity (see
+/// [`commit_identity`]) so a run's work is attributed to them once used, but a
+/// fresh repo may have no identity set at all, and `commit-tree` needs one — this
+/// synthetic identity keeps snapshotting working in that case.
 const COMMIT_NAME: &str = "loopfleet";
 const COMMIT_EMAIL: &str = "loopfleet@localhost";
 
@@ -85,11 +87,14 @@ pub fn snapshot(repo: &Path, worktree: &Path, run_id: &str, iter: u32) -> Result
 
     let parent = resolve_parent(repo, worktree, run_id, iter)?;
     let msg = format!("run {run_id} iter {iter}");
+    // Attribute the snapshot to the user (their configured git identity) so a
+    // run's commits land in their history under their name once the run is used.
+    let (name, email) = commit_identity(repo);
     let ident: [(&str, &OsStr); 4] = [
-        ("GIT_AUTHOR_NAME", OsStr::new(COMMIT_NAME)),
-        ("GIT_AUTHOR_EMAIL", OsStr::new(COMMIT_EMAIL)),
-        ("GIT_COMMITTER_NAME", OsStr::new(COMMIT_NAME)),
-        ("GIT_COMMITTER_EMAIL", OsStr::new(COMMIT_EMAIL)),
+        ("GIT_AUTHOR_NAME", OsStr::new(&name)),
+        ("GIT_AUTHOR_EMAIL", OsStr::new(&email)),
+        ("GIT_COMMITTER_NAME", OsStr::new(&name)),
+        ("GIT_COMMITTER_EMAIL", OsStr::new(&email)),
     ];
     let commit = run_git(
         repo,
@@ -112,6 +117,35 @@ fn resolve_parent(repo: &Path, worktree: &Path, run_id: &str, iter: u32) -> Resu
         }
     }
     run_git(worktree, &["rev-parse", "HEAD"], &[])
+}
+
+/// The identity to stamp a shadow commit with: the repo's configured
+/// `user.name`/`user.email` (so the run is attributed to the user), falling back
+/// to the synthetic [`COMMIT_NAME`]/[`COMMIT_EMAIL`] only when git has no
+/// identity configured — `commit-tree` needs one either way. Both fields must be
+/// set to use the user identity; a half-configured repo falls back wholesale
+/// rather than mixing a real name with a synthetic email.
+fn commit_identity(repo: &Path) -> (String, String) {
+    match (git_config(repo, "user.name"), git_config(repo, "user.email")) {
+        (Some(name), Some(email)) => (name, email),
+        _ => (COMMIT_NAME.to_string(), COMMIT_EMAIL.to_string()),
+    }
+}
+
+/// Read a single git config value from `repo`, or `None` when unset or empty.
+/// Respects the normal local/global/system config cascade.
+fn git_config(repo: &Path, key: &str) -> Option<String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["config", "--get", key])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let val = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!val.is_empty()).then_some(val)
 }
 
 /// Resolve `rev` to a commit sha, or `None` if it does not exist. `--verify
@@ -260,6 +294,31 @@ mod tests {
         let status = run_git(&wt.path, &["status", "--porcelain"], &[]).unwrap();
         assert!(status.contains(" M README.md"), "README unstaged: {status:?}");
         assert!(status.contains("?? untracked.txt"), "file untracked: {status:?}");
+    }
+
+    #[test]
+    fn snapshot_is_attributed_to_repo_identity() {
+        // The repo configures a real user identity (t <t@t.test>); the shadow
+        // commit must carry it, not the synthetic loopfleet fallback, so a used
+        // run lands in the user's history under their name.
+        let (repo, _root, wt) = repo_with_worktree("run-6");
+        std::fs::write(wt.path.join("a.txt"), "one\n").unwrap();
+        let snap = snapshot(repo.path(), &wt.path, "run-6", 1).unwrap();
+
+        let author = run_git(
+            repo.path(),
+            &["log", "-1", "--pretty=%an <%ae>", &snap.commit],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(author, "t <t@t.test>");
+        let committer = run_git(
+            repo.path(),
+            &["log", "-1", "--pretty=%cn <%ce>", &snap.commit],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(committer, "t <t@t.test>");
     }
 
     #[test]

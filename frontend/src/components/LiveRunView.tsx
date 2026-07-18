@@ -94,6 +94,15 @@ export function LiveRunView({
   }, [events.length, subtab]);
 
   const active = ACTIVE.includes(run.status);
+  // Resolve the agent's human name + detected version so the header states what
+  // is actually running, not just the CLI key. (Model/effort are not tracked by
+  // the backend in v1 — the agent identity + version is the run's real "what".)
+  const matched = agents.find((a) => a.key === run.agent);
+  const agentLabel = matched?.display ?? run.agent;
+  const passLabel =
+    run.maxIterations !== undefined
+      ? `${run.maxIterations} ${run.maxIterations === 1 ? "pass" : "passes"}`
+      : null;
   const q = filter.trim().toLowerCase();
   const shown = q
     ? events.filter((e) => eventText(e.event).toLowerCase().includes(q))
@@ -110,7 +119,11 @@ export function LiveRunView({
             {STATUS_LABEL[run.status]}
           </span>
           <span className="run-view__meta">
-            {run.agent} · {run.projectName}
+            <span className="run-view__agent">{agentLabel}</span>
+            {matched?.version && (
+              <span className="run-view__agent-ver">v{matched.version}</span>
+            )}
+            {passLabel && <> · {passLabel}</>} · {run.projectName}
           </span>
         </div>
         {active && (
@@ -143,7 +156,7 @@ export function LiveRunView({
       <RunSubtabs
         active={subtab}
         onSelect={setSubtab}
-        counts={{ events: events.length, diff: null, files: files.length }}
+        counts={{ events: events.length, files: files.length }}
       />
 
       <div className="run-view__panels">
@@ -171,13 +184,6 @@ export function LiveRunView({
             count={shown.length}
             duration={formatDuration(rowsDuration(shown))}
           />
-        </div>
-
-        <div className="run-view__stream" hidden={subtab !== "diff"}>
-          <p className="run-view__empty">
-            This is the live stream — per-iteration diffs appear here in the run
-            timeline once the run finishes and each pass is snapshotted.
-          </p>
         </div>
 
         <div

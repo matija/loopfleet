@@ -83,6 +83,35 @@
   white-space: nowrap;
 }
 
+/* The run's identity — which agent, which version — stated plainly so it is
+ * clear what is running. (Model/effort are not tracked by the backend in v1.) */
+.run-view__agent {
+  color: var(--c-text-muted);
+  font-weight: 600;
+}
+
+.run-view__agent-ver {
+  margin-left: 4px;
+  font-family: var(--font-mono);
+  color: var(--c-text-faint);
+}
+
+/* Direct "Use this run" bar on a finished run's own screen, so applying a run
+ * needs no detour through Compare. */
+.run-view__use {
+  flex: 0 0 auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-2);
+  padding: var(--space-2) var(--space-3);
+}
+
+.run-view__use .use-run {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+}
+
 .run-view__stop {
   flex: 0 0 auto;
   border: 1px solid var(--c-danger);

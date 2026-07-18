@@ -10,15 +10,15 @@
 // pre-existing commands: `compare_task` and `use_run`.
 
 import { useCallback, useEffect, useState } from "react";
-import { compareTask, useRun } from "../commands";
+import { compareTask } from "../commands";
 import { normalizeDisplayText } from "../displayText";
 import type {
   CompareView as Compare,
   RunCompare,
   RunStatus,
-  UseRunResult,
 } from "../types";
 import { Diff } from "./RunTimeline";
+import { UseRun } from "./UseRun";
 
 const STATUS_LABEL: Record<RunStatus, string> = {
   queued: "Queued",
@@ -135,84 +135,11 @@ function RunColumn({
         </p>
       )}
 
-      <UseRun run={run} onAccepted={onAccepted} />
-    </div>
-  );
-}
-
-// "Use this run": by default merge the run's final state into the repo's
-// currently checked-out branch under a descriptive commit message. A custom
-// target branch is optional — name it only to land the run somewhere other than
-// the current branch (created if absent). Never scores or judges runs.
-function UseRun({
-  run,
-  onAccepted,
-}: {
-  run: RunCompare;
-  onAccepted: () => void;
-}) {
-  const [branch, setBranch] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<UseRunResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  // Only a run that produced a snapshot can be merged.
-  const mergeable = run.final_ref !== null;
-  const custom = branch.trim() !== "";
-
-  async function apply() {
-    setBusy(true);
-    setError(null);
-    setResult(null);
-    try {
-      const r = await useRun(run.run_id, custom ? branch.trim() : null);
-      setResult(r);
-      onAccepted();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="use-run">
-      <div className="use-run__row">
-        <input
-          className="use-run__branch"
-          type="text"
-          placeholder="current branch (optional)"
-          value={branch}
-          disabled={!mergeable || busy}
-          onChange={(e) => setBranch(e.target.value)}
-          aria-label="Target branch"
-          title="Leave empty to merge into your current branch. Name a branch to land the run elsewhere."
-        />
-        <button
-          className="btn btn--accent use-run__go"
-          onClick={apply}
-          disabled={!mergeable || busy}
-          title={!mergeable ? "No snapshot to merge" : undefined}
-        >
-          {busy ? "Merging…" : "Use this run"}
-        </button>
-      </div>
-      <p className="use-run__hint">
-        {custom
-          ? <>Merges into <code>{branch.trim()}</code>.</>
-          : <>Merges into your current branch.</>}
-      </p>
-      {result && (
-        <p className="use-run__result">
-          Merged into <code>{result.target_branch}</code>{" "}
-          {result.up_to_date
-            ? "(already up to date)"
-            : result.created
-              ? "(branch created)"
-              : `→ ${result.merged_commit.slice(0, 8)}`}
-        </p>
-      )}
-      {error && <p className="use-run__error">{error}</p>}
+      <UseRun
+        runId={run.run_id}
+        mergeable={run.final_ref !== null}
+        onAccepted={onAccepted}
+      />
     </div>
   );
 }
