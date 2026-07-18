@@ -38,6 +38,9 @@
     "Segoe UI", system-ui, sans-serif;
   --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
 
+  /* --text-2xs is below the 1.25 ratio, reserved for keycaps (⌘K hints) where a
+   * micro label reads as a glyph, not body text. */
+  --text-2xs: 10px;
   --text-xs: 11px;
   --text-sm: 12px;
   --text-base: 13px;
@@ -65,6 +68,9 @@
   /* --- layout --- */
   --sidebar-w: 268px;
   --titlebar-h: 38px;
+  /* Shared height for compact control strips (steppers, tab bars) so they share
+   * one baseline instead of drifting a pixel apart. */
+  --control-h: 28px;
   --shadow-1: 0 4px 16px rgba(0, 0, 0, 0.45);
 
   /* --- motion ---

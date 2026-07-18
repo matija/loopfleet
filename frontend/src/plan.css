@@ -215,7 +215,7 @@
 .launch__count {
   display: inline-flex;
   align-items: stretch;
-  height: 28px;
+  height: var(--control-h);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-md);
   overflow: hidden;

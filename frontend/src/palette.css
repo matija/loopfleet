@@ -183,7 +183,7 @@
 
 .palette__foot kbd {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--c-text-muted);
   background: var(--c-surface-2);
   border: 1px solid var(--c-border);
@@ -223,7 +223,7 @@
 
 .titlebar__k kbd {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--c-text-muted);
   background: var(--c-surface-3);
   border: 1px solid var(--c-border);

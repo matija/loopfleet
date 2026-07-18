@@ -91,7 +91,7 @@
 }
 
 .run-view__agent-ver {
-  margin-left: 4px;
+  margin-left: var(--space-1);
   font-family: var(--font-mono);
   color: var(--c-text-faint);
 }
@@ -233,7 +233,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  min-height: 29px;
+  min-height: var(--control-h);
   padding: 0 var(--space-1);
   border-bottom: 1px solid var(--c-border);
 }
