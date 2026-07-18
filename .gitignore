@@ -4,3 +4,10 @@ Cargo.lock.bak
 .DS_Store
 /frontend/node_modules
 /frontend/dist
+
+# Local product/planning docs — not for GitHub
+PRD.md
+PRODUCT.md
+DESIGN.md
+progress.txt
+/prds/
