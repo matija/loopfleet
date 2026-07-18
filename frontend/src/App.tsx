@@ -58,6 +58,13 @@ type View =
 // spans the bottom as the global run surface.
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
+  // The connections list is itself an async surface: until the first
+  // `listProjects` resolves, an empty `projects` must read as "loading", not as
+  // the "No projects yet" empty state — and a load failure must surface, not be
+  // masked by that same empty state. `projectsLoaded`/`projectsError` split the
+  // three, mirroring the loaded+error pattern every other panel uses.
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>({ kind: "overview" });
   // Live "filter tables…"-style narrowing of the connections list.
@@ -79,14 +86,18 @@ export default function App() {
     listProjects()
       .then((ps) => {
         setProjects(ps);
+        setProjectsLoaded(true);
         setSelectedId((cur) => {
           const next = cur ?? ps[0]?.id ?? null;
           if (next) setView({ kind: "plan", projectId: next });
           return next;
         });
       })
-      .catch((e) => pushError(String(e)));
-  }, [pushError]);
+      .catch((e) => {
+        setProjectsError(String(e));
+        setProjectsLoaded(true);
+      });
+  }, []);
 
   // Terminal-state updates for any run flow through the dock's registry.
   useEffect(() => {
@@ -257,7 +268,13 @@ export default function App() {
               onChange={(e) => setProjectFilter(e.target.value)}
             />
           )}
-          {projects.length === 0 ? (
+          {!projectsLoaded ? (
+            <div className="sidebar__empty">Loading projects…</div>
+          ) : projectsError ? (
+            <div className="sidebar__empty sidebar__empty--error">
+              Couldn’t load projects: {projectsError}
+            </div>
+          ) : projects.length === 0 ? (
             <div className="sidebar__empty">
               No projects yet. Add a git repo to launch runs against its plan.
             </div>
