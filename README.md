@@ -11,3 +11,5 @@ Loopfleet is an experimental agent cockpit for automatically running loops over 
 ```sh
 npm run tauri dev
 ```
+
+See [build/README.md](build/README.md) for prerequisites and release builds.
