@@ -102,9 +102,11 @@
   color: var(--c-text-muted);
 }
 
+/* Keyboard focus keeps the shared indigo :focus-visible ring; the border also
+ * shifts to accent, matching every other input (launch agent, use-run branch,
+ * settings fields) so a tabbing user lands here with the same signal. */
 .sidebar__filter:focus {
-  outline: none;
-  border-color: var(--c-border-strong);
+  border-color: var(--c-accent);
 }
 
 .sidebar__list {
