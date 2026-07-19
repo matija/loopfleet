@@ -1,0 +1,173 @@
+/* PRD document view + the Tasks/PRD toggle that fronts the plan pane. Structural
+ * only; values via tokens.css. The document body renders authored Markdown
+ * (markdown.tsx) as readable prose in a measured column. */
+
+/* --- Tasks / PRD toggle --- */
+
+.plan-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control-h);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.plan-toggle__tab {
+  align-self: stretch;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--c-text-muted);
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.plan-toggle__tab:hover {
+  color: var(--c-text);
+  background: var(--c-surface-2);
+}
+
+.plan-toggle__tab--active {
+  color: var(--c-text);
+  border-bottom-color: var(--c-accent);
+}
+
+/* --- document --- */
+
+.prd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin-bottom: var(--space-6);
+}
+
+.prd-doc {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+}
+
+.prd-doc__head {
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.prd-doc__path {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--c-text-faint);
+}
+
+/* A measured column so long PRD prose stays readable. */
+.prd-doc__body {
+  max-width: 78ch;
+  line-height: var(--leading-normal);
+  color: var(--c-text);
+}
+
+/* --- rendered markdown blocks --- */
+
+.md-h {
+  font-weight: 600;
+  line-height: var(--leading-tight);
+  margin: var(--space-5) 0 var(--space-2);
+}
+
+.md-h:first-child {
+  margin-top: 0;
+}
+
+.md-h1 {
+  font-size: var(--text-xl);
+}
+.md-h2 {
+  font-size: var(--text-lg);
+}
+.md-h3 {
+  font-size: var(--text-md);
+}
+.md-h4,
+.md-h5,
+.md-h6 {
+  font-size: var(--text-base);
+  color: var(--c-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.md-p {
+  margin: 0 0 var(--space-3);
+}
+
+.md-ul,
+.md-ol {
+  margin: 0 0 var(--space-3);
+  padding-inline-start: var(--space-5);
+}
+
+.md-li {
+  margin: var(--space-1) 0;
+}
+
+/* Task-list items carry an inline checkbox; drop the bullet so it reads as a box,
+ * not a box after a dot. */
+.md-li:has(> .md-check) {
+  list-style: none;
+  margin-inline-start: calc(-1 * var(--space-4));
+}
+
+.md-check {
+  margin-inline-end: var(--space-2);
+  vertical-align: middle;
+  accent-color: var(--c-accent);
+}
+
+.md-code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  background: var(--c-surface-3);
+  color: var(--c-text);
+}
+
+.md-pre {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-2);
+  overflow-x: auto;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.md-pre code {
+  color: var(--c-text);
+}
+
+.md-quote {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  border-inline-start: 3px solid var(--c-border-strong);
+  color: var(--c-text-muted);
+}
+
+.md-hr {
+  margin: var(--space-4) 0;
+  border: 0;
+  border-top: 1px solid var(--c-border);
+}
+
+.md-link {
+  color: var(--c-accent-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-link:hover {
+  color: var(--c-text);
+}
