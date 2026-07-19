@@ -11,7 +11,14 @@ use loopfleet_gitx::GitActor;
 use loopfleet_sandbox::{confine_prefix, RenderParams};
 use loopfleet_store::{Connection, NewRun, Project, RunSummary};
 use tauri::{AppHandle, Emitter, Manager, State};
+use time::format_description::well_known::Rfc3339;
+use time::OffsetDateTime;
 use tokio::sync::watch;
+
+/// The future returned by [`spawn_run`]. Boxed and type-erased so a rate-limited
+/// run can schedule another `spawn_run` from inside its own completion handler
+/// without the recursion making the future infinitely sized.
+type RunFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>>;
 
 /// App-owned state shared across commands. The connection is behind
 /// `Arc<Mutex<…>>` so a background launch task can persist run progress on the
@@ -400,6 +407,40 @@ async fn launch_run(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
+    // The command is a thin wrapper over `spawn_run`, which owns clones of the
+    // shared state so a scheduled re-run (rate limits) can call it again.
+    spawn_run(
+        project_id,
+        task_anchor,
+        agent,
+        max_iterations,
+        app,
+        state.db.clone(),
+        state.git.clone(),
+        state.data_dir.clone(),
+        state.stops.clone(),
+    )
+    .await
+}
+
+/// Cut a worktree, insert a run row, and drive the looping run in the background
+/// (see [`launch_run`]). Takes owned clones of the shared app state rather than a
+/// Tauri `State`, so it can be called both from the `launch_run` command and from
+/// a scheduled re-run after a rate limit. Returns a type-erased [`RunFuture`] so
+/// that self-rescheduling doesn't make the future infinitely sized.
+#[allow(clippy::too_many_arguments)]
+fn spawn_run(
+    project_id: String,
+    task_anchor: String,
+    agent: String,
+    max_iterations: u32,
+    app: AppHandle,
+    db: Arc<Mutex<Connection>>,
+    git: GitActor,
+    data_dir: PathBuf,
+    stops: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
+) -> RunFuture {
+    Box::pin(async move {
     let adapter = build_adapter(&agent).ok_or_else(|| format!("unknown agent: {agent}"))?;
 
     // Fail fast if the agent CLI isn't installed, before cutting a worktree or
@@ -419,7 +460,7 @@ async fn launch_run(
     // enforce the concurrency cap (M6 settings) and read the project's sandbox
     // write overrides — all under one lock.
     let (project, plan_id, task_text, extra_writes) = {
-        let conn = state.db.lock().unwrap();
+        let conn = db.lock().unwrap();
 
         let settings = loopfleet_store::load_settings(&conn).map_err(|e| e.to_string())?;
         if settings.concurrency_cap > 0 {
@@ -450,16 +491,15 @@ async fn launch_run(
 
     // App-managed paths, keyed by run id (outside the repo).
     let run_id = uuid::Uuid::new_v4().to_string();
-    let worktrees_root = state.data_dir.join("worktrees");
-    let progress_dir = state.data_dir.join("progress").join(&run_id);
+    let worktrees_root = data_dir.join("worktrees");
+    let progress_dir = data_dir.join("progress").join(&run_id);
     let progress_path = progress_dir.join("progress.md");
-    let profile_path = state.data_dir.join("profiles").join(format!("{run_id}.sb"));
+    let profile_path = data_dir.join("profiles").join(format!("{run_id}.sb"));
     std::fs::create_dir_all(&worktrees_root).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&progress_dir).map_err(|e| e.to_string())?;
 
     // Cut the per-run worktree through the serialized git actor.
-    let worktree = state
-        .git
+    let worktree = git
         .worktree_add(
             PathBuf::from(&project.repo_path),
             worktrees_root,
@@ -476,8 +516,12 @@ async fn launch_run(
     params.extra_writes = extra_writes.into_iter().map(PathBuf::from).collect();
     let wrapper = confine_prefix(&params, &profile_path).map_err(|e| e.to_string())?;
 
+    // Keep the launch inputs for a possible rate-limit re-run (`task_anchor` and
+    // `agent` are moved into the run row just below).
+    let rerun = (project_id, task_anchor.clone(), agent.clone(), max_iterations);
+
     {
-        let conn = state.db.lock().unwrap();
+        let conn = db.lock().unwrap();
         loopfleet_store::insert_run(
             &conn,
             &NewRun {
@@ -509,13 +553,16 @@ async fn launch_run(
 
     // Register a cancel channel so the live-run Stop button can signal this run.
     let (cancel_tx, mut cancel_rx) = watch::channel(false);
-    state.stops.lock().unwrap().insert(run_id.clone(), cancel_tx);
+    stops.lock().unwrap().insert(run_id.clone(), cancel_tx);
 
     // Drive the loop off the command's response: it may run for minutes. Progress
     // is persisted on the shared single-writer connection and streamed to the UI.
-    let db = state.db.clone();
-    let git = state.git.clone();
-    let stops = state.stops.clone();
+    // The clones let the background task keep its own handles (and hand fresh ones
+    // to a scheduled re-run) while the outer future returns the run id now.
+    let db = db.clone();
+    let git = git.clone();
+    let stops = stops.clone();
+    let sched = (app.clone(), db.clone(), git.clone(), data_dir.clone(), stops.clone());
     tauri::async_runtime::spawn(async move {
         // Watch the worktree for file changes (the app-sourced `FileChanged`
         // lane) and stream them alongside the agent's events. Polls git status
@@ -585,9 +632,41 @@ async fn launch_run(
                 status: outcome.state.as_str().to_string(),
             },
         );
+
+        // A run that ended limit-reached waits out the rate limit: if the agent
+        // gave a reset time still in the future, schedule a fresh re-run of the
+        // same task at that time. Held only in memory — like every run, a pending
+        // re-run does not survive an app restart. No (or already-past) reset time
+        // means we can't know it is safe to retry, so we leave it for the user.
+        if outcome.state == RunState::LimitReached {
+            if let Some(delay) = delay_until(outcome.reset_at.as_deref(), OffsetDateTime::now_utc()) {
+                let (app, db, git, data_dir, stops) = sched;
+                let (project_id, task_anchor, agent, max_iterations) = rerun;
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(delay).await;
+                    let _ = spawn_run(
+                        project_id, task_anchor, agent, max_iterations,
+                        app, db, git, data_dir, stops,
+                    )
+                    .await;
+                });
+            }
+        }
     });
 
     Ok(run_id)
+    })
+}
+
+/// How long to wait before re-running a rate-limited run: the gap between `now`
+/// and the agent-reported `reset_at` (ISO-8601 / RFC 3339). `None` when there is
+/// no reset time, it doesn't parse, or it is already in the past — i.e. "don't
+/// auto-reschedule". We only retry when we know a future instant the limit lifts,
+/// so a re-run never hammers a still-exhausted limit.
+fn delay_until(reset_at: Option<&str>, now: OffsetDateTime) -> Option<std::time::Duration> {
+    let reset = OffsetDateTime::parse(reset_at?, &Rfc3339).ok()?;
+    // `TryFrom<time::Duration>` fails for a negative span, so a past reset → None.
+    std::time::Duration::try_from(reset - now).ok()
 }
 
 /// Request a stop of an active run. Signals the run's cancel channel; the loop
@@ -819,4 +898,29 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running loopfleet");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_reschedule_without_a_parseable_reset_time() {
+        let now = OffsetDateTime::now_utc();
+        assert!(delay_until(None, now).is_none());
+        assert!(delay_until(Some("whenever"), now).is_none());
+    }
+
+    #[test]
+    fn no_reschedule_when_the_reset_is_already_past() {
+        let now = OffsetDateTime::parse("2025-01-15T10:00:00Z", &Rfc3339).unwrap();
+        assert!(delay_until(Some("2025-01-15T09:59:00Z"), now).is_none());
+    }
+
+    #[test]
+    fn delay_is_the_gap_to_a_future_reset() {
+        let now = OffsetDateTime::parse("2025-01-15T10:00:00Z", &Rfc3339).unwrap();
+        let delay = delay_until(Some("2025-01-15T10:05:00Z"), now).unwrap();
+        assert_eq!(delay, std::time::Duration::from_secs(300));
+    }
 }
