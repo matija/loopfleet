@@ -19,7 +19,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { planOverview } from "../commands";
 import { normalizeDisplayText } from "../displayText";
 import { fuzzyMatch } from "../fuzzy";
-import type { PlanView as Plan, Project, RunStatus } from "../types";
+import type { PlanView as Plan, Project } from "../types";
+import { RUN_STATUS_LABEL } from "../status";
 import type { ActiveRun } from "./RunDock";
 
 /// What the palette needs to open a task in the main pane.
@@ -49,14 +50,6 @@ type Item = {
   subtitle?: string;
   hint?: string;
   run: () => void;
-};
-
-const STATUS_LABEL: Record<RunStatus, string> = {
-  queued: "Queued",
-  running: "Running",
-  completed: "Completed",
-  failed: "Failed",
-  stopped: "Stopped",
 };
 
 function repoName(path: string): string {
@@ -172,7 +165,7 @@ export function CommandPalette({
       id: `run:${r.runId}`,
       group: "Runs",
       title: normalizeDisplayText(r.taskText),
-      subtitle: `${STATUS_LABEL[r.status]} · ${r.agent} · ${r.projectName}`,
+      subtitle: `${RUN_STATUS_LABEL[r.status]} · ${r.agent} · ${r.projectName}`,
       hint: r.status,
       run: () => onOpenRun(r.runId),
     }));

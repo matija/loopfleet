@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { listProjects, stopRun } from "./commands";
 import { normalizeDisplayText } from "./displayText";
 import { onRunStatus } from "./events";
-import type { Project, RunStatus } from "./types";
+import type { Project } from "./types";
+import { isActiveRun } from "./status";
 import { AppShell } from "./components/AppShell";
 import { AddProject, pickAndRegisterProject } from "./components/AddProject";
 import { AgentStatusPanel } from "./components/AgentStatusPanel";
@@ -29,8 +30,7 @@ import {
 // A run streams live while active; once terminal, its persisted timeline (with
 // per-iteration events and diffs) is the surface. Opening a run from the dock
 // picks the right one by status, and a still-open live view flips to the
-// timeline automatically when the run ends.
-const ACTIVE: RunStatus[] = ["queued", "running"];
+// timeline automatically when the run ends (`isActiveRun`, from status.ts).
 
 // --- View model ------------------------------------------------------------
 //
@@ -131,7 +131,7 @@ export default function App() {
   // registry tags runs by project name (the only project handle it carries), so
   // the match is by repo name.
   const activeProjectNames = new Set(
-    runs.filter((r) => ACTIVE.includes(r.status)).map((r) => r.projectName),
+    runs.filter((r) => isActiveRun(r.status)).map((r) => r.projectName),
   );
   const q = projectFilter.trim().toLowerCase();
   // The filter narrows both projects (by path) and, within the open connection,
@@ -456,7 +456,7 @@ function RunPane({
   if (!run) {
     return <p className="main__placeholder">This run is no longer available.</p>;
   }
-  return ACTIVE.includes(run.status) ? (
+  return isActiveRun(run.status) ? (
     <LiveRunView key={run.runId} run={run} onStop={onStop} onClose={onClose} />
   ) : (
     <RunTimeline key={run.runId} run={run} onClose={onClose} onAccepted={onAccepted} />

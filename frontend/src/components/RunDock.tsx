@@ -11,6 +11,7 @@
 
 import type { RunStatus } from "../types";
 import { normalizeDisplayText } from "../displayText";
+import { RUN_STATUS_LABEL, isActiveRun } from "../status";
 
 /// One run tracked by the dock. Seeded at launch, its `status` updated from the
 /// `run_status` stream.
@@ -23,16 +24,6 @@ export type ActiveRun = {
   /// sources without the count still render.
   maxIterations?: number;
   status: RunStatus;
-};
-
-const ACTIVE: RunStatus[] = ["queued", "running"];
-
-const STATUS_LABEL: Record<RunStatus, string> = {
-  queued: "Queued",
-  running: "Running",
-  completed: "Completed",
-  failed: "Failed",
-  stopped: "Stopped",
 };
 
 export function RunDock({
@@ -48,7 +39,7 @@ export function RunDock({
   onStop: (runId: string) => void;
   onDismiss: (runId: string) => void;
 }) {
-  const activeCount = runs.filter((r) => ACTIVE.includes(r.status)).length;
+  const activeCount = runs.filter((r) => isActiveRun(r.status)).length;
 
   return (
     <section className="run-dock" aria-label="Active runs">
@@ -66,7 +57,7 @@ export function RunDock({
       ) : (
         <ul className="run-dock__list">
           {runs.map((r) => {
-            const active = ACTIVE.includes(r.status);
+            const active = isActiveRun(r.status);
             const taskText = normalizeDisplayText(r.taskText);
             return (
               <li
@@ -79,8 +70,8 @@ export function RunDock({
                   onClick={() => onOpen(r.runId)}
                   title={taskText}
                 >
-                  <span className={`run-chip__status run-chip__status--${r.status}`}>
-                    {STATUS_LABEL[r.status]}
+                  <span className={`run-chip__status status-pill status-pill--${r.status}`}>
+                    {RUN_STATUS_LABEL[r.status]}
                   </span>
                   <span className="run-chip__task">{taskText}</span>
                   <span className="run-chip__meta">
