@@ -158,6 +158,22 @@ fn plan_document(plan_id: String, state: State<'_, AppState>) -> Result<String, 
     std::fs::read_to_string(&file_path).map_err(|e| format!("reading plan {file_path}: {e}"))
 }
 
+/// Overwrite a single plan document with `content`, resolved by `plan_id`. The
+/// write counterpart of `plan_document`: it resolves the plan file recorded for
+/// the plan and replaces it verbatim with the edited markdown the UI supplies.
+/// A one-shot edit — it does not launch a run; the next `plan_overview` re-parses
+/// and re-syncs tasks from the saved file.
+#[tauri::command]
+fn plan_edit(plan_id: String, content: String, state: State<'_, AppState>) -> Result<(), String> {
+    let file_path = {
+        let conn = state.db.lock().unwrap();
+        loopfleet_store::plan_file_path(&conn, &plan_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("unknown plan: {plan_id}"))?
+    };
+    std::fs::write(&file_path, content).map_err(|e| format!("writing plan {file_path}: {e}"))
+}
+
 /// Launch `max_iterations` looping passes of `agent` against the task anchored at
 /// `task_anchor` in the given project's plan, confined by a rendered Seatbelt
 /// profile. Returns the new run id immediately; the loop runs in the background
@@ -578,6 +594,7 @@ pub fn run() {
             set_project_sandbox_writes,
             plan_overview,
             plan_document,
+            plan_edit,
             launch_run,
             plan_runs,
             run_timeline,
