@@ -8,13 +8,15 @@
 // returns), so no extra command is needed. A dependency-free renderer turns it
 // into elements (see markdown.tsx).
 //
-// Each document can be edited in place: "Edit" swaps the rendered prose for the
-// raw markdown in a textarea; "Apply" writes it back via `plan_edit` (and reloads
-// so the next parse reflects the saved bytes); "Discard" drops the draft and
-// returns to the rendered view without touching the file.
+// Each document can be edited in place: the edit affordance — labelled "Edit with
+// {default agent}" once settings resolve (plain "Edit" until then) to name whose
+// plan you're preparing — swaps the rendered prose for the raw markdown in a
+// textarea; "Apply" writes it back via `plan_edit` (and reloads so the next parse
+// reflects the saved bytes); "Discard" drops the draft and returns to the
+// rendered view without touching the file.
 
 import { useEffect, useState } from "react";
-import { planEdit, planOverview } from "../commands";
+import { getSettings, planEdit, planOverview } from "../commands";
 import { renderMarkdown } from "../markdown";
 import { NoPlanEmptyState } from "./EmptyState";
 import type { PlanView as Plan } from "../types";
@@ -29,6 +31,16 @@ export function PrdView({ projectId }: { projectId: string }) {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // The configured default agent, named on the edit affordance so the reader
+  // knows whose plan they're preparing. Fetched once; falls back to a plain
+  // "Edit" label until it resolves (or if settings are unavailable).
+  const [defaultAgent, setDefaultAgent] = useState<string | null>(null);
+  useEffect(() => {
+    getSettings()
+      .then((s) => setDefaultAgent(s.default_agent))
+      .catch(() => {});
+  }, []);
 
   function load() {
     setPlans(null);
@@ -108,8 +120,13 @@ export function PrdView({ projectId }: { projectId: string }) {
                   className="btn prd-doc__edit"
                   onClick={() => startEdit(plan)}
                   disabled={editingId !== null}
+                  title={
+                    defaultAgent
+                      ? `Edit this plan — the document the ${defaultAgent} runs work against`
+                      : undefined
+                  }
                 >
-                  Edit
+                  {defaultAgent ? `Edit with ${defaultAgent}` : "Edit"}
                 </button>
               )}
             </header>
