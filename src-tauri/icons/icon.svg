@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Loopfleet app icon.
+       Glyph: Phosphor "infinity" (regular) — the loop that names the app.
+       Palette: design-system Control Indigo (#6275f2) on Cockpit Canvas (#0d0d10). -->
+  <defs>
+    <linearGradient id="canvas" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#202230"/>
+      <stop offset="1" stop-color="#0d0d10"/>
+    </linearGradient>
+    <linearGradient id="loop" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8a98f7"/>
+      <stop offset="1" stop-color="#6275f2"/>
+    </linearGradient>
+  </defs>
+
+  <!-- rounded-square tile (macOS-style squircle proportion) -->
+  <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228" fill="url(#canvas)"/>
+  <rect x="8" y="8" width="1008" height="1008" rx="222" ry="222" fill="none"
+        stroke="#37373f" stroke-width="2"/>
+
+  <!-- Phosphor infinity, scaled/centered from its 256 viewBox, weight nudged
+       up (16 -> 22) for presence at icon scale -->
+  <g transform="translate(192 192) scale(2.5)">
+    <path d="M106.63,152.13l-8.69,9.81a48,48,0,1,1,0-67.88l60.12,67.88a48,48,0,1,0,0-67.88l-8.69,9.81"
+          fill="none" stroke="url(#loop)" stroke-linecap="round"
+          stroke-linejoin="round" stroke-width="22"/>
+  </g>
+</svg>
