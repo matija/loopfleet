@@ -64,6 +64,12 @@ export function planDocument(planId: string): Promise<string> {
   return invoke("plan_document", { planId });
 }
 
+/// Overwrite a plan document's markdown, by plan id. The write counterpart of
+/// `planDocument`; the next `planOverview` re-parses tasks from the saved file.
+export function planEdit(planId: string, content: string): Promise<void> {
+  return invoke("plan_edit", { planId, content });
+}
+
 /// Launch a looping run against a task. Returns the new run id immediately; the
 /// loop runs in the background and streams `run_event`/`run_status` events.
 export function launchRun(args: {
