@@ -267,7 +267,8 @@ export function Diff({ diff }: { diff: DiffView | null }) {
 }
 
 // The unified patch, colored by line origin (+ added, − removed, @ hunk head).
-function Patch({ text }: { text: string }) {
+// Exported so the PRD edit review renders its computed patch the same way.
+export function Patch({ text }: { text: string }) {
   const lines = text.split("\n");
   return (
     <pre className="patch" aria-label="Unified diff">

@@ -7,6 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AgentStatus,
   CompareView,
+  PlanEditProposal,
   PlanView,
   Project,
   RunSummary,
@@ -64,10 +65,27 @@ export function planDocument(planId: string): Promise<string> {
   return invoke("plan_document", { planId });
 }
 
-/// Overwrite a plan document's markdown, by plan id. The write counterpart of
-/// `planDocument`; the next `planOverview` re-parses tasks from the saved file.
-export function planEdit(planId: string, content: string): Promise<void> {
-  return invoke("plan_edit", { planId, content });
+/// Run one AI pass over a plan document and return the proposed edit for review.
+/// The default agent edits the PRD in an isolated worktree against `instruction`;
+/// nothing is written to the real file until `planEditApply`. Rejects with an
+/// explicit message when no default agent is installed or the pass fails.
+export function planEdit(
+  planId: string,
+  instruction: string,
+): Promise<PlanEditProposal> {
+  return invoke("plan_edit", { planId, instruction });
+}
+
+/// Accept a proposed AI plan edit (`edit_id`): write the proposed markdown to the
+/// real PRD file and drop the scratch worktree.
+export function planEditApply(editId: string): Promise<void> {
+  return invoke("plan_edit_apply", { editId });
+}
+
+/// Discard a proposed AI plan edit (`edit_id`): drop the scratch worktree,
+/// writing nothing.
+export function planEditDiscard(editId: string): Promise<void> {
+  return invoke("plan_edit_discard", { editId });
 }
 
 /// Launch a looping run against a task. Returns the new run id immediately; the

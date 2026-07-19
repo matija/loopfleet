@@ -74,11 +74,17 @@
   gap: var(--space-2);
 }
 
-/* Raw-markdown editor: monospace, roomy, and it grows with the viewport rather
- * than the content so a long PRD stays in a single scrollable field. */
-.prd-doc__editor {
+/* Instruction step: a free-text field for what the agent should change. Shorter
+ * than a full editor — it's a prompt, not the document. */
+.prd-doc__instruct {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.prd-doc__instruction {
   width: 100%;
-  min-height: 24rem;
+  min-height: 6rem;
   resize: vertical;
   box-sizing: border-box;
   padding: var(--space-3);
@@ -86,14 +92,80 @@
   border-radius: var(--radius-md);
   background: var(--c-surface-2);
   color: var(--c-text);
-  font-family: var(--font-mono);
+  font-family: inherit;
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
 }
 
-.prd-doc__editor:focus {
+.prd-doc__instruction:focus {
   outline: none;
   border-color: var(--c-accent);
+}
+
+/* Running step: the agent is editing in its worktree. A muted status label with
+ * a spinner (reduced-motion-safe) in the header, and a reassurance note where
+ * the diff will appear. */
+.prd-doc__running {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--c-text-muted);
+  font-size: var(--text-sm);
+}
+
+.prd-doc__spinner {
+  width: 0.85em;
+  height: 0.85em;
+  border: 2px solid var(--c-border-strong);
+  border-top-color: var(--c-accent);
+  border-radius: 50%;
+  animation: prd-spin 0.7s linear infinite;
+}
+
+@keyframes prd-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prd-doc__spinner {
+    animation: none;
+    /* Keep it legible-as-progress without motion: a static partial ring reads
+     * as "in progress" rather than a broken border. */
+    border-top-color: var(--c-accent);
+  }
+}
+
+.prd-doc__running-note {
+  margin: 0;
+  color: var(--c-text-muted);
+  font-size: var(--text-sm);
+}
+
+.prd-doc__review--running {
+  min-height: 4rem;
+}
+
+/* Diff-review step: the pending edit shown as a patch before it is written.
+ * The patch itself reuses the run-timeline `.patch` styling; this only frames
+ * it and the +/− summary line above it. */
+.prd-doc__review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.prd-doc__review-stat {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.prd-doc__review-count {
+  color: var(--c-text-muted);
 }
 
 /* A measured column so long PRD prose stays readable. */
