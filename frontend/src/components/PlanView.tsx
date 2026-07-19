@@ -305,6 +305,7 @@ export function LaunchControl({
             role="radio"
             aria-checked={agent === k}
             className={`launch__agent${agent === k ? " launch__agent--on" : ""}`}
+            data-label={k}
             disabled={noAgents}
             onClick={() => setAgent(k)}
           >
