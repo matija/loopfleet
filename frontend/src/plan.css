@@ -140,6 +140,13 @@
 
 .task-badge {
   flex: none;
+  /* Fixed-width status column: wide enough for the longest label ("Needs
+   * review") so the badge occupies the same width on every row and the task
+   * text after it starts at a stable x — the DataGrid's aligned-columns
+   * discipline applied to the plan/task grid. */
+  box-sizing: border-box;
+  min-width: 104px;
+  text-align: center;
   font-size: var(--text-xs);
   font-weight: 600;
   text-transform: uppercase;
