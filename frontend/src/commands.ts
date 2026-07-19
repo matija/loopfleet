@@ -58,6 +58,12 @@ export function planOverview(projectId: string): Promise<PlanView[]> {
   return invoke("plan_overview", { projectId });
 }
 
+/// The raw markdown of a single plan document, by plan id. Read-only: no store
+/// sync, for rendering the full frozen PRD on demand.
+export function planDocument(planId: string): Promise<string> {
+  return invoke("plan_document", { planId });
+}
+
 /// Launch a looping run against a task. Returns the new run id immediately; the
 /// loop runs in the background and streams `run_event`/`run_status` events.
 export function launchRun(args: {

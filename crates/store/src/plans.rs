@@ -30,6 +30,22 @@ pub fn upsert_plan(
     Ok(())
 }
 
+/// The plan file path recorded for `plan_id`, or `None` if no such plan is
+/// synced. Read-only lookup used to serve a plan's document without re-running
+/// the overview sync.
+pub fn plan_file_path(conn: &Connection, plan_id: &str) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT file_path FROM plans WHERE id = ?1",
+        params![plan_id],
+        |r| r.get(0),
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+}
+
 /// Upsert one task by its anchor (the primary key). Deliberately never deletes
 /// tasks that vanished from the file: a launched run may still reference one via
 /// its FK, and the plan view derives which tasks to show from the freshly parsed
@@ -83,6 +99,20 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM plans", [], |r| r.get(0))
             .unwrap();
         assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn plan_file_path_returns_synced_path_or_none() {
+        let conn = crate::open(":memory:").unwrap();
+        project(&conn, "proj");
+        let pid = plan_id("proj", "/repos/proj/PRD.md");
+        upsert_plan(&conn, &pid, "proj", "/repos/proj/PRD.md").unwrap();
+
+        assert_eq!(
+            plan_file_path(&conn, &pid).unwrap().as_deref(),
+            Some("/repos/proj/PRD.md")
+        );
+        assert_eq!(plan_file_path(&conn, "proj::missing.md").unwrap(), None);
     }
 
     #[test]

@@ -143,6 +143,21 @@ fn plan_overview(project_id: String, state: State<'_, AppState>) -> Result<Vec<P
     loopfleet_core::plan_overview(&conn, &project).map_err(|e| e.to_string())
 }
 
+/// The raw markdown of a single plan document, resolved by `plan_id`. Read-only:
+/// unlike `plan_overview` it neither parses tasks nor syncs anything into the
+/// store — it just reads the frozen plan file recorded for the plan and returns
+/// it verbatim, for the UI to render the full PRD on demand.
+#[tauri::command]
+fn plan_document(plan_id: String, state: State<'_, AppState>) -> Result<String, String> {
+    let file_path = {
+        let conn = state.db.lock().unwrap();
+        loopfleet_store::plan_file_path(&conn, &plan_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("unknown plan: {plan_id}"))?
+    };
+    std::fs::read_to_string(&file_path).map_err(|e| format!("reading plan {file_path}: {e}"))
+}
+
 /// Launch `max_iterations` looping passes of `agent` against the task anchored at
 /// `task_anchor` in the given project's plan, confined by a rendered Seatbelt
 /// profile. Returns the new run id immediately; the loop runs in the background
@@ -562,6 +577,7 @@ pub fn run() {
             project_sandbox_writes,
             set_project_sandbox_writes,
             plan_overview,
+            plan_document,
             launch_run,
             plan_runs,
             run_timeline,
