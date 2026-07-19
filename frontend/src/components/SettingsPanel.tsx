@@ -13,7 +13,7 @@ const AGENTS = ["claude", "pi", "cursor"];
 export function SettingsPanel() {
   const [settings, setSettings] = useState<Settings>({
     default_agent: "claude",
-    default_iterations: 5,
+    default_iterations: 1,
     concurrency_cap: 3,
   });
   // `loaded` gates the form until the persisted settings arrive, so a user
