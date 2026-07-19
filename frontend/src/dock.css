@@ -33,6 +33,9 @@
   font-size: var(--text-xs);
   color: var(--c-text-muted);
   white-space: nowrap;
+  /* Equal-width digits so a changing tally (1 → 12 active) holds its width and
+   * doesn't nudge the run list beside it as runs come and go. */
+  font-variant-numeric: tabular-nums;
 }
 
 .run-dock__empty {
