@@ -183,6 +183,7 @@ impl ClaudeMapper {
             }
             Some("assistant") => Ok(self.map_content(&v, Self::map_assistant_block())),
             Some("user") => Ok(self.map_content(&v, Self::map_user_block())),
+            Some("rate_limit_event") => Ok(self.map_rate_limit(&v)),
             Some("result") => Ok(self.map_result(&v)),
             _ => Ok(vec![]),
         }
@@ -273,6 +274,27 @@ impl ClaudeMapper {
         }
     }
 
+    /// Maps a `rate_limit_event` line to `RateLimited`, extracting an optional
+    /// ISO-8601 `reset_time` and an optional error `message`.
+    fn map_rate_limit(&self, v: &Value) -> Vec<NormalizedEvent> {
+        let reset_at = v
+            .get("reset_time")
+            .and_then(Value::as_str)
+            .map(String::from);
+        let message = v
+            .get("error")
+            .or_else(|| v.get("message"))
+            .and_then(Value::as_str)
+            .map(String::from)
+            .or_else(|| {
+                // If all we have is a session_id, synthesize a basic message.
+                v.get("session_id")
+                    .and_then(Value::as_str)
+                    .map(|_| "rate limit hit".to_string())
+            });
+        vec![NormalizedEvent::RateLimited { reset_at, message }]
+    }
+
     /// Maps the terminal `result` line: `TurnCompleted` on success or `Failed`
     /// on error, always followed by `Ended`.
     fn map_result(&self, v: &Value) -> Vec<NormalizedEvent> {
@@ -357,8 +379,9 @@ mod tests {
     }
 
     /// The captured real-world stream maps to the expected event sequence:
-    /// TurnStarted, the Read call/result pair, the Bash CommandRun (its result
-    /// dropped), the final text, then TurnCompleted + Ended.
+    /// TurnStarted, the Read call/result pair, the RateLimited notice, the
+    /// Bash CommandRun (its result dropped), the final text, then
+    /// TurnCompleted + Ended.
     #[test]
     fn maps_captured_stream() {
         let fixture = include_str!("../fixtures/claude_stream.jsonl");
@@ -394,6 +417,16 @@ mod tests {
                 .count(),
             1
         );
+
+        // The fixture has a rate_limit_event — mapped with message but no
+        // reset_time.
+        assert!(events.iter().any(|e| matches!(
+            e,
+            NormalizedEvent::RateLimited {
+                reset_at: None,
+                message: Some(msg),
+            } if msg == "rate limit hit"
+        )));
 
         assert_eq!(
             events.iter().find(|e| matches!(e, NormalizedEvent::TurnCompleted { .. })),
@@ -468,8 +501,45 @@ mod tests {
 
     #[test]
     fn unknown_line_types_and_blanks_are_ignored() {
-        let text = "\n{\"type\":\"rate_limit_event\"}\n{\"type\":\"system\",\"subtype\":\"hook_started\"}\n";
+        let text = "\n{\"type\":\"system\",\"subtype\":\"hook_started\"}\n";
         assert!(map_all(text).is_empty());
+    }
+
+    #[test]
+    fn rate_limit_event_maps_to_rate_limited() {
+        let line = r#"{"type":"rate_limit_event","session_id":"sess-1"}"#;
+        assert_eq!(
+            map_all(line),
+            vec![NormalizedEvent::RateLimited {
+                reset_at: None,
+                message: Some("rate limit hit".into()),
+            }]
+        );
+    }
+
+    #[test]
+    fn rate_limit_event_with_reset_time_and_error() {
+        let line = r#"{"type":"rate_limit_event","reset_time":"2025-01-15T10:30:00Z","error":"request limit exceeded","session_id":"sess-1"}"#;
+        assert_eq!(
+            map_all(line),
+            vec![NormalizedEvent::RateLimited {
+                reset_at: Some("2025-01-15T10:30:00Z".into()),
+                message: Some("request limit exceeded".into()),
+            }]
+        );
+    }
+
+    #[test]
+    fn rate_limit_event_with_message_field() {
+        // Some Claude versions may use "message" instead of "error".
+        let line = r#"{"type":"rate_limit_event","reset_time":"2025-01-15T10:30:00Z","message":"token rate limit"}"#;
+        assert_eq!(
+            map_all(line),
+            vec![NormalizedEvent::RateLimited {
+                reset_at: Some("2025-01-15T10:30:00Z".into()),
+                message: Some("token rate limit".into()),
+            }]
+        );
     }
 
     #[test]

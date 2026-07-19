@@ -72,6 +72,13 @@ pub enum NormalizedEvent {
     NeedsApproval,
     /// The agent failed; `reason` is a human-readable description.
     Failed { reason: String },
+    /// The agent hit a rate limit. `reset_at` is an ISO-8601 timestamp (when
+    /// the limit resets) when the agent provides one; `message` carries details
+    /// from the agent (e.g. which limit was exceeded).
+    RateLimited {
+        reset_at: Option<String>,
+        message: Option<String>,
+    },
     /// The agent stream ended.
     Ended,
 
@@ -131,6 +138,14 @@ mod tests {
                 },
             },
             NormalizedEvent::NeedsApproval,
+            NormalizedEvent::RateLimited {
+                reset_at: Some("2025-01-15T10:30:00Z".into()),
+                message: Some("rate limit hit".into()),
+            },
+            NormalizedEvent::RateLimited {
+                reset_at: None,
+                message: None,
+            },
             NormalizedEvent::Failed {
                 reason: "boom".into(),
             },
@@ -205,6 +220,14 @@ mod tests {
         assert_eq!(NormalizedEvent::TurnStarted.lane(), Lane::Adapter);
         assert_eq!(
             NormalizedEvent::Failed { reason: "x".into() }.lane(),
+            Lane::Adapter
+        );
+        assert_eq!(
+            NormalizedEvent::RateLimited {
+                reset_at: None,
+                message: None,
+            }
+            .lane(),
             Lane::Adapter
         );
     }

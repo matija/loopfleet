@@ -35,6 +35,8 @@ export function eventPill(e: NormalizedEvent): Pill {
       return { label: "Complete", tone: "neutral" };
     case "needs_approval":
       return { label: "Approval", tone: "warn" };
+    case "rate_limited":
+      return { label: "Rate Limit", tone: "warn" };
     case "failed":
       return { label: "Error", tone: "error" };
     case "ended":
@@ -63,6 +65,10 @@ export function eventDetail(e: NormalizedEvent): string {
       return e.exit === null ? e.cmd : `${e.cmd}  → exit ${e.exit}`;
     case "turn_completed":
       return `${e.usage.input_tokens} in · ${e.usage.output_tokens} out tokens`;
+    case "rate_limited":
+      return e.reset_at
+        ? `rate limited until ${e.reset_at}`
+        : e.message ?? "rate limited";
     case "failed":
       return e.reason;
     case "file_changed":

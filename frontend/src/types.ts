@@ -208,6 +208,7 @@ export type NormalizedEvent =
   | { kind: "command_run"; cmd: string; exit: number | null }
   | { kind: "turn_completed"; usage: Usage }
   | { kind: "needs_approval" }
+  | { kind: "rate_limited"; reset_at: string | null; message: string | null }
   | { kind: "failed"; reason: string }
   | { kind: "ended" }
   | { kind: "file_changed"; path: string };
