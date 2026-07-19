@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listProjects, stopRun } from "./commands";
+import { launchRun, listProjects, stopRun } from "./commands";
 import { normalizeDisplayText } from "./displayText";
 import { onRunStatus } from "./events";
 import type { Project } from "./types";
@@ -208,11 +208,49 @@ export default function App() {
           agent: run.agent,
           maxIterations: run.maxIterations,
           status: "running",
+          projectId: selected?.id,
+          taskAnchor: run.taskAnchor,
         },
         ...prev,
       ]);
     },
     [selected],
+  );
+
+  // Retry a finished run: re-launch the same task with the same agent + passes.
+  // The control behind a rate-limited run's "Retry now" — its project/task
+  // identity rides the dock entry, so this works from the run view without a
+  // plan open. The fresh run joins the dock and opens as the live view.
+  const onRetry = useCallback(
+    async (run: ActiveRun) => {
+      if (!run.projectId || !run.taskAnchor) return;
+      const maxIterations = run.maxIterations ?? 1;
+      try {
+        const runId = await launchRun({
+          projectId: run.projectId,
+          taskAnchor: run.taskAnchor,
+          agent: run.agent,
+          maxIterations,
+        });
+        setRuns((prev) => [
+          {
+            runId,
+            projectName: run.projectName,
+            taskText: run.taskText,
+            agent: run.agent,
+            maxIterations,
+            status: "running",
+            projectId: run.projectId,
+            taskAnchor: run.taskAnchor,
+          },
+          ...prev,
+        ]);
+        openRun(runId);
+      } catch (e) {
+        pushError(String(e));
+      }
+    },
+    [openRun, pushError],
   );
 
   // Selecting a project opens its plan in the main pane.
@@ -399,6 +437,7 @@ export default function App() {
             }}
             onClose={goBack}
             onAccepted={() => setPlanNonce((n) => n + 1)}
+            onRetry={onRetry}
           />
         ) : view.kind === "compare" ? (
           <CompareView
@@ -481,12 +520,14 @@ function RunPane({
   onStop,
   onClose,
   onAccepted,
+  onRetry,
 }: {
   runId: string;
   runs: ActiveRun[];
   onStop: (runId: string) => void;
   onClose: () => void;
   onAccepted: () => void;
+  onRetry: (run: ActiveRun) => void;
 }) {
   const run = runs.find((r) => r.runId === runId);
   if (!run) {
@@ -495,7 +536,13 @@ function RunPane({
   return isActiveRun(run.status) ? (
     <LiveRunView key={run.runId} run={run} onStop={onStop} onClose={onClose} />
   ) : (
-    <RunTimeline key={run.runId} run={run} onClose={onClose} onAccepted={onAccepted} />
+    <RunTimeline
+      key={run.runId}
+      run={run}
+      onClose={onClose}
+      onAccepted={onAccepted}
+      onRetry={onRetry}
+    />
   );
 }
 

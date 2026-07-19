@@ -20,6 +20,11 @@ export type ActiveRun = {
   projectName: string;
   taskText: string;
   agent: string;
+  /// The project + task this run is bound to — carried so a finished run can be
+  /// re-launched (e.g. retrying a rate-limited run). Optional so runs seeded from
+  /// sources without the identity still render; retry is gated on both being set.
+  projectId?: string;
+  taskAnchor?: string;
   /// Max passes the loop was launched with. Optional so runs seeded from
   /// sources without the count still render.
   maxIterations?: number;

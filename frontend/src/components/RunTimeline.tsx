@@ -23,12 +23,16 @@ export function RunTimeline({
   run,
   onClose,
   onAccepted,
+  onRetry,
 }: {
   run: ActiveRun;
   onClose: () => void;
   // Called after a run is accepted from here so any open plan can refresh its
   // derived status. Optional — the timeline is reachable without a plan open.
   onAccepted?: () => void;
+  // Re-launch this run's task (same agent + passes). Backs the rate-limited
+  // banner's "Retry now"; a no-op when the run carries no project/task identity.
+  onRetry?: (run: ActiveRun) => void;
 }) {
   const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +67,10 @@ export function RunTimeline({
       : null;
   const mergeable = iterations.some((it) => it.shadow_ref !== null);
   const canUse = !isActiveRun(status) && mergeable;
+  // A rate-limited run gets an explicit banner: what happened, when the limit
+  // resets (from the persisted `rate_limited` event), and a way to re-run now.
+  const limitReached = status === "limit-reached";
+  const canRetry = Boolean(onRetry && run.projectId && run.taskAnchor);
   // Clamped events-subtab page: a stale iterPage (after a reload yields fewer
   // iterations) must never index off the end.
   const page = iterations.length ? Math.min(iterPage, iterations.length - 1) : 0;
@@ -89,6 +97,27 @@ export function RunTimeline({
           </span>
         </div>
       </header>
+
+      {limitReached && (
+        <div className="run-view__limit" role="status">
+          <div className="run-view__limit-body">
+            <span className="run-view__limit-head">Rate limit reached</span>
+            <span className="run-view__limit-detail">
+              The agent hit its rate limit, so the run stopped early to wait it
+              out. {resetPhrase(limitResetAt(iterations))}
+            </span>
+          </div>
+          {canRetry && (
+            <button
+              className="run-view__retry"
+              onClick={() => onRetry?.(run)}
+              title="Re-run this task now with the same agent and passes"
+            >
+              Retry now
+            </button>
+          )}
+        </div>
+      )}
 
       {canUse && (
         <div className="run-view__use">
@@ -196,6 +225,37 @@ export function RunTimeline({
       )}
     </section>
   );
+}
+
+// The most recent rate-limit reset time in a run's persisted log (ISO-8601), or
+// null if none was recorded / none was reported. Scans newest-first so the last
+// limit the run hit wins.
+function limitResetAt(iterations: IterationView[]): string | null {
+  for (let i = iterations.length - 1; i >= 0; i--) {
+    const events = iterations[i].events;
+    for (let j = events.length - 1; j >= 0; j--) {
+      const ev = events[j].event;
+      if (ev.kind === "rate_limited") return ev.reset_at;
+    }
+  }
+  return null;
+}
+
+// A plain-language sentence for when the limit lifts, from an ISO-8601 reset
+// time. Handles no/unparseable time (the agent didn't report one) and a reset
+// already in the past (the limit has since cleared).
+function resetPhrase(resetAt: string | null): string {
+  if (!resetAt) return "It reported no reset time — retry when you're ready.";
+  const t = new Date(resetAt);
+  if (Number.isNaN(t.getTime())) {
+    return "It reported no reset time — retry when you're ready.";
+  }
+  const at = t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const mins = Math.round((t.getTime() - Date.now()) / 60000);
+  if (mins <= 0) return `The limit reset around ${at}.`;
+  const rel =
+    mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  return `The limit resets in ~${rel} (around ${at}).`;
 }
 
 // One iteration's diff (per-file summary + collapsible patch) under the Diff

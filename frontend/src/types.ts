@@ -89,7 +89,10 @@ export type RunStatus =
   | "running"
   | "completed"
   | "failed"
-  | "stopped";
+  | "stopped"
+  /// The agent hit a rate limit and the run ended early to wait it out. Terminal
+  /// like the rest; the reset time rides the `rate_limited` event, not the token.
+  | "limit-reached";
 
 /// A run's bearing on its task's status. `store::RunSummary`.
 export type RunSummary = {
