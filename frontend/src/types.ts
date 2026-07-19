@@ -174,6 +174,20 @@ export type UseRunResult = {
   up_to_date: boolean;
 };
 
+// --- src-tauri: plan_edit ---
+
+/// A proposed AI edit to a plan document, returned by `plan_edit`. The default
+/// agent ran one pass in an isolated worktree; the UI renders `original` vs
+/// `proposed` as a reviewable diff and lands or drops it via `plan_edit_apply`
+/// / `plan_edit_discard`, keyed by `edit_id`. `src-tauri::PlanEditProposal`.
+export type PlanEditProposal = {
+  edit_id: string;
+  agent: string;
+  path: string;
+  original: string;
+  proposed: string;
+};
+
 // --- core: event.rs ---
 
 /// Token usage an agent reports when a turn completes. `core::Usage`.

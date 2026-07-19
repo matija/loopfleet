@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use loopfleet_adapters::{ClaudeAdapter, CursorAdapter, PiAdapter};
 use loopfleet_core::{
-    run_loop, AgentAdapter, CompareView, LoopConfig, NormalizedEvent, PlanView, RunState,
+    run_loop, AgentAdapter, CompareView, LoopConfig, NormalizedEvent, PlanView, RunSpec, RunState,
     RunTimeline,
 };
 use loopfleet_gitx::GitActor;
@@ -18,12 +18,16 @@ use tokio::sync::watch;
 /// same single writer the commands use (SQLite is single-writer by design). The
 /// git actor serializes all mutating git ops; `data_dir` roots the app-managed
 /// worktrees, progress files, and sandbox profiles. `stops` holds a cancel
-/// sender per active run so the live-run Stop button can signal it.
+/// sender per active run so the live-run Stop button can signal it. `edits`
+/// holds AI plan edits proposed but not yet accepted/discarded, keyed by
+/// `edit_id`, so `plan_edit_apply`/`plan_edit_discard` can find the scratch
+/// worktree to write from or clean up.
 struct AppState {
     db: Arc<Mutex<Connection>>,
     git: GitActor,
     data_dir: PathBuf,
     stops: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
+    edits: Arc<Mutex<HashMap<String, PendingEdit>>>,
 }
 
 /// A live run event pushed to the UI as it happens: the run it belongs to, its
@@ -158,20 +162,228 @@ fn plan_document(plan_id: String, state: State<'_, AppState>) -> Result<String, 
     std::fs::read_to_string(&file_path).map_err(|e| format!("reading plan {file_path}: {e}"))
 }
 
-/// Overwrite a single plan document with `content`, resolved by `plan_id`. The
-/// write counterpart of `plan_document`: it resolves the plan file recorded for
-/// the plan and replaces it verbatim with the edited markdown the UI supplies.
-/// A one-shot edit — it does not launch a run; the next `plan_overview` re-parses
-/// and re-syncs tasks from the saved file.
+/// A proposed AI edit to a plan document, returned by `plan_edit`. The default
+/// agent ran a single pass in an isolated worktree against the PRD; the UI
+/// renders `original` vs `proposed` as a reviewable diff and lands or drops it
+/// through `plan_edit_apply` / `plan_edit_discard`. `edit_id` keys the pending
+/// scratch worktree so those follow-ups can find it.
+#[derive(serde::Serialize)]
+struct PlanEditProposal {
+    edit_id: String,
+    agent: String,
+    path: String,
+    original: String,
+    proposed: String,
+}
+
+/// An AI plan edit proposed but not yet accepted/discarded: the scratch worktree
+/// to clean up, and what to write where on accept. `original` is the real file's
+/// content at proposal time, so accept can refuse to clobber a since-changed
+/// source.
+struct PendingEdit {
+    repo_path: PathBuf,
+    worktree_path: PathBuf,
+    file_path: PathBuf,
+    original: String,
+    proposed: String,
+}
+
+/// Run one AI pass over a plan document and return the proposed edit for review.
+/// Given `plan_id` and a free-text `instruction`, this resolves the plan file,
+/// its owning repo, and the project's default agent; cuts a fresh isolated
+/// worktree (sandboxed exactly as a normal run); seeds the agent with the
+/// instruction plus the current PRD, asking it to edit the file in place; waits
+/// for the single pass to finish; and returns `{ edit_id, agent, path, original,
+/// proposed }`. No looping, no progress file. Nothing is written to the real PRD
+/// here — the edit lands only through `plan_edit_apply`; until then the worktree
+/// stays alive, keyed by `edit_id`.
+///
+/// Explicit failures (never panics): no default agent installed, the agent
+/// process failing, or an unreadable result all surface as `Err`.
 #[tauri::command]
-fn plan_edit(plan_id: String, content: String, state: State<'_, AppState>) -> Result<(), String> {
-    let file_path = {
+async fn plan_edit(
+    plan_id: String,
+    instruction: String,
+    state: State<'_, AppState>,
+) -> Result<PlanEditProposal, String> {
+    // Resolve the plan file, its owning repo, and the configured default agent.
+    let (file_path, repo_path, agent) = {
         let conn = state.db.lock().unwrap();
-        loopfleet_store::plan_file_path(&conn, &plan_id)
+        let (project_id, file_path): (String, String) = conn
+            .query_row(
+                "SELECT project_id, file_path FROM plans WHERE id = ?1",
+                [&plan_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(|_| format!("unknown plan: {plan_id}"))?;
+        let repo_path = get_project(&conn, &project_id)?.repo_path;
+        let agent = loopfleet_store::load_settings(&conn)
             .map_err(|e| e.to_string())?
-            .ok_or_else(|| format!("unknown plan: {plan_id}"))?
+            .default_agent;
+        (file_path, repo_path, agent)
     };
-    std::fs::write(&file_path, content).map_err(|e| format!("writing plan {file_path}: {e}"))
+
+    let adapter = build_adapter(&agent)
+        .ok_or_else(|| format!("no default agent to edit with: unknown agent '{agent}'"))?;
+
+    // Fail fast if the default agent's CLI isn't installed, before cutting a
+    // worktree (mirrors `launch_run`; the affordance is meant to be disabled in
+    // this case, but never trust the UI to have gated it).
+    if let Some(spec) = loopfleet_adapters::spec_for(&agent) {
+        let status = loopfleet_adapters::discover(spec).await;
+        if !status.installed {
+            return Err(status
+                .detail
+                .unwrap_or_else(|| format!("{} CLI is not available", spec.display)));
+        }
+    }
+
+    // The plan file's path relative to its repo — where it lives in the worktree.
+    let rel = std::path::Path::new(&file_path)
+        .strip_prefix(&repo_path)
+        .map_err(|_| format!("plan file {file_path} is not inside repo {repo_path}"))?
+        .to_path_buf();
+
+    let original = std::fs::read_to_string(&file_path)
+        .map_err(|e| format!("reading plan {file_path}: {e}"))?;
+
+    // App-managed scratch, keyed by edit id (outside the repo). The worktree is a
+    // fresh checkout the agent edits in isolation; the profile dir is the sandbox
+    // write grant the pass needs beyond the worktree.
+    let edit_id = uuid::Uuid::new_v4().to_string();
+    let worktrees_root = state.data_dir.join("worktrees");
+    let edit_dir = state.data_dir.join("edits").join(&edit_id);
+    let profile_path = state.data_dir.join("profiles").join(format!("{edit_id}.sb"));
+    std::fs::create_dir_all(&worktrees_root).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&edit_dir).map_err(|e| e.to_string())?;
+
+    let worktree = state
+        .git
+        .worktree_add(
+            PathBuf::from(&repo_path),
+            worktrees_root,
+            edit_id.clone(),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Confine writes to the worktree (+ edit dir, agent config, temp), exactly as
+    // a normal run is confined.
+    let mut params = RenderParams::new(&worktree.path, &edit_dir);
+    params.agent_dirs = agent_dirs();
+    let wrapper = confine_prefix(&params, &profile_path).map_err(|e| e.to_string())?;
+
+    let prompt = format!(
+        "{instruction}\n\nEdit the plan document at `{rel}` in this repository so it \
+satisfies the instruction above, writing the full edited document back to that \
+file. Change only that file.\n\n--- current {rel} ---\n{original}",
+        rel = rel.display(),
+    );
+
+    let spec = RunSpec {
+        cwd: worktree.path.clone(),
+        prompt,
+        wrapper,
+    };
+
+    // Drive the single pass to completion, watching for an explicit failure. On
+    // any failure the scratch worktree is dropped before returning so a failed
+    // edit leaves nothing behind.
+    let mut handle = match adapter.start_run(&spec).await {
+        Ok(h) => h,
+        Err(e) => {
+            let _ = state
+                .git
+                .worktree_remove(PathBuf::from(&repo_path), worktree.path.clone())
+                .await;
+            return Err(e.to_string());
+        }
+    };
+    let mut failure: Option<String> = None;
+    while let Some(ev) = handle.events.recv().await {
+        if let NormalizedEvent::Failed { reason } = ev {
+            failure = Some(reason);
+        }
+    }
+    if let Some(reason) = failure {
+        let _ = state
+            .git
+            .worktree_remove(PathBuf::from(&repo_path), worktree.path.clone())
+            .await;
+        return Err(format!("the {agent} edit pass failed: {reason}"));
+    }
+
+    // Read what the agent produced. Same relative path, inside the worktree.
+    let proposed = std::fs::read_to_string(worktree.path.join(&rel))
+        .map_err(|e| format!("reading the edited plan: {e}"))?;
+
+    state.edits.lock().unwrap().insert(
+        edit_id.clone(),
+        PendingEdit {
+            repo_path: PathBuf::from(&repo_path),
+            worktree_path: worktree.path.clone(),
+            file_path: PathBuf::from(&file_path),
+            original: original.clone(),
+            proposed: proposed.clone(),
+        },
+    );
+
+    Ok(PlanEditProposal {
+        edit_id,
+        agent,
+        path: file_path,
+        original,
+        proposed,
+    })
+}
+
+/// Accept a proposed AI plan edit: write the proposed markdown to the real PRD
+/// file and drop the scratch worktree. Idempotent against double-accept (an
+/// unknown/already-resolved `edit_id` is an error, not a panic) and safe against
+/// a since-changed source — if the file on disk no longer matches what was
+/// proposed against, it refuses rather than clobbering, keeping the edit pending
+/// so the user can discard and retry.
+#[tauri::command]
+async fn plan_edit_apply(edit_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    let pending = state
+        .edits
+        .lock()
+        .unwrap()
+        .remove(&edit_id)
+        .ok_or_else(|| format!("unknown or already-resolved edit: {edit_id}"))?;
+
+    let current = std::fs::read_to_string(&pending.file_path)
+        .map_err(|e| format!("reading plan {}: {e}", pending.file_path.display()))?;
+    if current != pending.original {
+        // Someone changed the file since the edit was proposed. Keep it pending
+        // so the user can discard and re-run rather than lose their scratch.
+        state.edits.lock().unwrap().insert(edit_id, pending);
+        return Err(
+            "the plan changed on disk since this edit was proposed — discard and re-run".into(),
+        );
+    }
+
+    std::fs::write(&pending.file_path, &pending.proposed)
+        .map_err(|e| format!("writing plan {}: {e}", pending.file_path.display()))?;
+    let _ = state
+        .git
+        .worktree_remove(pending.repo_path, pending.worktree_path)
+        .await;
+    Ok(())
+}
+
+/// Discard a proposed AI plan edit: drop the scratch worktree, writing nothing.
+/// Idempotent — an unknown/already-resolved `edit_id` is a no-op.
+#[tauri::command]
+async fn plan_edit_discard(edit_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    let pending = state.edits.lock().unwrap().remove(&edit_id);
+    if let Some(pending) = pending {
+        let _ = state
+            .git
+            .worktree_remove(pending.repo_path, pending.worktree_path)
+            .await;
+    }
+    Ok(())
 }
 
 /// Launch `max_iterations` looping passes of `agent` against the task anchored at
@@ -581,6 +793,7 @@ pub fn run() {
                 git,
                 data_dir: dir,
                 stops: Arc::new(Mutex::new(HashMap::new())),
+                edits: Arc::new(Mutex::new(HashMap::new())),
             });
             Ok(())
         })
@@ -595,6 +808,8 @@ pub fn run() {
             plan_overview,
             plan_document,
             plan_edit,
+            plan_edit_apply,
+            plan_edit_discard,
             launch_run,
             plan_runs,
             run_timeline,
