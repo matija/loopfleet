@@ -13,6 +13,7 @@ export const RUN_STATUS_LABEL: Record<RunStatus, string> = {
   completed: "Completed",
   failed: "Failed",
   stopped: "Stopped",
+  "limit-reached": "Rate-limited",
 };
 
 /// A run still doing work — stoppable, with no final diff to apply yet.

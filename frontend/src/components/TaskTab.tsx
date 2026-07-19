@@ -84,7 +84,13 @@ export function TaskTab({
           settings={settings}
           onLaunched={onLaunched}
           onLaunch={(runId, agent, maxIterations) =>
-            onLaunch({ runId, taskText: task.text, agent, maxIterations })
+            onLaunch({
+              runId,
+              taskText: task.text,
+              taskAnchor: task.anchor,
+              agent,
+              maxIterations,
+            })
           }
         />
       </div>

@@ -38,6 +38,13 @@
   background: rgba(210, 153, 34, 0.12);
 }
 
+/* Rate-limited: a distinct warn tint (amber, denser than stopped) — the run
+ * paused on an external limit, not a failure or a user stop. */
+.status-pill--limit-reached {
+  color: var(--c-warn);
+  background: rgba(210, 153, 34, 0.2);
+}
+
 /* Running reads as live: a slow, low-contrast breath so an in-flight run is
  * legible at a glance across the dock without demanding attention. The global
  * prefers-reduced-motion guard freezes it to a single frame. */

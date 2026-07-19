@@ -89,6 +89,54 @@
   padding-top: 0;
 }
 
+/* Rate-limited banner on a finished run's screen: names what happened, when the
+ * limit resets, and offers a re-run — an amber warn accent, distinct from the
+ * neutral "Use this run" bar above it. */
+.run-view__limit {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border: 1px solid var(--c-warn);
+  border-radius: var(--radius-md);
+  background: rgba(210, 153, 34, 0.1);
+  padding: var(--space-2) var(--space-3);
+}
+
+.run-view__limit-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.run-view__limit-head {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--c-warn);
+}
+
+.run-view__limit-detail {
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
+}
+
+.run-view__retry {
+  flex: 0 0 auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-2);
+  color: var(--c-text);
+  padding: var(--space-1) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.run-view__retry:hover {
+  background: var(--c-surface-3);
+}
+
 .run-view__stop {
   flex: 0 0 auto;
   border: 1px solid var(--c-danger);

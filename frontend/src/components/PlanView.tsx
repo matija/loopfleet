@@ -28,6 +28,7 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
 export type LaunchedRun = {
   runId: string;
   taskText: string;
+  taskAnchor: string;
   agent: string;
   maxIterations: number;
 };
@@ -220,7 +221,13 @@ function TaskRow({
         settings={settings}
         onLaunched={onLaunched}
         onLaunch={(runId, agent, maxIterations) =>
-          onLaunch({ runId, taskText: task.text, agent, maxIterations })
+          onLaunch({
+            runId,
+            taskText: task.text,
+            taskAnchor: task.anchor,
+            agent,
+            maxIterations,
+          })
         }
       />
     </li>
