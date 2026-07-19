@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listProjects, stopRun } from "./commands";
 import { normalizeDisplayText } from "./displayText";
 import { onRunStatus } from "./events";
@@ -95,18 +95,49 @@ export default function App() {
       });
   }, []);
 
-  // Terminal-state updates for any run flow through the dock's registry.
+  // The run currently shown in the main pane, read live from event handlers
+  // (below) without re-subscribing. A run finishing while it is the open view is
+  // already seen, so it never gets flagged for attention.
+  const openRunIdRef = useRef<string | null>(null);
+
+  // Terminal-state updates for any run flow through the dock's registry. A run
+  // reaching a terminal status while it is not the open view is flagged
+  // `unseen` — the dock's attention marker — until acknowledged (see below).
   useEffect(() => {
     const un = onRunStatus((p) =>
       setRuns((prev) =>
         prev.map((r) =>
-          r.runId === p.run_id ? { ...r, status: p.status } : r,
+          r.runId === p.run_id
+            ? {
+                ...r,
+                status: p.status,
+                unseen:
+                  !isActiveRun(p.status) &&
+                  openRunIdRef.current !== p.run_id,
+              }
+            : r,
         ),
       ),
     );
     return () => {
       un.then((f) => f());
     };
+  }, []);
+
+  // Acknowledge on focus: returning to the app (its window regaining focus)
+  // means the user is looking again, so clear every finished run's attention
+  // marker. Opening a specific finished run acknowledges just that one (below).
+  // The `some` guard keeps focus events that change nothing from re-rendering.
+  useEffect(() => {
+    function onFocus() {
+      setRuns((prev) =>
+        prev.some((r) => r.unseen)
+          ? prev.map((r) => (r.unseen ? { ...r, unseen: false } : r))
+          : prev,
+      );
+    }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
   // Global ⌘K / Ctrl-K toggles the command palette from anywhere. preventDefault
@@ -140,6 +171,18 @@ export default function App() {
     : projects;
   // The dock highlights whichever run is currently shown in the main pane.
   const selectedRunId = view.kind === "run" ? view.runId : null;
+  // Keep the ref the run-status handler reads in sync with the open view.
+  openRunIdRef.current = selectedRunId;
+
+  // Open a run in the main pane and acknowledge it — opening a finished run is
+  // the per-run counterpart to acknowledge-on-focus, clearing its attention
+  // marker. Shared by the dock and the ⌘K palette.
+  const openRun = useCallback((runId: string) => {
+    setView({ kind: "run", runId });
+    setRuns((prev) =>
+      prev.map((r) => (r.runId === runId && r.unseen ? { ...r, unseen: false } : r)),
+    );
+  }, []);
 
   // Return to the selected project's plan, or the overview when nothing is
   // selected. Used by the in-view "← Back" controls.
@@ -206,8 +249,8 @@ export default function App() {
     });
   }, []);
   const paletteOpenRun = useCallback(
-    (runId: string) => setView({ kind: "run", runId }),
-    [],
+    (runId: string) => openRun(runId),
+    [openRun],
   );
   const paletteAddProject = useCallback(() => {
     pickAndRegisterProject()
@@ -238,7 +281,7 @@ export default function App() {
         <RunDock
           runs={runs}
           selectedRunId={selectedRunId}
-          onOpen={(id) => setView({ kind: "run", runId: id })}
+          onOpen={openRun}
           onStop={(id) => {
             stopRun(id).catch((e) => pushError(String(e)));
           }}

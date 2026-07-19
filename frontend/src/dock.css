@@ -50,6 +50,7 @@
 }
 
 .run-chip {
+  position: relative;
   display: flex;
   align-items: stretch;
   flex: 0 0 auto;
@@ -67,6 +68,25 @@
 .run-chip--selected {
   border-color: var(--c-border-strong);
   background: var(--c-accent-quiet);
+}
+
+/* Attention marker: a finished run the user hasn't seen since it ended. The
+ * accent border lifts the chip; the corner dot is the at-a-glance signal.
+ * Acknowledge-on-focus (or opening the run) clears both. */
+.run-chip--unseen {
+  border-color: var(--c-accent);
+}
+
+.run-chip__unseen {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  z-index: 1;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-surface-2);
 }
 
 @keyframes run-chip-in {
