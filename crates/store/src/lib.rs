@@ -18,7 +18,7 @@ pub use settings::{
 };
 
 mod plans;
-pub use plans::{plan_id, upsert_plan, upsert_task};
+pub use plans::{plan_file_path, plan_id, upsert_plan, upsert_task};
 
 mod runs;
 pub use runs::{
