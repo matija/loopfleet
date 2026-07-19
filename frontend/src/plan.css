@@ -215,6 +215,18 @@
   border-inline-start: 1px solid var(--c-border);
 }
 
+/* Selecting an agent bolds its label (--on). Reserve that bold width up front
+ * with a hidden bold copy so the button doesn't widen on pick and nudge the
+ * rest of the segmented group — hover/selection changes weight, not layout. */
+.launch__agent::after {
+  content: attr(data-label);
+  display: block;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  font-weight: 600;
+}
+
 .launch__agent:hover:not(:disabled) {
   background: var(--c-surface-3);
   color: var(--c-text);
