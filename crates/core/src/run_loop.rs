@@ -17,6 +17,8 @@
 //! Stop conditions (PRD run status machine):
 //! - the bound task's `STATUS: COMPLETE` appears → [`RunState::Completed`];
 //! - the user requests a stop via `cancel` → [`RunState::Stopped`];
+//! - the agent hit a rate limit during the pass and it did not otherwise finish
+//!   → [`RunState::LimitReached`] (the caller schedules a re-run once it resets);
 //! - `max_iterations` reached still incomplete → [`RunState::Failed`];
 //! - a hard failure (adapter cannot spawn, or a snapshot fails) →
 //!   [`RunState::Failed`].
@@ -79,12 +81,18 @@ pub struct IterationRecord {
 /// The result of driving a run to a terminal state.
 #[derive(Debug, Clone)]
 pub struct LoopOutcome {
-    /// Terminal state: [`Completed`](RunState::Completed) or
-    /// [`Failed`](RunState::Failed).
+    /// Terminal state: [`Completed`](RunState::Completed),
+    /// [`Failed`](RunState::Failed), [`Stopped`](RunState::Stopped), or
+    /// [`LimitReached`](RunState::LimitReached).
     pub state: RunState,
     /// The snapshots taken, in pass order. Empty if the very first pass could
     /// not spawn.
     pub iterations: Vec<IterationRecord>,
+    /// When `state` is [`LimitReached`](RunState::LimitReached), the rate
+    /// limit's reset instant as the agent reported it (ISO-8601), if any — the
+    /// caller schedules a re-run at this time. `None` for every other state,
+    /// and for a rate limit the agent gave no reset time for.
+    pub reset_at: Option<String>,
 }
 
 /// Drive `adapter` through up to `cfg.max_iterations` passes against one task.
@@ -114,6 +122,7 @@ pub async fn run_loop(
             return LoopOutcome {
                 state: RunState::Stopped,
                 iterations,
+                reset_at: None,
             };
         }
 
@@ -133,6 +142,7 @@ pub async fn run_loop(
                 return LoopOutcome {
                     state: RunState::Failed,
                     iterations,
+                    reset_at: None,
                 }
             }
         };
@@ -141,10 +151,20 @@ pub async fn run_loop(
         // adapter's child exits. A mid-pass stop breaks out and drops the handle
         // below, which the adapter honors by SIGTERMing the agent's group.
         let mut cancelled = false;
+        // The most recent rate-limit notice seen this pass, if any. `Some(inner)`
+        // means the agent hit a limit (`inner` = its reported reset time, which
+        // may itself be `None`); the run ends limit-reached if the pass doesn't
+        // otherwise complete or get cancelled.
+        let mut rate_limited: Option<Option<String>> = None;
         loop {
             tokio::select! {
                 event = handle.events.recv() => match event {
-                    Some(event) => on_event(n, &event),
+                    Some(event) => {
+                        if let NormalizedEvent::RateLimited { reset_at, .. } = &event {
+                            rate_limited = Some(reset_at.clone());
+                        }
+                        on_event(n, &event);
+                    }
                     None => break,
                 },
                 changed = cancel.changed() => {
@@ -182,6 +202,7 @@ pub async fn run_loop(
                 return LoopOutcome {
                     state: RunState::Failed,
                     iterations,
+                    reset_at: None,
                 }
             }
         }
@@ -191,6 +212,7 @@ pub async fn run_loop(
             return LoopOutcome {
                 state: RunState::Stopped,
                 iterations,
+                reset_at: None,
             };
         }
 
@@ -199,6 +221,18 @@ pub async fn run_loop(
             return LoopOutcome {
                 state: RunState::Completed,
                 iterations,
+                reset_at: None,
+            };
+        }
+
+        // The agent hit a rate limit and the pass didn't otherwise finish. Rolling
+        // into the next fresh pass would just hit the same wall, so end the run
+        // limit-reached; the caller schedules a re-run once the limit resets.
+        if let Some(reset_at) = rate_limited {
+            return LoopOutcome {
+                state: RunState::LimitReached,
+                iterations,
+                reset_at,
             };
         }
     }
@@ -207,6 +241,7 @@ pub async fn run_loop(
     LoopOutcome {
         state: RunState::Failed,
         iterations,
+        reset_at: None,
     }
 }
 
@@ -256,6 +291,9 @@ mod tests {
         progress_path: PathBuf,
         /// 1-based pass on which to write `STATUS: COMPLETE`; `None` = never.
         complete_on: Option<u32>,
+        /// 1-based pass on which to emit a `RateLimited` event (carrying this
+        /// reset time) instead of finishing normally; `None` = never.
+        rate_limit_on: Option<(u32, Option<String>)>,
         /// If set, `start_run` fails instead of streaming — a spawn crash.
         fail_start: bool,
         call: AtomicU32,
@@ -270,6 +308,7 @@ mod tests {
             Self {
                 progress_path,
                 complete_on,
+                rate_limit_on: None,
                 fail_start: false,
                 call: AtomicU32::new(0),
                 prompts: Arc::new(Mutex::new(Vec::new())),
@@ -302,19 +341,33 @@ mod tests {
             // Change the worktree so each snapshot has real content.
             std::fs::write(spec.cwd.join(format!("pass-{n}.txt")), "x\n").unwrap();
 
-            // Replay a minimal but realistic event stream.
+            // Replay a minimal but realistic event stream. On a rate-limited pass
+            // the agent surfaces the notice and stops without completing.
+            let rate_limit = self
+                .rate_limit_on
+                .as_ref()
+                .filter(|(pass, _)| *pass == n)
+                .map(|(_, reset_at)| reset_at.clone());
             let (tx, rx) = mpsc::channel(8);
             tokio::spawn(async move {
-                for ev in [
+                let mut events = vec![
                     NormalizedEvent::TurnStarted,
                     NormalizedEvent::AssistantText {
                         text: "working".into(),
                     },
-                    NormalizedEvent::TurnCompleted {
+                ];
+                if let Some(reset_at) = rate_limit {
+                    events.push(NormalizedEvent::RateLimited {
+                        reset_at,
+                        message: Some("rate limit hit".into()),
+                    });
+                } else {
+                    events.push(NormalizedEvent::TurnCompleted {
                         usage: Default::default(),
-                    },
-                    NormalizedEvent::Ended,
-                ] {
+                    });
+                }
+                events.push(NormalizedEvent::Ended);
+                for ev in events {
                     if tx.send(ev).await.is_err() {
                         break;
                     }
@@ -437,6 +490,39 @@ mod tests {
             ]
         );
         assert_ne!(outcome.iterations[0].commit, outcome.iterations[1].commit);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn rate_limit_ends_the_run_and_surfaces_the_reset_time() {
+        let git = GitActor::spawn();
+        // 3 passes available, but pass 1 hits a rate limit, so the run ends
+        // limit-reached after that pass rather than rolling into pass 2.
+        let (cfg, _repo, _root, _prog) = setup("loop-ratelimit", 3, &git).await;
+        let mut adapter = ScriptedAdapter::new(cfg.progress_path.clone(), None);
+        adapter.rate_limit_on = Some((1, Some("2025-01-15T10:30:00Z".into())));
+
+        let (_ctx, mut cancel) = watch::channel(false);
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut |_, _| {}).await;
+
+        assert_eq!(outcome.state, RunState::LimitReached);
+        assert_eq!(outcome.reset_at.as_deref(), Some("2025-01-15T10:30:00Z"));
+        // The limited pass is still snapshotted; no further pass ran.
+        assert_eq!(outcome.iterations.len(), 1);
+        assert_eq!(adapter.call.load(Ordering::SeqCst), 1, "must not roll into pass 2");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn rate_limit_without_reset_time_still_ends_limit_reached() {
+        let git = GitActor::spawn();
+        let (cfg, _repo, _root, _prog) = setup("loop-ratelimit-noreset", 3, &git).await;
+        let mut adapter = ScriptedAdapter::new(cfg.progress_path.clone(), None);
+        adapter.rate_limit_on = Some((1, None));
+
+        let (_ctx, mut cancel) = watch::channel(false);
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut |_, _| {}).await;
+
+        assert_eq!(outcome.state, RunState::LimitReached);
+        assert_eq!(outcome.reset_at, None);
     }
 
     #[tokio::test(flavor = "multi_thread")]

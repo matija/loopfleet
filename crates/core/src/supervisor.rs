@@ -23,10 +23,12 @@ use std::process::ExitStatus;
 use tokio::process::{Child, Command};
 
 /// The run lifecycle state machine: `queued → running → (completed | failed |
-/// stopped)`. `completed` = the bound task's `STATUS: COMPLETE` marker appeared
-/// within N iterations; `failed` = N reached still incomplete, or a crash;
-/// `stopped` = the user stopped the run. Acceptance is a separate flag, not a
-/// state (see [`Run`](loopfleet_store)).
+/// stopped | limit-reached)`. `completed` = the bound task's `STATUS: COMPLETE`
+/// marker appeared within N iterations; `failed` = N reached still incomplete,
+/// or a crash; `stopped` = the user stopped the run; `limit-reached` = the agent
+/// hit a rate limit, so the run ended early to wait it out (the app schedules a
+/// re-run once the limit resets). Acceptance is a separate flag, not a state
+/// (see [`Run`](loopfleet_store)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunState {
     Queued,
@@ -34,6 +36,7 @@ pub enum RunState {
     Completed,
     Failed,
     Stopped,
+    LimitReached,
 }
 
 /// An attempt to move a run along an edge the machine does not allow.
@@ -65,6 +68,7 @@ impl RunState {
             RunState::Completed => "completed",
             RunState::Failed => "failed",
             RunState::Stopped => "stopped",
+            RunState::LimitReached => "limit-reached",
         }
     }
 
@@ -77,6 +81,7 @@ impl RunState {
             "completed" => RunState::Completed,
             "failed" => RunState::Failed,
             "stopped" => RunState::Stopped,
+            "limit-reached" => RunState::LimitReached,
             _ => return None,
         })
     }
@@ -85,7 +90,10 @@ impl RunState {
     pub fn is_terminal(self) -> bool {
         matches!(
             self,
-            RunState::Completed | RunState::Failed | RunState::Stopped
+            RunState::Completed
+                | RunState::Failed
+                | RunState::Stopped
+                | RunState::LimitReached
         )
     }
 
@@ -97,6 +105,7 @@ impl RunState {
                 | (RunState::Running, RunState::Completed)
                 | (RunState::Running, RunState::Failed)
                 | (RunState::Running, RunState::Stopped)
+                | (RunState::Running, RunState::LimitReached)
         )
     }
 
@@ -176,6 +185,7 @@ mod tests {
             RunState::Completed,
             RunState::Failed,
             RunState::Stopped,
+            RunState::LimitReached,
         ] {
             assert_eq!(RunState::from_token(s.as_str()), Some(s));
         }
@@ -190,6 +200,7 @@ mod tests {
         assert!(Running.transition(Completed).is_ok());
         assert!(Running.transition(Failed).is_ok());
         assert!(Running.transition(Stopped).is_ok());
+        assert!(Running.transition(LimitReached).is_ok());
 
         // A few edges that must be rejected: no skipping queued->completed, no
         // resurrecting a terminal state, no self-loops.
@@ -206,6 +217,7 @@ mod tests {
         assert!(RunState::Completed.is_terminal());
         assert!(RunState::Failed.is_terminal());
         assert!(RunState::Stopped.is_terminal());
+        assert!(RunState::LimitReached.is_terminal());
     }
 
     /// `kill(pid, 0)` probes existence without signalling: Ok(alive) via rc == 0.
