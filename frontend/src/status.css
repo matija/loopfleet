@@ -11,6 +11,13 @@
   padding: 2px var(--space-2);
   border-radius: var(--radius-sm);
   white-space: nowrap;
+  /* Reserve room for the widest label ("Rate-limited") and center within it, so
+   * a status transition (Queued → Running → Completed) recolors in place instead
+   * of resizing the pill and shifting the task text beside it. inline-block makes
+   * the width floor apply in every host — grid item, flex item, or inline. */
+  display: inline-block;
+  min-width: 7.5em;
+  text-align: center;
   /* A status change (queued → running → completed) settles into its new color
    * rather than snapping. Neutralized by the prefers-reduced-motion guard. */
   transition: color var(--motion-fast) var(--ease-out),
