@@ -1,15 +1,10 @@
-# loopfleet
+# <img src="src-tauri/icons/icon.png" width="36" height="36" alt=""> loopfleet
 
 Agent cockpit for spec-and-loop driven development.
 
 > WIP.
 
-![Loopfleet app screenshot](docs/screenshot.png)
+<p align="center">
+  <img src="docs/screenshot.png" alt="Loopfleet app screenshot" width="720">
+</p>
 
-## Run (for now)
-
-```sh
-npm run tauri dev
-```
-
-See [build/README.md](build/README.md) for prerequisites and release builds.
