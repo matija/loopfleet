@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { agentStatus, getSettings, launchRun, planOverview } from "../commands";
 import { normalizeDisplayText } from "../displayText";
+import { NoPlanEmptyState } from "./EmptyState";
 import type {
   AgentStatus,
   PlanView as Plan,
@@ -79,14 +80,7 @@ export function PlanView({
 
   if (error) return <p className="panel__error">{error}</p>;
   if (!plans) return <p className="plan__loading">Loading plan…</p>;
-  if (plans.length === 0) {
-    return (
-      <p className="plan__empty">
-        No plan found. Add a <code>PRD.md</code> at the repo root, or a{" "}
-        <code>plans/</code> folder of <code>.md</code> files.
-      </p>
-    );
-  }
+  if (plans.length === 0) return <NoPlanEmptyState />;
 
   return (
     <div className="plans">

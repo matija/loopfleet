@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 import { planOverview } from "../commands";
 import { renderMarkdown } from "../markdown";
+import { NoPlanEmptyState } from "./EmptyState";
 import type { PlanView as Plan } from "../types";
 
 export function PrdView({ projectId }: { projectId: string }) {
@@ -35,14 +36,7 @@ export function PrdView({ projectId }: { projectId: string }) {
 
   if (error) return <p className="panel__error">{error}</p>;
   if (!plans) return <p className="plan__loading">Loading document…</p>;
-  if (plans.length === 0) {
-    return (
-      <p className="plan__empty">
-        No plan found. Add a <code>PRD.md</code> at the repo root, or a{" "}
-        <code>plans/</code> folder of <code>.md</code> files.
-      </p>
-    );
-  }
+  if (plans.length === 0) return <NoPlanEmptyState />;
 
   return (
     <div className="prd">
