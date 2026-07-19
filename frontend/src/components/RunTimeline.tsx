@@ -17,16 +17,7 @@ import type { ActiveRun } from "./RunDock";
 import { DataGrid, formatDuration, GridFooter, rowsDuration } from "./DataGrid";
 import { RunSubtabs, type RunSubtab } from "./RunSubtabs";
 import { UseRun } from "./UseRun";
-
-const ACTIVE: RunStatus[] = ["queued", "running"];
-
-const STATUS_LABEL: Record<RunStatus, string> = {
-  queued: "Queued",
-  running: "Running",
-  completed: "Completed",
-  failed: "Failed",
-  stopped: "Stopped",
-};
+import { RUN_STATUS_LABEL, isActiveRun } from "../status";
 
 export function RunTimeline({
   run,
@@ -71,7 +62,7 @@ export function RunTimeline({
       ? `${passes} ${passes === 1 ? "pass" : "passes"}`
       : null;
   const mergeable = iterations.some((it) => it.shadow_ref !== null);
-  const canUse = !ACTIVE.includes(status) && mergeable;
+  const canUse = !isActiveRun(status) && mergeable;
   // Clamped events-subtab page: a stale iterPage (after a reload yields fewer
   // iterations) must never index off the end.
   const page = iterations.length ? Math.min(iterPage, iterations.length - 1) : 0;
@@ -83,8 +74,8 @@ export function RunTimeline({
           ← Back
         </button>
         <div className="run-view__ident">
-          <span className={`run-view__status run-view__status--${status}`}>
-            {STATUS_LABEL[status]}
+          <span className={`run-view__status status-pill status-pill--${status}`}>
+            {RUN_STATUS_LABEL[status]}
           </span>
           <span
             className="run-view__task"

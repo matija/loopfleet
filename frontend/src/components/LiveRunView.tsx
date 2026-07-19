@@ -12,21 +12,12 @@
 import { useEffect, useRef, useState } from "react";
 import { agentStatus } from "../commands";
 import { onRunEvent } from "../events";
-import type { AgentStatus, RunStatus } from "../types";
+import type { AgentStatus } from "../types";
+import { RUN_STATUS_LABEL, isActiveRun } from "../status";
 import { CommandBar } from "./CommandBar";
 import { DataGrid, eventText, formatDuration, rowsDuration, GridFooter, type GridRow } from "./DataGrid";
 import { RunSubtabs, type RunSubtab } from "./RunSubtabs";
 import type { ActiveRun } from "./RunDock";
-
-const ACTIVE: RunStatus[] = ["queued", "running"];
-
-const STATUS_LABEL: Record<RunStatus, string> = {
-  queued: "Queued",
-  running: "Running",
-  completed: "Completed",
-  failed: "Failed",
-  stopped: "Stopped",
-};
 
 export function LiveRunView({
   run,
@@ -93,7 +84,7 @@ export function LiveRunView({
     if (el) el.scrollTop = el.scrollHeight;
   }, [events.length, subtab]);
 
-  const active = ACTIVE.includes(run.status);
+  const active = isActiveRun(run.status);
   // Resolve the agent's human name + detected version so the header states what
   // is actually running, not just the CLI key. (Model/effort are not tracked by
   // the backend in v1 — the agent identity + version is the run's real "what".)
@@ -115,8 +106,8 @@ export function LiveRunView({
           ← Back
         </button>
         <div className="run-view__ident">
-          <span className={`run-view__status run-view__status--${run.status}`}>
-            {STATUS_LABEL[run.status]}
+          <span className={`run-view__status status-pill status-pill--${run.status}`}>
+            {RUN_STATUS_LABEL[run.status]}
           </span>
           <span className="run-view__meta">
             <span className="run-view__agent">{agentLabel}</span>

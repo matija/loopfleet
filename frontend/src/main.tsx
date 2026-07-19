@@ -12,6 +12,7 @@ import "./panels.css";
 import "./plan.css";
 import "./dock.css";
 import "./runview.css";
+import "./status.css";
 import "./grid.css";
 import "./palette.css";
 

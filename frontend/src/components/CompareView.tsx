@@ -12,21 +12,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { compareTask } from "../commands";
 import { normalizeDisplayText } from "../displayText";
-import type {
-  CompareView as Compare,
-  RunCompare,
-  RunStatus,
-} from "../types";
+import type { CompareView as Compare, RunCompare } from "../types";
 import { Diff } from "./RunTimeline";
 import { UseRun } from "./UseRun";
-
-const STATUS_LABEL: Record<RunStatus, string> = {
-  queued: "Queued",
-  running: "Running",
-  completed: "Completed",
-  failed: "Failed",
-  stopped: "Stopped",
-};
+import { RUN_STATUS_LABEL } from "../status";
 
 export function CompareView({
   planId,
@@ -117,8 +106,8 @@ function RunColumn({
   return (
     <div className={`compare__run${run.accepted ? " compare__run--accepted" : ""}`}>
       <header className="compare__run-head">
-        <span className={`run-view__status run-view__status--${run.status}`}>
-          {STATUS_LABEL[run.status]}
+        <span className={`run-view__status status-pill status-pill--${run.status}`}>
+          {RUN_STATUS_LABEL[run.status]}
         </span>
         <span className="compare__run-id" title={run.run_id}>
           {run.run_id.slice(0, 8)}
