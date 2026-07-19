@@ -8,13 +8,9 @@ import { AppShell } from "./components/AppShell";
 import { AddProject, pickAndRegisterProject } from "./components/AddProject";
 import { AgentStatusPanel } from "./components/AgentStatusPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { SandboxOverrides } from "./components/SandboxOverrides";
 import { SandboxBoundaryPanel } from "./components/SandboxBoundaryPanel";
-import {
-  PlanView,
-  type CompareTarget,
-  type LaunchedRun,
-} from "./components/PlanView";
+import type { CompareTarget, LaunchedRun } from "./components/PlanView";
+import { PlanSurface } from "./components/PlanSurface";
 import { PlanTree } from "./components/PlanTree";
 import { TaskTab } from "./components/TaskTab";
 import { RunDock, type ActiveRun } from "./components/RunDock";
@@ -389,22 +385,19 @@ export default function App() {
             }
           />
         ) : view.kind === "plan" ? (
-          <>
-            <PlanView
-              key={`${view.projectId}:${planNonce}`}
-              projectId={view.projectId}
-              onLaunch={onLaunch}
-              onCompare={(target: CompareTarget) =>
-                setView({
-                  kind: "compare",
-                  planId: target.planId,
-                  taskAnchor: target.taskAnchor,
-                  taskText: target.taskText,
-                })
-              }
-            />
-            <SandboxOverrides projectId={view.projectId} />
-          </>
+          <PlanSurface
+            projectId={view.projectId}
+            planNonce={planNonce}
+            onLaunch={onLaunch}
+            onCompare={(target: CompareTarget) =>
+              setView({
+                kind: "compare",
+                planId: target.planId,
+                taskAnchor: target.taskAnchor,
+                taskText: target.taskText,
+              })
+            }
+          />
         ) : (
           <>
             <p className="main__placeholder">
