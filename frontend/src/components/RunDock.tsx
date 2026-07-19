@@ -24,6 +24,9 @@ export type ActiveRun = {
   /// sources without the count still render.
   maxIterations?: number;
   status: RunStatus;
+  /// Set when the run finished while it wasn't the open view — the dock's
+  /// attention marker. Cleared by acknowledge-on-focus or opening the run.
+  unseen?: boolean;
 };
 
 export function RunDock({
@@ -40,6 +43,7 @@ export function RunDock({
   onDismiss: (runId: string) => void;
 }) {
   const activeCount = runs.filter((r) => isActiveRun(r.status)).length;
+  const unseenCount = runs.filter((r) => r.unseen).length;
 
   return (
     <section className="run-dock" aria-label="Active runs">
@@ -47,6 +51,7 @@ export function RunDock({
         <span className="run-dock__title">Runs</span>
         <span className="run-dock__count">
           {activeCount} active{runs.length > activeCount ? ` · ${runs.length - activeCount} finished` : ""}
+          {unseenCount > 0 ? ` · ${unseenCount} new` : ""}
         </span>
       </div>
       {runs.length === 0 ? (
@@ -62,14 +67,20 @@ export function RunDock({
             return (
               <li
                 key={r.runId}
-                className={`run-chip${r.runId === selectedRunId ? " run-chip--selected" : ""}`}
+                className={`run-chip${r.runId === selectedRunId ? " run-chip--selected" : ""}${r.unseen ? " run-chip--unseen" : ""}`}
               >
                 <button
                   className="run-chip__open"
                   aria-current={r.runId === selectedRunId}
                   onClick={() => onOpen(r.runId)}
-                  title={taskText}
+                  title={r.unseen ? `${taskText} — finished, not yet seen` : taskText}
                 >
+                  {r.unseen && (
+                    <span
+                      className="run-chip__unseen"
+                      aria-label="Finished, not yet seen"
+                    />
+                  )}
                   <span className={`run-chip__status status-pill status-pill--${r.status}`}>
                     {RUN_STATUS_LABEL[r.status]}
                   </span>
