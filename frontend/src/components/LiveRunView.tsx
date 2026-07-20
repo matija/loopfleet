@@ -15,6 +15,7 @@ import { onRunEvent } from "../events";
 import type { AgentStatus } from "../types";
 import { RUN_STATUS_LABEL, isActiveRun } from "../status";
 import { CommandBar } from "./CommandBar";
+import { Elapsed } from "./Elapsed";
 import { DataGrid, eventText, formatDuration, rowsDuration, GridFooter, type GridRow } from "./DataGrid";
 import { RunSubtabs, type RunSubtab } from "./RunSubtabs";
 import type { ActiveRun } from "./RunDock";
@@ -115,6 +116,7 @@ export function LiveRunView({
               <span className="run-view__agent-ver">v{matched.version}</span>
             )}
             {passLabel && <> · {passLabel}</>} · {run.projectName}
+            {active && <> · <Elapsed startedAt={run.startedAt} /></>}
           </span>
         </div>
         {active && (

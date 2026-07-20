@@ -12,6 +12,7 @@
 import type { RunStatus } from "../types";
 import { normalizeDisplayText } from "../displayText";
 import { RUN_STATUS_LABEL, isActiveRun } from "../status";
+import { Elapsed } from "./Elapsed";
 
 /// One run tracked by the dock. Seeded at launch, its `status` updated from the
 /// `run_status` stream.
@@ -28,6 +29,9 @@ export type ActiveRun = {
   /// Max passes the loop was launched with. Optional so runs seeded from
   /// sources without the count still render.
   maxIterations?: number;
+  /// Epoch ms captured when the run was launched, so a running run can show how
+  /// long it has been going (session-scoped — runs don't survive a restart).
+  startedAt: number;
   status: RunStatus;
   /// Set when the run finished while it wasn't the open view — the dock's
   /// attention marker. Cleared by acknowledge-on-focus or opening the run.
@@ -92,6 +96,7 @@ export function RunDock({
                   <span className="run-chip__task">{taskText}</span>
                   <span className="run-chip__meta">
                     {r.agent} · {r.projectName}
+                    {active && <> · <Elapsed startedAt={r.startedAt} /></>}
                   </span>
                 </button>
                 {active ? (
