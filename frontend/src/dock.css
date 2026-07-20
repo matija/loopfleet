@@ -143,6 +143,12 @@
   text-overflow: ellipsis;
 }
 
+/* Live elapsed stamp on running runs (dock + run view); tabular figures keep
+   its width steady as the seconds tick. */
+.run-elapsed {
+  font-variant-numeric: tabular-nums;
+}
+
 .run-chip__action {
   flex: 0 0 auto;
   border: none;
