@@ -73,9 +73,12 @@
   vertical-align: baseline;
 }
 
+/* Routine events carry no fill — plain muted text keeps the stream calm so the
+ * warn/error/text variants below are the only things that draw the eye. */
 .grid-pill--neutral {
   color: var(--c-text-muted);
-  background: var(--c-surface-3);
+  font-weight: 400;
+  padding: 0;
 }
 
 .grid-pill--text {
@@ -93,14 +96,10 @@
   background: rgba(248, 81, 73, 0.16);
 }
 
-/* The muted NULL-style pill for an empty detail or unknown ts. */
+/* A quiet em-dash for an empty detail or unknown ts — no box, so absent values
+ * recede instead of shouting a database-client NULL on every payload-less row. */
 .grid-null {
   color: var(--c-text-faint);
-  background: var(--c-surface-3);
-  padding: 0 var(--space-1);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-xs);
-  letter-spacing: 0.04em;
 }
 
 /* --- grid footer: `Showing N events · <duration>` + iteration paging --- */

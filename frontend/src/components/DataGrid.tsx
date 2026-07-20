@@ -1,9 +1,11 @@
 // Typed event grid (Workbench task 6): the database-client "typed data grid"
-// analog. Renders normalized events as rows with columns (#, seq, type, detail,
-// ts); the `type` column shows each `NormalizedEvent` variant as a colored enum
-// pill (stable color per variant), and an empty detail/ts renders as a muted
-// `NULL`-style pill. Reused by both the live run view and the run timeline so
-// the streamed and replayed logs share one vocabulary and one layout.
+// analog. Renders normalized events as rows with columns (type, detail, ts); the
+// `type` column labels each `NormalizedEvent` variant, and only the exceptional
+// variants (warn/error) and agent speech carry a colored pill — the routine flow
+// reads as calm muted text so warnings and failures stand out. An empty detail
+// or unknown ts renders as a quiet em-dash. Reused by both the live run view and
+// the run timeline so the streamed and replayed logs share one vocabulary and
+// one layout.
 
 import type { NormalizedEvent } from "../types";
 
@@ -123,10 +125,10 @@ export function DataGrid({ rows }: { rows: GridRow[] }) {
               className="data-grid__cell data-grid__cell--detail"
               title={detail || undefined}
             >
-              {detail ? detail : <span className="grid-null">NULL</span>}
+              {detail ? detail : <span className="grid-null">—</span>}
             </span>
             <span className="data-grid__cell data-grid__cell--ts">
-              {ts ?? <span className="grid-null">NULL</span>}
+              {ts ?? <span className="grid-null">—</span>}
             </span>
           </div>
         );
