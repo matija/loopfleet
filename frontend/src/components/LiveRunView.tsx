@@ -46,6 +46,11 @@ export function LiveRunView({
   // `run_event` subscription lives on the parent effect, untouched by the switch.
   const [subtab, setSubtab] = useState<RunSubtab>("events");
   const listRef = useRef<HTMLDivElement>(null);
+  // Whether the stream is pinned to the bottom. We only auto-scroll to the
+  // newest event while the user is already there; once they scroll up to read
+  // history, new events append silently instead of yanking the view down.
+  // Scrolling back to the bottom re-pins. Starts true so the first events pin.
+  const pinnedRef = useRef(true);
 
   // One subscription per run. Reset on run change so switching runs starts clean.
   useEffect(() => {
@@ -53,6 +58,7 @@ export function LiveRunView({
     setFiles([]);
     setFilter("");
     setLastAt(Date.now());
+    pinnedRef.current = true;
     const un = onRunEvent((p) => {
       if (p.run_id !== run.runId) return;
       setLastAt(Date.now());
@@ -78,12 +84,21 @@ export function LiveRunView({
       .catch(() => {});
   }, []);
 
-  // Pin the event stream to the newest event as it grows, and re-pin when the
-  // Events subtab is re-shown (a hidden panel can't scroll while display:none).
+  // Follow the newest event as the stream grows, and restore the bottom when the
+  // Events subtab is re-shown (a hidden panel can't scroll while display:none) —
+  // but only while the user is pinned to the bottom (see `pinnedRef`).
   useEffect(() => {
     const el = listRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
   }, [events.length, subtab]);
+
+  // Track whether the user is at the bottom. A small threshold absorbs subpixel
+  // rounding and partial rows so "close enough" still counts as pinned.
+  const onStreamScroll = () => {
+    const el = listRef.current;
+    if (!el) return;
+    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  };
 
   const active = isActiveRun(run.status);
   // Resolve the agent's human name + detected version so the header states what
@@ -158,7 +173,7 @@ export function LiveRunView({
           hidden={subtab !== "events"}
           aria-label="Run events"
         >
-          <div className="run-view__grid-scroll" ref={listRef}>
+          <div className="run-view__grid-scroll" ref={listRef} onScroll={onStreamScroll}>
             {events.length === 0 ? (
               <p className="run-view__empty">
                 {active
