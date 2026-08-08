@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check": "node scripts/check-tokens.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.11",

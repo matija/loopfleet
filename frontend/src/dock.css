@@ -86,7 +86,7 @@
   left: 5px;
   z-index: 1;
   width: 7px;
-  height: 7px;
+  height: 7px; /* tokens-allow: decorative status dot, below the space scale */
   border-radius: 50%;
   background: var(--c-accent);
   box-shadow: 0 0 0 2px var(--c-surface-2);

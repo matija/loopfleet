@@ -21,7 +21,7 @@
   align-items: center;
   justify-content: center;
   width: 52px;
-  height: 52px;
+  height: 52px; /* tokens-allow: illustrative icon badge size, off the space scale */
   border-radius: var(--radius-lg);
   color: var(--c-accent-text);
   background: var(--c-accent-quiet);

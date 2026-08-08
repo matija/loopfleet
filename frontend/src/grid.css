@@ -14,7 +14,7 @@
   grid-template-columns: var(--grid-cols);
   align-items: baseline;
   gap: var(--space-2);
-  min-height: 24px;
+  min-height: 24px; /* tokens-allow: compact row height, tighter than --row-h */
   padding: 2px var(--space-2);
   border-bottom: 1px solid var(--c-border);
 }
@@ -62,7 +62,7 @@
   display: inline-block;
   max-width: 100%;
   padding: 0 var(--space-1);
-  border-radius: 4px;
+  border-radius: 4px; /* tokens-allow: badge radius, tighter than --radius-sm */
   font-family: var(--font-sans);
   font-size: var(--text-xs);
   font-weight: 600;
