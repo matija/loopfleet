@@ -11,7 +11,11 @@
    * steps are *state*, not elevation — --c-surface-hover for a pointer resting
    * on a row, --c-surface-2 for inputs and settled hover fills, --c-surface-3
    * for the selected/active one. Only true overlays (palette, menus, toasts)
-   * lift off the field, and they do it with --shadow-1 plus a border. */
+   * lift off the field, and they do it with --shadow-1 plus a border.
+ * --shadow-2 and --shadow-card extend this vocabulary for deeper floating
+ * surfaces and raised cards, respectively. Persistent panels (sidebar,
+ * titlebar, main) still take no shadow — they're part of the one black
+ * field, not overlays. */
   --c-bg: #0a0a0b;
   --c-surface: #0a0a0b;
   --c-surface-2: #141416;
@@ -109,6 +113,11 @@
   /* Shared height for navigation and list rows. */
   --row-h: 32px;
   --shadow-1: 0 4px 16px rgba(0, 0, 0, 0.45);
+  /* Deeper lift for surfaces that float above overlays themselves (e.g. a
+   * menu opened from within a palette). */
+  --shadow-2: 0 8px 32px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+  /* Faint top highlight for raised cards, distinct from the chip's. */
+  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   /* Chip depth: a one-pixel top highlight at rest, swapped for an inner
    * shadow while held, so the primary action reads as a physical press. */
   --shadow-chip-hi: inset 0 1px 0 rgba(255, 255, 255, 0.04);
