@@ -65,10 +65,10 @@
   --c-scrim: rgba(0, 0, 0, 0.5);
 
   /* --- type scale (1.25 ratio off 13px base) ---
-   * Readex Pro (rounded geometric sans, self-hosted via @fontsource) is the UI
-   * face; system fonts remain as the fallback stack. */
-  --font-sans: "Readex Pro", -apple-system, BlinkMacSystemFont, "SF Pro Text",
-    "Segoe UI", system-ui, sans-serif;
+   * Inter Variable (self-hosted via @fontsource) is the UI face; system
+   * fonts remain as the fallback stack. */
+  --font-sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont,
+    "SF Pro Text", system-ui, sans-serif;
   --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
 
   /* --text-2xs is below the 1.25 ratio, reserved for keycaps (⌘K hints) where a
