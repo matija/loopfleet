@@ -65,6 +65,9 @@ export default function App() {
   const [view, setView] = useState<View>({ kind: "overview" });
   // Live "filter tables…"-style narrowing of the connections list.
   const [projectFilter, setProjectFilter] = useState("");
+  // The sidebar search row shows a "Search" label until clicked/focused, then
+  // swaps to the live input; it reverts once blurred with no text entered.
+  const [projectSearchActive, setProjectSearchActive] = useState(false);
   // App-level command errors surface as transient toasts, not a persistent
   // banner. Contextual form errors stay inline in their own components.
   const { toasts, push: pushError, dismiss: dismissToast } = useToasts();
@@ -338,14 +341,52 @@ export default function App() {
             <AddProject onAdded={onAdded} compact />
           </div>
           {projects.length > 0 && (
-            <input
-              className="sidebar__filter"
-              type="text"
-              placeholder="Filter projects…"
-              aria-label="Filter projects"
-              value={projectFilter}
-              onChange={(e) => setProjectFilter(e.target.value)}
-            />
+            <div className="sidebar__search">
+              <svg
+                className="sidebar__search-icon"
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+              >
+                <circle
+                  cx="7"
+                  cy="7"
+                  r="4.5"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
+                <path
+                  d="M10.5 10.5L14 14"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+              {projectSearchActive || projectFilter ? (
+                <input
+                  className="sidebar__search-input"
+                  type="text"
+                  autoFocus
+                  placeholder="Filter projects…"
+                  aria-label="Filter projects"
+                  value={projectFilter}
+                  onChange={(e) => setProjectFilter(e.target.value)}
+                  onBlur={() => {
+                    if (!projectFilter) setProjectSearchActive(false);
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="sidebar__search-label"
+                  onClick={() => setProjectSearchActive(true)}
+                  onFocus={() => setProjectSearchActive(true)}
+                >
+                  Search
+                </button>
+              )}
+              <kbd className="sidebar__search-kbd">⌘K</kbd>
+            </div>
           )}
           {!projectsLoaded ? (
             <div className="sidebar__empty">Loading projects…</div>
