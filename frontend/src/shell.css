@@ -145,7 +145,7 @@
 .project-item__dot {
   flex: none;
   width: 8px;
-  height: 8px;
+  height: 8px; /* tokens-allow: decorative status dot, below the space scale */
   border-radius: 50%;
   background: var(--c-text-faint);
   opacity: 0.45; /* faint when the project has no active run */
@@ -247,7 +247,7 @@
 .tree-item__dot {
   flex: none;
   width: 7px;
-  height: 7px;
+  height: 7px; /* tokens-allow: decorative status dot, below the space scale */
   border-radius: 50%;
   background: var(--c-text-faint);
 }

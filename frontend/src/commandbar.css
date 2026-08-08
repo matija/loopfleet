@@ -74,7 +74,7 @@
 
 .command-bar__agent-dot {
   width: 6px;
-  height: 6px;
+  height: 6px; /* tokens-allow: decorative status dot, below the space scale */
   border-radius: 50%;
   background: currentColor;
 }
