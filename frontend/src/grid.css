@@ -20,7 +20,7 @@
 }
 
 .data-grid__row:not(.data-grid__row--head):hover {
-  background: var(--c-surface-2);
+  background: var(--c-surface-hover);
 }
 
 .data-grid__row:last-child {
@@ -88,12 +88,12 @@
 
 .grid-pill--warn {
   color: var(--c-warn);
-  background: rgba(210, 153, 34, 0.14);
+  background: var(--c-warn-quiet);
 }
 
 .grid-pill--error {
   color: var(--c-danger);
-  background: rgba(248, 81, 73, 0.16);
+  background: var(--c-danger-quiet);
 }
 
 /* A quiet em-dash for an empty detail or unknown ts — no box, so absent values

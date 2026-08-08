@@ -132,7 +132,7 @@
 }
 
 .project-item:hover {
-  background: var(--c-surface-2);
+  background: var(--c-surface-hover);
   color: var(--c-text);
 }
 
@@ -234,7 +234,7 @@
 }
 
 .tree-item:hover {
-  background: var(--c-surface-2);
+  background: var(--c-surface-hover);
   color: var(--c-text);
 }
 
@@ -286,12 +286,12 @@
 
 /* Completed-unaccepted: surfaced loudly — the review queue. */
 .tree-item--review {
-  background: rgba(210, 153, 34, 0.08);
+  background: var(--c-warn-wash);
 }
 
 .tree-item--review .tree-item__count {
   color: var(--c-warn);
-  background: rgba(210, 153, 34, 0.14);
+  background: var(--c-warn-quiet);
 }
 
 /* --- main pane --- */
@@ -361,7 +361,7 @@
   align-items: flex-start;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-3);
-  background: var(--c-danger-quiet);
+  background: var(--c-danger-loud);
   border: 1px solid var(--c-danger);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-1);
@@ -471,12 +471,12 @@
 
 .sandbox-rule__badge--confined {
   color: var(--c-ok);
-  background: rgba(63, 185, 80, 0.12);
+  background: var(--c-ok-quiet);
 }
 
 .sandbox-rule__badge--open {
   color: var(--c-warn);
-  background: rgba(210, 153, 34, 0.12);
+  background: var(--c-warn-quiet);
 }
 
 .sandbox-rule__text strong {
