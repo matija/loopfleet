@@ -5,6 +5,8 @@
 
 import type { ReactNode } from "react";
 
+import { DocPlusIcon } from "./Icon";
+
 export function EmptyState({
   icon,
   title,
@@ -38,25 +40,5 @@ export function NoPlanEmptyState() {
       </p>
       <p>Each checklist item becomes a task you can launch an agent on.</p>
     </EmptyState>
-  );
-}
-
-// A document-with-checklist glyph: a plan file waiting to be added.
-function DocPlusIcon() {
-  return (
-    <svg
-      width="26"
-      height="26"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-      <path d="M14 3v5h5" />
-      <path d="M8.5 13h7M8.5 16.5h4.5" />
-    </svg>
   );
 }
