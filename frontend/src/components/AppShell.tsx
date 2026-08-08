@@ -30,8 +30,8 @@ export function AppShell({
     <div className="app-shell">
       <div className="titlebar" data-tauri-drag-region>
         <div className="titlebar__brand" data-tauri-drag-region>
+          <span className="titlebar__mark" aria-hidden="true" />
           <span className="titlebar__name">loopfleet</span>
-          <span className="titlebar__sub">agent cockpit</span>
         </div>
         {titlebarTrailing}
       </div>
