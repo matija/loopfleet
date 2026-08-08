@@ -96,29 +96,84 @@
   padding: 0;
 }
 
-/* "filter tables…"-style live narrowing over the connections list. */
-.sidebar__filter {
-  display: block;
+/* "filter tables…"-style live narrowing over the connections list, styled as
+ * a borderless list row (icon + muted label + trailing ⌘K) that swaps its
+ * label for a live text input on click/focus without changing row height. */
+.sidebar__search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   width: calc(100% - 2 * var(--space-3));
   margin: 0 var(--space-3) var(--space-2);
   padding: var(--space-2) var(--space-3);
-  background: var(--c-surface-2);
-  border: 1px solid var(--c-border);
   border-radius: var(--radius-md);
-  color: var(--c-text);
-  font: inherit;
-  font-size: var(--text-sm);
+  border: 1px solid transparent;
 }
 
-.sidebar__filter::placeholder {
+.sidebar__search:hover {
+  background: var(--c-surface-2);
+}
+
+/* Keyboard focus keeps the shared indigo signal, matching every other input
+ * (launch agent, use-run branch, settings fields), via a border swap that
+ * doesn't add layout space since the row already reserves it (border above). */
+.sidebar__search:focus-within {
+  background: var(--c-surface-2);
+  border-color: var(--c-accent);
+}
+
+.sidebar__search-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--c-text-faint);
+}
+
+.sidebar__search-label {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
+  cursor: text;
+}
+
+.sidebar__search-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--c-text);
+}
+
+.sidebar__search-input:focus {
+  outline: none;
+}
+
+.sidebar__search-input::placeholder {
   color: var(--c-text-muted);
 }
 
-/* Keyboard focus keeps the shared indigo :focus-visible ring; the border also
- * shifts to accent, matching every other input (launch agent, use-run branch,
- * settings fields) so a tabbing user lands here with the same signal. */
-.sidebar__filter:focus {
-  border-color: var(--c-accent);
+.sidebar__search-kbd {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--c-text-faint);
+  background: var(--c-surface-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  min-width: 18px;
+  text-align: center;
 }
 
 .sidebar__list {
