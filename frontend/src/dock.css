@@ -118,7 +118,7 @@
 }
 
 .run-chip__open:hover {
-  background: var(--c-surface-3);
+  background: var(--c-surface-hover);
 }
 
 /* Layout only — the pill's shape and per-status colors come from `.status-pill`
@@ -160,10 +160,10 @@
 }
 
 .run-chip__action:hover {
-  background: var(--c-danger-quiet);
+  background: var(--c-danger-loud);
   color: var(--c-text);
 }
 
 .run-chip__action--dismiss:hover {
-  background: var(--c-surface-3);
+  background: var(--c-surface-hover);
 }

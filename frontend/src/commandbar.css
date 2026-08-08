@@ -81,10 +81,10 @@
 
 .command-bar__agent--on {
   color: var(--c-ok);
-  background: rgba(63, 185, 80, 0.12);
+  background: var(--c-ok-quiet);
 }
 
 .command-bar__agent--off {
   color: var(--c-danger);
-  background: rgba(248, 81, 73, 0.14);
+  background: var(--c-danger-quiet);
 }
