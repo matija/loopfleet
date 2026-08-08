@@ -199,6 +199,28 @@ input {
   outline-offset: 1px;
 }
 
+/* Icon defaults. Icons are 16px, drawn in currentColor (so they inherit the
+ * surrounding text's color and any hover/state color changes for free), and
+ * never the sole carrier of meaning — pair every icon with visible label text
+ * or, when space doesn't allow a label, an aria-label on the icon itself or
+ * its interactive parent. Rest state sits at 0.85 opacity so glyphs read as
+ * quiet accompaniment to their label rather than competing with it; opacity
+ * rises to 1 when the parent control is hovered or marked as the current
+ * item (aria-current="true"), matching the rest of the app's active-state
+ * convention (see shell.css .project-item[aria-current], .tree-item[aria-current]).
+ */
+.icon {
+  flex: none;
+  vertical-align: -0.125em;
+  opacity: 0.85;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+:hover > .icon,
+[aria-current="true"] > .icon {
+  opacity: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
