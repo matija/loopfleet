@@ -94,16 +94,20 @@
   --space-8: 48px;
 
   /* --- radii (softer, Esploro-style rounding) --- */
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
 
   /* --- layout --- */
   --sidebar-w: 268px;
   --titlebar-h: 38px;
   /* Shared height for compact control strips (steppers, tab bars) so they share
    * one baseline instead of drifting a pixel apart. */
-  --control-h: 28px;
+  --control-h: 30px;
+  /* Taller variant for toolbar-class controls (primary action bars). */
+  --control-h-lg: 32px;
+  /* Shared height for navigation and list rows. */
+  --row-h: 32px;
   --shadow-1: 0 4px 16px rgba(0, 0, 0, 0.45);
   /* Chip depth: a one-pixel top highlight at rest, swapped for an inner
    * shadow while held, so the primary action reads as a physical press. */
