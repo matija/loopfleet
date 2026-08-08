@@ -35,7 +35,7 @@
   color: var(--c-text-faint);
   font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-wide);
   border-bottom: 1px solid var(--c-border-strong);
 }
 
@@ -66,7 +66,7 @@
   font-family: var(--font-sans);
   font-size: var(--text-xs);
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: var(--tracking-normal);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
