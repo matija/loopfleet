@@ -315,6 +315,7 @@ export default function App() {
         },
         ...prev,
       ]);
+      setDockCollapsed(false);
     },
     [selected],
   );
@@ -348,6 +349,7 @@ export default function App() {
           },
           ...prev,
         ]);
+        setDockCollapsed(false);
         openRun(runId);
       } catch (e) {
         pushError(String(e));
