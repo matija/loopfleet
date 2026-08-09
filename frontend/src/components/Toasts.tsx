@@ -47,6 +47,9 @@ export function Toasts({
     <div className="toasts" role="region" aria-label="Errors" aria-live="assertive">
       {toasts.map((t) => (
         <div key={t.id} className="toast" role="alert">
+          <span className="toast__icon" aria-hidden="true">
+            ⚠
+          </span>
           <span className="toast__msg">{t.message}</span>
           <button
             className="toast__close"
