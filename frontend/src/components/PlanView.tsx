@@ -53,6 +53,7 @@ export function PlanView({
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [agents, setAgents] = useState<AgentStatus[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(true);
 
   const reload = useCallback(() => {
     planOverview(projectId)
@@ -74,7 +75,8 @@ export function PlanView({
       .catch(() => {});
     agentStatus()
       .then(setAgents)
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setAgentsLoading(false));
   }, []);
 
   const installed = agents.filter((a) => a.installed).map((a) => a.key);
@@ -91,6 +93,7 @@ export function PlanView({
           plan={plan}
           projectId={projectId}
           installed={installed}
+          agentsLoading={agentsLoading}
           settings={settings}
           onLaunched={reload}
           onLaunch={onLaunch}
@@ -105,6 +108,7 @@ function PlanCard({
   plan,
   projectId,
   installed,
+  agentsLoading,
   settings,
   onLaunched,
   onLaunch,
@@ -113,6 +117,7 @@ function PlanCard({
   plan: Plan;
   projectId: string;
   installed: string[];
+  agentsLoading: boolean;
   settings: Settings | null;
   onLaunched: () => void;
   onLaunch: (run: LaunchedRun) => void;
@@ -149,6 +154,7 @@ function PlanCard({
               planId={plan.plan_id}
               projectId={projectId}
               installed={installed}
+              agentsLoading={agentsLoading}
               settings={settings}
               onLaunched={onLaunched}
               onLaunch={onLaunch}
@@ -166,6 +172,7 @@ function TaskRow({
   planId,
   projectId,
   installed,
+  agentsLoading,
   settings,
   onLaunched,
   onLaunch,
@@ -175,6 +182,7 @@ function TaskRow({
   planId: string;
   projectId: string;
   installed: string[];
+  agentsLoading: boolean;
   settings: Settings | null;
   onLaunched: () => void;
   onLaunch: (run: LaunchedRun) => void;
@@ -218,6 +226,7 @@ function TaskRow({
         projectId={projectId}
         taskAnchor={task.anchor}
         installed={installed}
+        agentsLoading={agentsLoading}
         settings={settings}
         onLaunched={onLaunched}
         onLaunch={(runId, agent, maxIterations) =>
@@ -238,6 +247,7 @@ export function LaunchControl({
   projectId,
   taskAnchor,
   installed,
+  agentsLoading = false,
   settings,
   onLaunched,
   onLaunch,
@@ -245,6 +255,7 @@ export function LaunchControl({
   projectId: string;
   taskAnchor: string;
   installed: string[];
+  agentsLoading?: boolean;
   settings: Settings | null;
   onLaunched: () => void;
   onLaunch: (runId: string, agent: string, maxIterations: number) => void;
@@ -297,21 +308,28 @@ export function LaunchControl({
 
   return (
     <div className="launch">
-      <div className="launch__agents" role="radiogroup" aria-label="Agent">
-        {installed.map((k) => (
-          <button
-            key={k}
-            type="button"
-            role="radio"
-            aria-checked={agent === k}
-            className={`launch__agent${agent === k ? " launch__agent--on" : ""}`}
-            data-label={k}
-            disabled={noAgents}
-            onClick={() => setAgent(k)}
-          >
-            {k}
-          </button>
-        ))}
+      <div
+        className={`launch__agents${agentsLoading ? " launch__agents--loading" : ""}`}
+        role="radiogroup"
+        aria-label="Agent"
+        aria-busy={agentsLoading}
+      >
+        {agentsLoading
+          ? null
+          : installed.map((k) => (
+              <button
+                key={k}
+                type="button"
+                role="radio"
+                aria-checked={agent === k}
+                className={`launch__agent${agent === k ? " launch__agent--on" : ""}`}
+                data-label={k}
+                disabled={noAgents}
+                onClick={() => setAgent(k)}
+              >
+                {k}
+              </button>
+            ))}
       </div>
       <div className="launch__count" role="group" aria-label="Maximum passes">
         <button

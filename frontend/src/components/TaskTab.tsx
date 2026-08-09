@@ -35,6 +35,7 @@ export function TaskTab({
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [agents, setAgents] = useState<AgentStatus[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(true);
 
   const reload = useCallback(() => {
     planOverview(projectId)
@@ -54,7 +55,8 @@ export function TaskTab({
       .catch(() => {});
     agentStatus()
       .then(setAgents)
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setAgentsLoading(false));
   }, []);
 
   const installed = agents.filter((a) => a.installed).map((a) => a.key);
@@ -81,6 +83,7 @@ export function TaskTab({
           projectId={projectId}
           taskAnchor={task.anchor}
           installed={installed}
+          agentsLoading={agentsLoading}
           settings={settings}
           onLaunched={onLaunched}
           onLaunch={(runId, agent, maxIterations) =>
