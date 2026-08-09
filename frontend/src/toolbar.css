@@ -1,0 +1,46 @@
+/* Toolbar: the shell's single per-view strip, docked above the main pane's
+ * body and separated from it by a hairline. Structural classes only; all
+ * values come from tokens.css. */
+
+.toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 44px;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--c-border);
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
+}
+
+.toolbar__breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: var(--text-base);
+  color: var(--c-text);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.toolbar__trailing {
+  display: flex;
+  align-items: center;
+  flex: none;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
