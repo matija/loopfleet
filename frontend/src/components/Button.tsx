@@ -4,7 +4,7 @@
 // slot, and a split button whose chevron opens a separate menu from the
 // main action.
 
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode, RefObject } from "react";
 import { ChevronDownIcon } from "./Icon";
 
 type IconComponent = (props: { size?: number; className?: string }) => JSX.Element;
@@ -51,6 +51,8 @@ type SplitButtonProps = {
   chevronLabel?: string;
   disabled?: boolean;
   className?: string;
+  /// Forwarded to the chevron segment so callers can anchor a Popover to it.
+  chevronRef?: RefObject<HTMLButtonElement | null>;
 };
 
 export function SplitButton({
@@ -61,6 +63,7 @@ export function SplitButton({
   chevronLabel = "More options",
   disabled,
   className,
+  chevronRef,
 }: SplitButtonProps) {
   const cls = className ? `toolbar-split ${className}` : "toolbar-split";
   return (
@@ -75,6 +78,7 @@ export function SplitButton({
         {children}
       </button>
       <button
+        ref={chevronRef}
         type="button"
         className="toolbar-btn toolbar-btn--icon toolbar-split__chevron"
         onClick={onChevronClick}

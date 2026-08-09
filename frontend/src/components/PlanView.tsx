@@ -14,6 +14,7 @@ import { readLaunchPrefs, writeLaunchPrefs } from "../launchPrefs";
 import { SplitButton } from "./Button";
 import { NoPlanEmptyState } from "./EmptyState";
 import { AlertIcon, CheckIcon, ClockIcon, DotIcon } from "./Icon";
+import { Popover } from "./Popover";
 import type {
   AgentStatus,
   PlanView as Plan,
@@ -287,6 +288,7 @@ export function LaunchControl({
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const initialized = useRef(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const chevronRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (agentsLoading || initialized.current) return;
@@ -301,24 +303,6 @@ export function LaunchControl({
     if (!initialized.current || agent === "" || passes === "") return;
     writeLaunchPrefs(projectId, { agent, passes });
   }, [projectId, agent, passes]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    function onPointerDown(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    }
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setMenuOpen(false);
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [menuOpen]);
 
   const noAgents = installed.length === 0;
   const passCount = passes || 1;
@@ -349,9 +333,14 @@ export function LaunchControl({
     }
   }
 
+  // Mirrored onto the DOM so plan.css's `:has(.launch--engaged)` can keep the
+  // row visible while the menu/result popover is open — both now portal to
+  // document.body via Popover, out of reach of a plain `:has(.launch__menu)`.
+  const engaged = menuOpen || msg !== null;
+
   const content = (
     <div
-      className="launch"
+      className={engaged ? "launch launch--engaged" : "launch"}
       ref={rootRef}
       title={noAgents ? "No agent CLI is installed" : undefined}
     >
@@ -361,67 +350,82 @@ export function LaunchControl({
         onChevronClick={() => setMenuOpen((v) => !v)}
         chevronLabel="Choose agent and passes"
         disabled={noAgents || launching || !agent}
+        chevronRef={chevronRef}
       >
         {launching ? "Launching…" : "Run"}
       </SplitButton>
-      {menuOpen && (
-        <div className="launch__menu" role="menu">
-          <div
-            className={`launch__agents${agentsLoading ? " launch__agents--loading" : ""}`}
-            role="radiogroup"
-            aria-label="Agent"
-            aria-busy={agentsLoading}
-          >
-            {agentsLoading
-              ? null
-              : installed.map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    role="radio"
-                    aria-checked={agent === k}
-                    className={`launch__agent${agent === k ? " launch__agent--on" : ""}`}
-                    data-label={k}
-                    disabled={noAgents}
-                    onClick={() => setAgent(k)}
-                  >
-                    {k}
-                  </button>
-                ))}
-          </div>
-          <div className="launch__count" role="group" aria-label="Maximum passes">
-            <button
-              type="button"
-              className="launch__count-btn"
-              onClick={() => changePasses(-1)}
-              disabled={noAgents || passCount <= 1}
-              aria-label="Decrease maximum passes"
-            >
-              −
-            </button>
-            <span className="launch__count-value" title="Maximum passes">
-              {passCount}
-              <span className="launch__count-label">
-                {passCount === 1 ? "pass" : "passes"}
-              </span>
-            </span>
-            <button
-              type="button"
-              className="launch__count-btn"
-              onClick={() => changePasses(1)}
-              disabled={noAgents || passCount >= 50}
-              aria-label="Increase maximum passes"
-            >
-              +
-            </button>
-          </div>
+      <Popover
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        anchorRef={chevronRef}
+        placement="bottom-end"
+        role="menu"
+        aria-label="Choose agent and passes"
+        className="launch__menu"
+      >
+        <div
+          className={`launch__agents${agentsLoading ? " launch__agents--loading" : ""}`}
+          role="radiogroup"
+          aria-label="Agent"
+          aria-busy={agentsLoading}
+        >
+          {agentsLoading
+            ? null
+            : installed.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  role="radio"
+                  aria-checked={agent === k}
+                  className={`launch__agent${agent === k ? " launch__agent--on" : ""}`}
+                  data-label={k}
+                  disabled={noAgents}
+                  onClick={() => setAgent(k)}
+                >
+                  {k}
+                </button>
+              ))}
         </div>
-      )}
-      {msg && (
-        <span className={`msg ${msg.ok ? "msg--ok" : "msg--err"}`}>
-          {msg.text}
-        </span>
-      )}
+        <div className="launch__count" role="group" aria-label="Maximum passes">
+          <button
+            type="button"
+            className="launch__count-btn"
+            onClick={() => changePasses(-1)}
+            disabled={noAgents || passCount <= 1}
+            aria-label="Decrease maximum passes"
+          >
+            −
+          </button>
+          <span className="launch__count-value" title="Maximum passes">
+            {passCount}
+            <span className="launch__count-label">
+              {passCount === 1 ? "pass" : "passes"}
+            </span>
+          </span>
+          <button
+            type="button"
+            className="launch__count-btn"
+            onClick={() => changePasses(1)}
+            disabled={noAgents || passCount >= 50}
+            aria-label="Increase maximum passes"
+          >
+            +
+          </button>
+        </div>
+      </Popover>
+      <Popover
+        open={msg !== null}
+        onClose={() => setMsg(null)}
+        anchorRef={chevronRef}
+        placement="bottom-end"
+        role="dialog"
+        aria-label="Launch result"
+        className={
+          msg ? `launch__result msg ${msg.ok ? "msg--ok" : "msg--err"}` : "launch__result msg"
+        }
+      >
+        {msg?.text}
+      </Popover>
     </div>
   );
 
