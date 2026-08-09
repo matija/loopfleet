@@ -1,10 +1,19 @@
 // Shared run-status vocabulary: the single source for how a `RunStatus` reads in
 // the UI and whether it still counts as active. Every run surface (the dock, the
-// live view, the timeline, compare) imports these so the label text and the
-// active/finished split never drift between them. Pairs with `.status-pill` in
-// status.css, which owns the matching per-status colors.
+// live view, the timeline, compare) imports these so the label text, leading
+// glyph, and the active/finished split never drift between them. Pairs with
+// `.status-pill` in status.css, which owns the matching per-status colors.
 
 import type { RunStatus } from "./types";
+import {
+  AlertIcon,
+  CheckIcon,
+  ClockIcon,
+  DotIcon,
+  PlayIcon,
+  SquareIcon,
+  type IconProps,
+} from "./components/Icon";
 
 /// Human labels for each lifecycle token. Matches `RunStatus` exactly.
 export const RUN_STATUS_LABEL: Record<RunStatus, string> = {
@@ -14,6 +23,17 @@ export const RUN_STATUS_LABEL: Record<RunStatus, string> = {
   failed: "Failed",
   stopped: "Stopped",
   "limit-reached": "Rate-limited",
+};
+
+/// Leading glyph per lifecycle token, drawn in currentColor so it always
+/// matches the status text it sits beside.
+export const RUN_STATUS_ICON: Record<RunStatus, (props: IconProps) => JSX.Element> = {
+  queued: DotIcon,
+  running: PlayIcon,
+  completed: CheckIcon,
+  failed: AlertIcon,
+  stopped: SquareIcon,
+  "limit-reached": ClockIcon,
 };
 
 /// A run still doing work — stoppable, with no final diff to apply yet.

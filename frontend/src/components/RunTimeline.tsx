@@ -18,7 +18,7 @@ import type { ActiveRun } from "./RunDock";
 import { DataGrid, formatDuration, GridFooter, rowsDuration } from "./DataGrid";
 import { RunSubtabs, type RunSubtab } from "./RunSubtabs";
 import { UseRun } from "./UseRun";
-import { RUN_STATUS_LABEL, isActiveRun } from "../status";
+import { RUN_STATUS_ICON, RUN_STATUS_LABEL, isActiveRun } from "../status";
 
 export function RunTimeline({
   run,
@@ -61,6 +61,7 @@ export function RunTimeline({
 
   // Prefer the persisted status once loaded; fall back to the dock's view.
   const status = (timeline?.status as RunStatus) ?? run.status;
+  const StatusIcon = RUN_STATUS_ICON[status];
   const iterations = timeline?.iterations ?? [];
   const eventCount = iterations.reduce((n, it) => n + it.events.length, 0);
   // Passes the run was launched with (from the persisted timeline, falling back
@@ -88,6 +89,7 @@ export function RunTimeline({
         </button>
         <div className="run-view__ident">
           <span className={`run-view__status status-pill status-pill--${status}`}>
+            <StatusIcon size={12} className="status-pill__icon" />
             {RUN_STATUS_LABEL[status]}
           </span>
           <span
