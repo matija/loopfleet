@@ -42,3 +42,61 @@ export function NoPlanEmptyState() {
     </EmptyState>
   );
 }
+
+// A lighter-weight empty state for surfaces with more headroom than a card
+// suits — no border, no icon badge, just a sentence, a supporting line, and
+// one way forward. Used where nothing has happened yet at all (no project,
+// no run), rather than where content is merely missing from an otherwise
+// configured project.
+export function PromptEmptyState({
+  title,
+  subtitle,
+  action,
+}: {
+  title: string;
+  subtitle?: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="empty-prompt" role="note">
+      <p className="empty-prompt__title">{title}</p>
+      {subtitle && <p className="empty-prompt__subtitle">{subtitle}</p>}
+      {action && <div className="empty-prompt__action">{action}</div>}
+    </div>
+  );
+}
+
+// The no-project state: shown when the machine has no projects to select yet.
+export function NoProjectEmptyState({
+  onAddProject,
+}: {
+  onAddProject: () => void;
+}) {
+  return (
+    <PromptEmptyState
+      title="Add a project to get started"
+      subtitle="Point Loopfleet at a git repo with a plan to launch runs against."
+      action={
+        <button type="button" className="btn btn--accent" onClick={onAddProject}>
+          Add project
+        </button>
+      }
+    />
+  );
+}
+
+// The no-run state: shown when a project has tasks but no run has been
+// launched against any of them yet.
+export function NoRunEmptyState({ onLaunch }: { onLaunch: () => void }) {
+  return (
+    <PromptEmptyState
+      title="Launch a run to see it here"
+      subtitle="Pick a task from the plan and start an agent against it."
+      action={
+        <button type="button" className="btn btn--accent" onClick={onLaunch}>
+          Launch a run
+        </button>
+      }
+    />
+  );
+}

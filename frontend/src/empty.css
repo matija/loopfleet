@@ -54,3 +54,37 @@
   background: var(--c-surface-3);
   color: var(--c-text);
 }
+
+/* Prompt-style empty state: no card frame, sits directly on open canvas.
+ * Used for the no-project and no-run states, where nothing has happened
+ * yet rather than content merely being missing. */
+.empty-prompt {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--space-3);
+  min-height: 100%;
+  padding: var(--space-6) var(--space-5);
+}
+
+.empty-prompt__title {
+  margin: 0;
+  max-width: 44ch;
+  font-size: var(--text-xl);
+  font-weight: 400;
+  color: var(--c-text);
+}
+
+.empty-prompt__subtitle {
+  margin: 0;
+  max-width: 48ch;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
+}
+
+.empty-prompt__action {
+  margin-top: var(--space-2);
+}
