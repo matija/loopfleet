@@ -26,7 +26,23 @@
   --c-border: rgba(255, 255, 255, 0.07);
   --c-border-strong: rgba(255, 255, 255, 0.12);
 
-  /* --- color: text --- */
+  /* --- color: text ---
+   * Measured WCAG 2.1 contrast ratios against every canvas the text actually
+   * sits on (--c-bg/--c-surface, --c-surface-2, --c-surface-3, and the
+   * blended --c-surface-hover fill). AA requires 4.5:1 for body-size text;
+   * all three steps clear it everywhere, --c-text-faint with the least
+   * headroom (it's the one to re-check first if the canvas darkens further):
+   *   --c-text        vs --c-bg #0a0a0b:        16.77:1
+   *   --c-text        vs --c-surface-2 #141416: 15.59:1
+   *   --c-text        vs --c-surface-3 #1c1c1f: 14.41:1
+   *   --c-text-muted  vs --c-bg #0a0a0b:         7.62:1
+   *   --c-text-muted  vs --c-surface-2 #141416:  7.09:1
+   *   --c-text-muted  vs --c-surface-3 #1c1c1f:  6.55:1
+   *   --c-text-faint  vs --c-bg #0a0a0b:         5.40:1
+   *   --c-text-faint  vs --c-surface-2 #141416:  5.02:1
+   *   --c-text-faint  vs --c-surface-3 #1c1c1f:  4.64:1  (tightest margin)
+   *   --c-text-faint  vs --c-surface-hover:      5.03:1
+   */
   --c-text: #ececee;
   --c-text-muted: #a0a0a8;
   --c-text-faint: #85858c;
@@ -53,6 +69,29 @@
    * -loud is the emphatic step for banners and filled controls. The danger
    * -loud step is the 0.2 mix pre-flattened against --c-bg: it backs the toast,
    * which floats over arbitrary content and must not let it show through. */
+  /* Measured WCAG 2.1 contrast for the glyph/text step of each hue (the
+   * -wash and -quiet fills sit underneath body text, so they're not text
+   * colors and aren't checked here). All three clear AA's 4.5:1 body-text
+   * floor against every canvas they're drawn on, --c-danger with the least
+   * headroom:
+   *   --c-ok      vs --c-bg #0a0a0b:          7.79:1
+   *   --c-ok      vs --c-surface-2 #141416:   7.24:1
+   *   --c-ok      vs --c-surface-3 #1c1c1f:   6.69:1
+   *   --c-warn    vs --c-bg #0a0a0b:          7.84:1
+   *   --c-warn    vs --c-surface-2 #141416:   7.29:1
+   *   --c-warn    vs --c-surface-3 #1c1c1f:   6.74:1
+   *   --c-danger  vs --c-bg #0a0a0b:          5.90:1
+   *   --c-danger  vs --c-surface-2 #141416:   5.49:1
+   *   --c-danger  vs --c-surface-3 #1c1c1f:   5.07:1
+   *   --c-danger  vs --c-danger-loud #3a1817: 4.74:1  (toast text-on-fill case)
+   *
+   * The one hue pair that does fail AA text contrast is --c-accent
+   * (#6275f2) directly on --c-accent-quiet (#23294d): 3.57:1, below the
+   * 4.5:1 floor (it still clears the 3:1 floor for large text/UI graphics).
+   * That's why status pills and chips read with --c-accent-text (≈6.1:1 on
+   * the same fill, see above) instead of the base accent whenever the
+   * accent is used as text rather than a border/icon.
+   */
   --c-ok: #3fb950;
   --c-ok-wash: rgba(63, 185, 80, 0.08);
   --c-ok-quiet: rgba(63, 185, 80, 0.14);
