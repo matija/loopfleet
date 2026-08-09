@@ -120,14 +120,17 @@
 
 /* The row is the interactive region: pointer over it, keyboard focus on it (the
  * li is a tab stop), or focus inside it (tabbing onto the revealed actions, or
- * the launch menu being open) all count as "this row is engaged". */
-.task-row:is(:hover, :focus-within, :has(.launch__menu), :has(.launch .msg)) {
+ * the launch menu being open) all count as "this row is engaged". The launch
+ * menu and result message now render through the shared Popover primitive,
+ * which portals to document.body — `:has()` can't see them there, so
+ * LaunchControl mirrors that open state onto `.launch--engaged` instead. */
+.task-row:is(:hover, :focus-within, :has(.launch--engaged)) {
   background: var(--c-surface-hover);
 }
 
 /* Row actions rest hidden and surface only while the row is engaged.
  * `visibility` (not `display`) so the cluster keeps its full width at rest and
- * nothing in the row reflows when it appears. The `:has()` arms keep the
+ * nothing in the row reflows when it appears. The `--engaged` arm keeps the
  * control shown while its own popovers (agent menu, launch result) are up even
  * if the pointer wanders off the row — WKWebView doesn't move focus to clicked
  * buttons, so :focus-within alone can't hold it open. */
@@ -136,9 +139,8 @@
   visibility: hidden;
 }
 
-.task-row:is(:hover, :focus-within, :has(.launch__menu), :has(.launch .msg))
-  .launch,
-.task-row:is(:hover, :focus-within, :has(.launch__menu), :has(.launch .msg))
+.task-row:is(:hover, :focus-within, :has(.launch--engaged)) .launch,
+.task-row:is(:hover, :focus-within, :has(.launch--engaged))
   .task-row__compare-cue {
   visibility: visible;
 }
@@ -248,26 +250,19 @@
  * agent picker and pass stepper that used to live inline in the row. */
 
 .launch {
-  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   flex: none;
 }
 
+/* Positioning, dismissal, border/background/shadow all come from the shared
+ * Popover primitive (Popover.tsx) — this file only lays out the menu's own
+ * content. */
 .launch__menu {
-  position: absolute;
-  z-index: 3;
-  top: calc(100% + var(--space-1));
-  right: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-2);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  background: var(--c-surface-2);
-  box-shadow: var(--shadow-1);
 }
 
 /* Agent picker: a segmented button group. Each installed agent is a toggle;
@@ -429,17 +424,12 @@
   box-shadow: var(--shadow-chip-pressed);
 }
 
-.launch .msg {
-  position: absolute;
-  z-index: 3;
-  top: calc(100% + var(--space-1));
-  right: 0;
+/* Positioning, dismissal, border/background/shadow all come from the shared
+ * Popover primitive (Popover.tsx) — this file only trims the message text.
+ * Scoped to `.launch__result` (not `.launch .msg`, a plain descendant
+ * selector) because the popover portals to document.body, outside `.launch`. */
+.launch__result {
   max-width: 24ch;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-sm);
-  background: var(--c-surface-2);
-  box-shadow: var(--shadow-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

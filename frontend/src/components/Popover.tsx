@@ -29,7 +29,7 @@ export type PopoverProps = {
   open: boolean;
   onClose: () => void;
   /// Element the popover is positioned against and returns focus to on close.
-  anchorRef: RefObject<HTMLElement>;
+  anchorRef: RefObject<HTMLElement | null>;
   children: ReactNode;
   /// "menu" for an action list (SplitButton chevrons, overflow menus);
   /// "dialog" for anything with its own form controls or free-form content.
