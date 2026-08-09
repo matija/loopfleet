@@ -278,6 +278,89 @@
   box-shadow: var(--shadow-1);
 }
 
+/* --- surface cards --- */
+
+.surface-grid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.surface-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  text-align: left;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  color: var(--c-text);
+}
+
+button.surface-card:hover {
+  background: var(--c-surface-hover);
+  border-color: var(--c-border-strong);
+}
+
+/* Icons in cards run one step larger than the 16px app default, so the glyph
+ * anchors the tile without needing a filled backdrop. */
+.surface-card__icon,
+.surface-card__icon svg {
+  width: 20px;
+  height: 20px; /* tokens-allow: fixed 20px card glyph, off the space scale */
+}
+
+.surface-card__icon {
+  display: inline-flex;
+  color: var(--c-text-muted);
+}
+
+.surface-card__title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+}
+
+.surface-card__desc {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
+}
+
+/* Disabled: the tile recedes (dimmed glyph and hairline, no hover) but the
+ * text steps down the ramp instead of taking a blanket opacity — muted for the
+ * title and faint for the body both clear AA on the base field — and the card
+ * states its reason rather than just greying out. */
+.surface-card--disabled {
+  border-color: var(--c-border);
+  box-shadow: none;
+}
+
+.surface-card--disabled .surface-card__icon {
+  opacity: 0.45;
+}
+
+.surface-card--disabled .surface-card__title {
+  color: var(--c-text-muted);
+}
+
+.surface-card--disabled .surface-card__desc {
+  color: var(--c-text-faint);
+}
+
+.surface-card__reason {
+  font-size: var(--text-sm);
+  color: var(--c-text-faint);
+  font-style: italic;
+}
+
 /* --- overview stack --- */
 
 .overview {
