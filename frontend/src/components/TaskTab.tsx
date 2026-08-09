@@ -4,9 +4,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { agentStatus, getSettings, planOverview } from "../commands";
+import { agentStatus, planOverview } from "../commands";
 import { normalizeDisplayText } from "../displayText";
-import type { AgentStatus, PlanView as Plan, Settings } from "../types";
+import type { AgentStatus, PlanView as Plan } from "../types";
 import {
   LaunchControl,
   STATUS_ICON,
@@ -39,7 +39,6 @@ export function TaskTab({
 }) {
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [settings, setSettings] = useState<Settings | null>(null);
   const [agents, setAgents] = useState<AgentStatus[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
 
@@ -56,9 +55,6 @@ export function TaskTab({
   }, [reload, nonce]);
 
   useEffect(() => {
-    getSettings()
-      .then(setSettings)
-      .catch(() => {});
     agentStatus()
       .then(setAgents)
       .catch(() => {})
@@ -92,7 +88,6 @@ export function TaskTab({
           taskAnchor={task.anchor}
           installed={installed}
           agentsLoading={agentsLoading}
-          settings={settings}
           onLaunched={onLaunched}
           onLaunch={(runId, agent, maxIterations) =>
             onLaunch({

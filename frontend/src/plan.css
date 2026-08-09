@@ -181,6 +181,10 @@
 }
 
 /* --- launch control (always present, per task) --- */
+/* A single `Run ▾` split button (toolbar-split, from Button.tsx): the main
+ * segment launches immediately with the project's stored agent/pass count
+ * (launchPrefs.ts); the chevron opens `.launch__menu`, a popover holding the
+ * agent picker and pass stepper that used to live inline in the row. */
 
 .launch {
   position: relative;
@@ -190,12 +194,27 @@
   flex: none;
 }
 
+.launch__menu {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-2);
+  box-shadow: var(--shadow-1);
+}
+
 /* Agent picker: a segmented button group. Each installed agent is a toggle;
  * the chosen one lifts onto the accent surface so the pick reads at a glance
  * without opening a menu. */
 /* min-width covers the known agent set (claude, pi, cursor) at full label
  * width so the group doesn't grow once `agentStatus()` resolves and swaps
- * the skeleton for the real buttons — nothing else in the row should shift. */
+ * the skeleton for the real buttons — nothing else in the menu should shift. */
 .launch__agents {
   display: inline-flex;
   align-items: stretch;
@@ -309,34 +328,44 @@
   color: var(--c-text-muted);
 }
 
-/* Run button — a quiet accent chip rather than a loud solid block. Recessed
- * indigo surface, accent-tinted text, faint top highlight; the fill deepens on
- * hover so it stays clearly the primary action without shouting. */
-.btn--accent.launch__go {
-  background: var(--c-accent-quiet);
-  border: 1px solid var(--c-accent-border);
-  color: var(--c-accent-text);
-  font-weight: 600;
-  letter-spacing: var(--tracking-normal);
-  padding: var(--space-1) var(--space-3);
+/* `Run ▾` split button (toolbar-split from Button.tsx) — a quiet accent chip
+ * rather than a loud solid block. Recessed indigo surface, accent-tinted
+ * text, faint top highlight; the fill deepens on hover so it stays clearly
+ * the primary action without shouting. Sized down to the row's --control-h,
+ * since toolbar-split defaults to the taller toolbar control height. */
+.launch__run {
+  height: var(--control-h);
+  border-color: var(--c-accent-border);
   border-radius: var(--radius-md);
+  background: var(--c-accent-quiet);
   box-shadow: var(--shadow-chip-hi);
 }
 
-.btn--accent.launch__go:hover:not(:disabled) {
-  background: var(--c-accent-quiet-hover);
-  border-color: var(--c-accent-border-hover);
-  color: var(--c-accent-text-hover);
-  filter: none;
+.launch__run .toolbar-split__main {
+  padding: 0 var(--space-3);
+  color: var(--c-accent-text);
+  font-weight: 600;
 }
 
-.btn--accent.launch__go:active:not(:disabled) {
+.launch__run .toolbar-split__chevron {
+  width: var(--control-h);
+  border-left-color: var(--c-accent-border);
+  color: var(--c-accent-text);
+}
+
+.launch__run:has(:disabled) {
+  opacity: 0.5;
+}
+
+.launch__run .toolbar-split__main:hover:not(:disabled),
+.launch__run .toolbar-split__chevron:hover:not(:disabled) {
+  background: var(--c-accent-quiet-hover);
+  color: var(--c-accent-text-hover);
+}
+
+.launch__run .toolbar-split__main:active:not(:disabled) {
   background: var(--c-accent-quiet);
   box-shadow: var(--shadow-chip-pressed);
-}
-
-.btn--accent.launch__go:disabled {
-  opacity: 0.5;
 }
 
 .launch .msg {
