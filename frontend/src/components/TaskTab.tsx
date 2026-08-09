@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { agentStatus, planOverview } from "../commands";
 import { normalizeDisplayText } from "../displayText";
 import type { AgentStatus, PlanView as Plan } from "../types";
+import { AlertIcon } from "./Icon";
 import {
   LaunchControl,
   STATUS_ICON,
@@ -104,6 +105,7 @@ export function TaskTab({
       <h3 className="task-tab__text">{normalizeDisplayText(task.text)}</h3>
       {review && (
         <div className="review-banner" role="status">
+          <AlertIcon size={16} className="review-banner__icon" />
           This run is awaiting review — compare its diff and use one, or keep
           iterating.
         </div>

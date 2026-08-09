@@ -1,17 +1,16 @@
 // Plan tree: the selected connection's plan rendered as the sidebar's object
 // list (the DB client's filterable table tree). Tasks group under their plan
-// file, each row carrying the derived `TaskStatus` (a colored dot) and a
-// right-aligned run-count badge from `plan_overview`. Completed-unaccepted tasks
-// are surfaced loudly (a warn accent) — the review queue. Clicking a task opens
-// or focuses its tab.
+// file, each row leading with the derived `TaskStatus` glyph (muted, amber only
+// for needs-review) and a right-aligned run-count badge from `plan_overview`.
+// Clicking a task opens or focuses its tab.
 
 import { useEffect, useState } from "react";
 import { planOverview } from "../commands";
 import { normalizeDisplayText } from "../displayText";
 import { useSidebarCollapsed } from "../sidebarCollapse";
 import type { PlanView as Plan } from "../types";
-import { ChecklistIcon, ChevronRightIcon } from "./Icon";
-import { STATUS_LABEL } from "./PlanView";
+import { ChevronRightIcon } from "./Icon";
+import { STATUS_ICON, STATUS_LABEL } from "./PlanView";
 
 /// What opening a task from the tree needs to push/focus its tab.
 export type OpenTask = { planId: string; taskAnchor: string; taskText: string };
@@ -111,11 +110,11 @@ function PlanTreeGroup({
       {!collapsed &&
         tasks.map((task) => {
           const id = `task:${plan.plan_id}:${task.anchor}`;
-          const review = task.status === "completed-unaccepted";
+          const StatusIcon = STATUS_ICON[task.status];
           return (
             <button
               key={task.anchor}
-              className={`tree-item${review ? " tree-item--review" : ""}`}
+              className="tree-item"
               aria-current={id === activeTaskId}
               onClick={() =>
                 onOpenTask({
@@ -125,13 +124,14 @@ function PlanTreeGroup({
                 })
               }
             >
-              <ChecklistIcon size={16} className="tree-item__icon" />
               <span
-                className={`tree-item__dot tree-item__dot--${task.status}`}
+                className={`tree-item__status tree-item__status--${task.status}`}
                 role="img"
                 aria-label={STATUS_LABEL[task.status]}
                 title={STATUS_LABEL[task.status]}
-              />
+              >
+                <StatusIcon size={16} />
+              </span>
               <span className="tree-item__text">
                 {normalizeDisplayText(task.text)}
               </span>

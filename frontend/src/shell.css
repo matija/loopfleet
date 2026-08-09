@@ -406,7 +406,7 @@
 
 /* --- plan tree ---
  * The open connection's tasks as the sidebar's object list: grouped by plan
- * file, a status dot + a right-aligned run-count badge per row. */
+ * file, a status glyph + a right-aligned run-count badge per row. */
 
 .plan-tree {
   display: flex;
@@ -461,30 +461,18 @@
   color: var(--c-text);
 }
 
-.tree-item__icon {
+/* Derived TaskStatus as the row's leading glyph — same treatment as the plan
+ * view's `.task-status`: muted ink, with amber reserved for needs-review as the
+ * only semantic color on the row. The label lives in the glyph's aria-label. */
+.tree-item__status {
   flex: none;
-  color: var(--c-text-faint);
+  display: inline-flex;
+  align-items: center;
+  color: var(--c-text-muted);
 }
 
-/* Derived TaskStatus as a colored dot, reusing the badge palette. */
-.tree-item__dot {
-  flex: none;
-  width: 7px;
-  height: 7px; /* tokens-allow: decorative status dot, below the space scale */
-  border-radius: 50%;
-  background: var(--c-text-faint);
-}
-
-.tree-item__dot--in-progress {
-  background: var(--c-accent);
-}
-
-.tree-item__dot--completed-unaccepted {
-  background: var(--c-warn);
-}
-
-.tree-item__dot--accepted {
-  background: var(--c-ok);
+.tree-item__status--completed-unaccepted {
+  color: var(--c-warn);
 }
 
 .tree-item__text {
@@ -496,6 +484,8 @@
   text-overflow: ellipsis;
 }
 
+/* Neutral fill only — the amber status glyph is the row's review signal, so
+ * the count never carries a semantic wash. */
 .tree-item__count {
   flex: none;
   font-size: var(--text-xs);
@@ -505,13 +495,6 @@
   padding: 0 var(--space-2);
   min-width: 18px;
   text-align: center;
-}
-
-/* Completed-unaccepted: no row wash — the amber status dot and count carry
- * the review signal. */
-.tree-item--review .tree-item__count {
-  color: var(--c-warn);
-  background: var(--c-warn-quiet);
 }
 
 /* --- main pane --- */
