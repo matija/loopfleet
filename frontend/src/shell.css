@@ -507,11 +507,8 @@
   text-align: center;
 }
 
-/* Completed-unaccepted: surfaced loudly — the review queue. */
-.tree-item--review {
-  background: var(--c-warn-wash);
-}
-
+/* Completed-unaccepted: no row wash — the amber status dot and count carry
+ * the review signal. */
 .tree-item--review .tree-item__count {
   color: var(--c-warn);
   background: var(--c-warn-quiet);

@@ -2,8 +2,9 @@
 // a launch control on EVERY task (PRD M7). The launch control is deliberately
 // decoupled from the authored `checked` flag — `checked` only gates the derived
 // status, never the ability to start a run — so a "done" plan (every box checked)
-// still shows a Run button per task. Completed-unaccepted tasks are surfaced
-// loudly as a review queue (the compare/accept backlog).
+// still shows a Run button per task. Completed-unaccepted tasks are summarized
+// in one quiet banner above the list; each affected row carries the amber
+// status glyph as its own signal (the compare/accept backlog).
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -137,9 +138,12 @@ function PlanCard({
 
       {review.length > 0 && (
         <div className="review-banner" role="status">
-          <strong>{review.length}</strong>{" "}
-          {review.length === 1 ? "run is" : "runs are"} awaiting review — compare
-          the produced diffs and use one, or keep iterating.
+          <AlertIcon size={16} className="review-banner__icon" />
+          <span>
+            <strong>{review.length}</strong>{" "}
+            {review.length === 1 ? "run is" : "runs are"} awaiting review —
+            compare the produced diffs and use one, or keep iterating.
+          </span>
         </div>
       )}
 
@@ -188,13 +192,12 @@ function TaskRow({
   onLaunch: (run: LaunchedRun) => void;
   onCompare: (target: CompareTarget) => void;
 }) {
-  const review = task.status === "completed-unaccepted";
   const StatusIcon = STATUS_ICON[task.status];
   return (
     // tabIndex makes the row itself a keyboard stop so its rest-hidden actions
     // (revealed via :hover / :focus-within in plan.css) are reachable without
     // a pointer.
-    <li className={`task-row${review ? " task-row--review" : ""}`} tabIndex={0}>
+    <li className="task-row" tabIndex={0}>
       <div className="task-row__main">
         <span className={`task-status task-status--${task.status}`}>
           <StatusIcon size={16} className="task-status__icon" />

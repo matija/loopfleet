@@ -1,5 +1,5 @@
 /* Plan view: task list with derived-status badges + a per-task launch control,
- * and the loud review queue for completed-unaccepted tasks. Structural only;
+ * and the quiet review summary for completed-unaccepted tasks. Structural only;
  * values via tokens.css. */
 
 .plans {
@@ -50,17 +50,27 @@
   line-height: var(--leading-normal);
 }
 
-/* --- review queue banner (loud) --- */
+/* --- review queue banner --- */
+/* One quiet summary row above the list: neutral hairline frame, with the amber
+ * glyph and count as the only accents. The per-row signal is the amber status
+ * glyph on the affected rows, not a background wash. */
 
 .review-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin: var(--space-3) 0 var(--space-4);
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
-  background: var(--c-warn-quiet);
-  border: 1px solid var(--c-warn);
-  color: var(--c-text);
+  border: 1px solid var(--c-border);
+  color: var(--c-text-muted);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
+}
+
+.review-banner__icon {
+  flex: none;
+  color: var(--c-warn);
 }
 
 .review-banner strong {
@@ -106,10 +116,6 @@
  * line right under it. */
 .task-list > .task-row:first-child {
   border-top: 0;
-}
-
-.task-row--review {
-  background: var(--c-warn-wash);
 }
 
 /* The row is the interactive region: pointer over it, keyboard focus on it (the
@@ -224,6 +230,11 @@
 
 .task-status__icon {
   flex: none;
+}
+
+/* Needs-review rows: the amber glyph is the per-row signal — no row wash. */
+.task-status--completed-unaccepted .task-status__icon {
+  color: var(--c-warn);
 }
 
 .task-status__label {
