@@ -57,10 +57,14 @@ export function RunDock({
 }) {
   const activeCount = runs.filter((r) => isActiveRun(r.status)).length;
   const unseenCount = runs.filter((r) => r.unseen).length;
+  // Idle (no run launched this session yet) collapses the dock to the head
+  // strip the same way the manual toggle does — there is nothing to show.
+  const idle = runs.length === 0;
+  const effectiveCollapsed = collapsed || idle;
 
   return (
     <section
-      className={`run-dock${collapsed ? " run-dock--collapsed" : ""}`}
+      className={`run-dock${effectiveCollapsed ? " run-dock--collapsed" : ""}`}
       aria-label="Active runs"
     >
       <div className="run-dock__head">
@@ -70,12 +74,7 @@ export function RunDock({
           {unseenCount > 0 ? ` · ${unseenCount} new` : ""}
         </span>
       </div>
-      {collapsed ? null : runs.length === 0 ? (
-        <p className="run-dock__empty">
-          No runs yet. Launch one from a task above — it will appear here and stay
-          stoppable while you work.
-        </p>
-      ) : (
+      {effectiveCollapsed ? null : (
         <ul className="run-dock__list">
           {runs.map((r) => {
             const active = isActiveRun(r.status);

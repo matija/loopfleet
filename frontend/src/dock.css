@@ -21,10 +21,20 @@
   line-height: var(--leading-tight);
 }
 
-/* Toolbar panel-bottom toggle collapses the dock to just this head strip —
- * the run list below stays unrendered, so the row shrinks to its content. */
+/* Collapsed either by the toolbar's panel-bottom toggle or because no run has
+ * been launched this session yet (idle) — the run list stays unrendered and
+ * the head lays out as a single 28px row showing just the label and count. */
 .run-dock--collapsed {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 var(--space-4);
   overflow: visible;
+}
+
+.run-dock--collapsed .run-dock__head {
+  flex-direction: row;
+  align-items: baseline;
+  gap: var(--space-2);
 }
 
 .run-dock__title {
@@ -42,12 +52,6 @@
   /* Equal-width digits so a changing tally (1 → 12 active) holds its width and
    * doesn't nudge the run list beside it as runs come and go. */
   font-variant-numeric: tabular-nums;
-}
-
-.run-dock__empty {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--c-text-faint);
 }
 
 .run-dock__list {
