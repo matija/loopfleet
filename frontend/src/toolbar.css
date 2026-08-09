@@ -92,3 +92,91 @@ button.toolbar__crumb:hover {
 .toolbar__crumb-icon {
   flex: none;
 }
+
+/* --- toolbar buttons ---
+ * Shared vocabulary for toolbar-class actions (Button.tsx): a hairline pill
+ * at --control-h-lg, transparent until hovered so the strip stays quiet at
+ * rest. Border width and padding never change on :hover — only the fill —
+ * so a button never shifts the layout under the pointer.
+ */
+
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: var(--control-h-lg);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--c-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.toolbar-btn:hover:not(:disabled) {
+  background: var(--c-surface-hover);
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Icon-only: same control height, but a square hit target with no border
+ * box — for the toolbar's trailing slot (overflow, panel toggle), where a
+ * bare glyph reads lighter than a bordered pill. */
+.toolbar-btn--icon {
+  gap: 0;
+  width: var(--control-h-lg);
+  padding: 0;
+  border-color: transparent;
+}
+
+/* Split: a labeled action fused to a chevron segment. The two segments
+ * share one hairline border and are rounded as a single pill; a divider
+ * (not a gap) separates their hit targets so they still read as one
+ * control. */
+.toolbar-split {
+  display: inline-flex;
+  align-items: stretch;
+  height: var(--control-h-lg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.toolbar-split .toolbar-btn {
+  height: auto;
+  border: none;
+  border-radius: 0;
+}
+
+.toolbar-split__main {
+  border-top-left-radius: calc(var(--radius-sm) - 1px);
+  border-bottom-left-radius: calc(var(--radius-sm) - 1px);
+}
+
+.toolbar-split__chevron {
+  width: var(--control-h-lg);
+  padding: 0;
+  border-left: 1px solid var(--c-border);
+  border-top-right-radius: calc(var(--radius-sm) - 1px);
+  border-bottom-right-radius: calc(var(--radius-sm) - 1px);
+}
+
+/* Focus rings sit on top of the split's shared border/divider rather than
+ * being clipped by the sibling segment. */
+.toolbar-btn:focus-visible,
+.toolbar-split__main:focus-visible,
+.toolbar-split__chevron:focus-visible {
+  position: relative;
+  z-index: 1;
+}
