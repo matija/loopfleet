@@ -10,6 +10,7 @@
 // persisted log via `run_timeline`. Here we stream; there we replay.
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { agentStatus } from "../commands";
 import { onRunEvent } from "../events";
 import type { AgentStatus } from "../types";
@@ -24,10 +25,14 @@ export function LiveRunView({
   run,
   onStop,
   onClose,
+  toolbarActions,
 }: {
   run: ActiveRun;
   onStop: (runId: string) => void;
   onClose: () => void;
+  /// The toolbar's action-slot DOM node. Stop portals there instead of
+  /// rendering inline.
+  toolbarActions: HTMLElement | null;
 }) {
   // The stream carries no persisted ts (see file header), so we stamp arrival
   // time as each event lands — the grid's `ts` column then reflects when it
@@ -134,16 +139,20 @@ export function LiveRunView({
             {active && <> · <Elapsed startedAt={run.startedAt} /></>}
           </span>
         </div>
-        {active && (
+      </header>
+
+      {active &&
+        toolbarActions &&
+        createPortal(
           <button
             className="run-view__stop"
             onClick={() => onStop(run.runId)}
             title="Stop at the next pass boundary"
           >
             Stop
-          </button>
+          </button>,
+          toolbarActions,
         )}
-      </header>
 
       <CommandBar
         task={run.taskText}

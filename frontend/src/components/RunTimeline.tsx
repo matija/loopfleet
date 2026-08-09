@@ -5,6 +5,7 @@
 // surface for inspecting a run after it has ended. The app is read-only here.
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { runTimeline } from "../commands";
 import { normalizeDisplayText } from "../displayText";
 import type {
@@ -24,6 +25,7 @@ export function RunTimeline({
   onClose,
   onAccepted,
   onRetry,
+  toolbarActions,
 }: {
   run: ActiveRun;
   onClose: () => void;
@@ -33,6 +35,9 @@ export function RunTimeline({
   // Re-launch this run's task (same agent + passes). Backs the rate-limited
   // banner's "Retry now"; a no-op when the run carries no project/task identity.
   onRetry?: (run: ActiveRun) => void;
+  // The toolbar's action-slot DOM node. Use run / Retry portal there instead
+  // of rendering inline.
+  toolbarActions: HTMLElement | null;
 }) {
   const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -107,15 +112,18 @@ export function RunTimeline({
               out. {resetPhrase(limitResetAt(iterations))}
             </span>
           </div>
-          {canRetry && (
-            <button
-              className="run-view__retry"
-              onClick={() => onRetry?.(run)}
-              title="Re-run this task now with the same agent and passes"
-            >
-              Retry now
-            </button>
-          )}
+          {canRetry &&
+            toolbarActions &&
+            createPortal(
+              <button
+                className="run-view__retry"
+                onClick={() => onRetry?.(run)}
+                title="Re-run this task now with the same agent and passes"
+              >
+                Retry now
+              </button>,
+              toolbarActions,
+            )}
         </div>
       )}
 
@@ -125,6 +133,7 @@ export function RunTimeline({
             runId={run.runId}
             mergeable={mergeable}
             onAccepted={() => onAccepted?.()}
+            actionsPortal={toolbarActions}
           />
         </div>
       )}

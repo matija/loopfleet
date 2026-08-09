@@ -4,25 +4,31 @@
 // top edge, but its slots opt out individually so their controls stay
 // clickable.
 
-import type { ReactNode } from "react";
+import { forwardRef, type ReactNode } from "react";
 
-export function Toolbar({
-  breadcrumb,
-  actions,
-  trailing,
-}: {
-  /// Left-aligned: current view's path (e.g. project / plan / task).
-  breadcrumb?: ReactNode;
-  /// Right-aligned view-specific actions (buttons, chips).
-  actions?: ReactNode;
-  /// Trailing icon-button slot, e.g. an overflow or panel toggle.
-  trailing?: ReactNode;
-}) {
+// `ref` resolves to the `.toolbar__actions` DOM node itself, so the active
+// view's owning component can portal its primary action button(s) straight
+// into the strip — the button's state/handlers stay where they're defined;
+// only the rendered DOM relocates. See TaskTab/LiveRunView/RunTimeline/
+// CompareView's `toolbarActions` prop.
+export const Toolbar = forwardRef<
+  HTMLDivElement,
+  {
+    /// Left-aligned: current view's path (e.g. project / plan / task).
+    breadcrumb?: ReactNode;
+    /// Right-aligned view-specific actions (buttons, chips).
+    actions?: ReactNode;
+    /// Trailing icon-button slot, e.g. an overflow or panel toggle.
+    trailing?: ReactNode;
+  }
+>(function Toolbar({ breadcrumb, actions, trailing }, actionsRef) {
   return (
     <div className="toolbar" data-tauri-drag-region>
       <div className="toolbar__breadcrumb">{breadcrumb}</div>
-      <div className="toolbar__actions">{actions}</div>
+      <div className="toolbar__actions" ref={actionsRef}>
+        {actions}
+      </div>
       {trailing && <div className="toolbar__trailing">{trailing}</div>}
     </div>
   );
-}
+});
