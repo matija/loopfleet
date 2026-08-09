@@ -5,16 +5,17 @@
 // still shows a Run button per task. Completed-unaccepted tasks are surfaced
 // loudly as a review queue (the compare/accept backlog).
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { agentStatus, getSettings, launchRun, planOverview } from "../commands";
+import { agentStatus, launchRun, planOverview } from "../commands";
 import { normalizeDisplayText } from "../displayText";
+import { readLaunchPrefs, writeLaunchPrefs } from "../launchPrefs";
+import { SplitButton } from "./Button";
 import { NoPlanEmptyState } from "./EmptyState";
 import { AlertIcon, CheckIcon, ClockIcon, DotIcon } from "./Icon";
 import type {
   AgentStatus,
   PlanView as Plan,
-  Settings,
   TaskStatus,
   TaskView,
 } from "../types";
@@ -60,7 +61,6 @@ export function PlanView({
 }) {
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [settings, setSettings] = useState<Settings | null>(null);
   const [agents, setAgents] = useState<AgentStatus[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
 
@@ -77,11 +77,8 @@ export function PlanView({
     reload();
   }, [reload]);
 
-  // Launch defaults + the agent menu. Small, stable — fetched once.
+  // The agent menu. Small, stable — fetched once.
   useEffect(() => {
-    getSettings()
-      .then(setSettings)
-      .catch(() => {});
     agentStatus()
       .then(setAgents)
       .catch(() => {})
@@ -103,7 +100,6 @@ export function PlanView({
           projectId={projectId}
           installed={installed}
           agentsLoading={agentsLoading}
-          settings={settings}
           onLaunched={reload}
           onLaunch={onLaunch}
           onCompare={onCompare}
@@ -118,7 +114,6 @@ function PlanCard({
   projectId,
   installed,
   agentsLoading,
-  settings,
   onLaunched,
   onLaunch,
   onCompare,
@@ -127,7 +122,6 @@ function PlanCard({
   projectId: string;
   installed: string[];
   agentsLoading: boolean;
-  settings: Settings | null;
   onLaunched: () => void;
   onLaunch: (run: LaunchedRun) => void;
   onCompare: (target: CompareTarget) => void;
@@ -164,7 +158,6 @@ function PlanCard({
               projectId={projectId}
               installed={installed}
               agentsLoading={agentsLoading}
-              settings={settings}
               onLaunched={onLaunched}
               onLaunch={onLaunch}
               onCompare={onCompare}
@@ -182,7 +175,6 @@ function TaskRow({
   projectId,
   installed,
   agentsLoading,
-  settings,
   onLaunched,
   onLaunch,
   onCompare,
@@ -192,7 +184,6 @@ function TaskRow({
   projectId: string;
   installed: string[];
   agentsLoading: boolean;
-  settings: Settings | null;
   onLaunched: () => void;
   onLaunch: (run: LaunchedRun) => void;
   onCompare: (target: CompareTarget) => void;
@@ -238,7 +229,6 @@ function TaskRow({
         taskAnchor={task.anchor}
         installed={installed}
         agentsLoading={agentsLoading}
-        settings={settings}
         onLaunched={onLaunched}
         onLaunch={(runId, agent, maxIterations) =>
           onLaunch({
@@ -259,7 +249,6 @@ export function LaunchControl({
   taskAnchor,
   installed,
   agentsLoading = false,
-  settings,
   onLaunched,
   onLaunch,
   actionsPortal,
@@ -268,43 +257,67 @@ export function LaunchControl({
   taskAnchor: string;
   installed: string[];
   agentsLoading?: boolean;
-  settings: Settings | null;
   onLaunched: () => void;
   onLaunch: (runId: string, agent: string, maxIterations: number) => void;
-  /// When set, the Run button (and its result message) portal there instead of
-  /// rendering inline — the toolbar's action slot, wired by TaskTab. Agent
-  /// picker and pass count always stay inline; only the trigger relocates.
+  /// When set, the whole control (split button, its menu, and the result
+  /// message) portals there instead of rendering inline — the toolbar's
+  /// action slot, wired by TaskTab.
   actionsPortal?: HTMLElement | null;
 }) {
-  const preferred =
-    settings && installed.includes(settings.default_agent)
-      ? settings.default_agent
-      : installed[0];
-  // Empty sentinels mean "not chosen yet"; adopt the resolved defaults once they
-  // arrive, then leave the user's choices alone.
+  // Empty sentinels mean "not chosen yet"; adopted once from launchPrefs
+  // after the installed-agents list resolves, then left to the user.
   const [agent, setAgent] = useState<string>("");
-  const [iterations, setIterations] = useState<number | "">("");
+  const [passes, setPasses] = useState<number | "">("");
+  const [menuOpen, setMenuOpen] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const initialized = useRef(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (preferred && agent === "") setAgent(preferred);
-  }, [preferred, agent]);
+    if (agentsLoading || initialized.current) return;
+    initialized.current = true;
+    const prefs = readLaunchPrefs(projectId, installed);
+    setAgent(prefs.agent);
+    setPasses(prefs.passes);
+  }, [agentsLoading, installed, projectId]);
+
+  // Persist the user's choices as soon as they diverge from the loaded prefs.
   useEffect(() => {
-    if (settings && iterations === "") setIterations(settings.default_iterations);
-  }, [settings, iterations]);
+    if (!initialized.current || agent === "" || passes === "") return;
+    writeLaunchPrefs(projectId, { agent, passes });
+  }, [projectId, agent, passes]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onPointerDown(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
 
   const noAgents = installed.length === 0;
-  const iterationCount = iterations || 1;
+  const passCount = passes || 1;
 
-  function changeIterations(delta: number) {
-    setIterations(Math.min(50, Math.max(1, iterationCount + delta)));
+  function changePasses(delta: number) {
+    setPasses(Math.min(50, Math.max(1, passCount + delta)));
   }
 
   async function launch() {
+    setMenuOpen(false);
     setLaunching(true);
     setMsg(null);
-    const maxIterations = Math.max(1, iterations || 1);
+    const maxIterations = Math.max(1, passes || 1);
     try {
       const runId = await launchRun({
         projectId,
@@ -322,76 +335,81 @@ export function LaunchControl({
     }
   }
 
-  const launchButton = (
-    <>
-      <button
-        className="btn btn--accent launch__go"
+  const content = (
+    <div
+      className="launch"
+      ref={rootRef}
+      title={noAgents ? "No agent CLI is installed" : undefined}
+    >
+      <SplitButton
+        className="launch__run"
         onClick={launch}
+        onChevronClick={() => setMenuOpen((v) => !v)}
+        chevronLabel="Choose agent and passes"
         disabled={noAgents || launching || !agent}
-        title={noAgents ? "No agent CLI is installed" : undefined}
       >
         {launching ? "Launching…" : "Run"}
-      </button>
+      </SplitButton>
+      {menuOpen && (
+        <div className="launch__menu" role="menu">
+          <div
+            className={`launch__agents${agentsLoading ? " launch__agents--loading" : ""}`}
+            role="radiogroup"
+            aria-label="Agent"
+            aria-busy={agentsLoading}
+          >
+            {agentsLoading
+              ? null
+              : installed.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    role="radio"
+                    aria-checked={agent === k}
+                    className={`launch__agent${agent === k ? " launch__agent--on" : ""}`}
+                    data-label={k}
+                    disabled={noAgents}
+                    onClick={() => setAgent(k)}
+                  >
+                    {k}
+                  </button>
+                ))}
+          </div>
+          <div className="launch__count" role="group" aria-label="Maximum passes">
+            <button
+              type="button"
+              className="launch__count-btn"
+              onClick={() => changePasses(-1)}
+              disabled={noAgents || passCount <= 1}
+              aria-label="Decrease maximum passes"
+            >
+              −
+            </button>
+            <span className="launch__count-value" title="Maximum passes">
+              {passCount}
+              <span className="launch__count-label">
+                {passCount === 1 ? "pass" : "passes"}
+              </span>
+            </span>
+            <button
+              type="button"
+              className="launch__count-btn"
+              onClick={() => changePasses(1)}
+              disabled={noAgents || passCount >= 50}
+              aria-label="Increase maximum passes"
+            >
+              +
+            </button>
+          </div>
+        </div>
+      )}
       {msg && (
         <span className={`msg ${msg.ok ? "msg--ok" : "msg--err"}`}>
           {msg.text}
         </span>
       )}
-    </>
-  );
-
-  return (
-    <div className="launch">
-      <div
-        className={`launch__agents${agentsLoading ? " launch__agents--loading" : ""}`}
-        role="radiogroup"
-        aria-label="Agent"
-        aria-busy={agentsLoading}
-      >
-        {agentsLoading
-          ? null
-          : installed.map((k) => (
-              <button
-                key={k}
-                type="button"
-                role="radio"
-                aria-checked={agent === k}
-                className={`launch__agent${agent === k ? " launch__agent--on" : ""}`}
-                data-label={k}
-                disabled={noAgents}
-                onClick={() => setAgent(k)}
-              >
-                {k}
-              </button>
-            ))}
-      </div>
-      <div className="launch__count" role="group" aria-label="Maximum passes">
-        <button
-          type="button"
-          className="launch__count-btn"
-          onClick={() => changeIterations(-1)}
-          disabled={noAgents || iterationCount <= 1}
-          aria-label="Decrease maximum passes"
-        >
-          −
-        </button>
-        <span className="launch__count-value" title="Maximum passes">
-          {iterationCount}
-          <span className="launch__count-label">
-            {iterationCount === 1 ? "pass" : "passes"}
-          </span>
-        </span>
-        <button
-          type="button"
-          className="launch__count-btn"
-          onClick={() => changeIterations(1)}
-          disabled={noAgents || iterationCount >= 50}
-          aria-label="Increase maximum passes"
-        >
-          +
-        </button>
-      </div>
-      {actionsPortal ? createPortal(launchButton, actionsPortal) : launchButton}
     </div>
   );
+
+  return actionsPortal ? createPortal(content, actionsPortal) : content;
 }
