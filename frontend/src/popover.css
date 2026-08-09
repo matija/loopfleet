@@ -53,3 +53,34 @@
     transform: translateY(0);
   }
 }
+
+/* Metadata hover card (run chips, task rows): a read-only grid of
+ * icon-plus-value rows. `display: contents` on each row lets the icon and
+ * value columns align across rows without a nested grid per row. */
+.meta-popover {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2) var(--space-2);
+  min-width: 200px;
+  max-width: 280px;
+  pointer-events: none;
+}
+
+.meta-popover__row {
+  display: contents;
+}
+
+.meta-popover__icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--c-text-faint);
+}
+
+.meta-popover__value {
+  font-size: var(--text-xs);
+  color: var(--c-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  align-self: center;
+}

@@ -8,16 +8,31 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { agentStatus, launchRun, planOverview } from "../commands";
+import { agentStatus, launchRun, listProjects, planOverview } from "../commands";
 import { normalizeDisplayText } from "../displayText";
+import { onRunStatus } from "../events";
 import { readLaunchPrefs, writeLaunchPrefs } from "../launchPrefs";
+import { isActiveRun, RUN_STATUS_LABEL } from "../status";
 import { SplitButton } from "./Button";
+import { formatDuration } from "./DataGrid";
+import { Elapsed } from "./Elapsed";
 import { NoPlanEmptyState } from "./EmptyState";
-import { AlertIcon, CheckIcon, ClockIcon, DotIcon } from "./Icon";
+import {
+  AgentIcon,
+  AlertIcon,
+  BoxIcon,
+  CheckIcon,
+  ClockIcon,
+  DotIcon,
+  FolderIcon,
+  GitBranchIcon,
+} from "./Icon";
 import { Popover } from "./Popover";
+import { MetaRow, useHoverOpen, worktreeBranch } from "./RunDock";
 import type {
   AgentStatus,
   PlanView as Plan,
+  RunStatus,
   TaskStatus,
   TaskView,
 } from "../types";
@@ -65,6 +80,7 @@ export function PlanView({
   const [error, setError] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentStatus[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
+  const [repoName, setRepoName] = useState<string | undefined>(undefined);
 
   const reload = useCallback(() => {
     planOverview(projectId)
@@ -87,6 +103,20 @@ export function PlanView({
       .finally(() => setAgentsLoading(false));
   }, []);
 
+  // The project's repo name, for the task rows' metadata hover card — plan
+  // overview data doesn't carry it, so it's resolved separately.
+  useEffect(() => {
+    listProjects()
+      .then((ps) => {
+        const p = ps.find((x) => x.id === projectId);
+        if (p) {
+          const parts = p.repo_path.replace(/\/+$/, "").split("/");
+          setRepoName(parts[parts.length - 1] || p.repo_path);
+        }
+      })
+      .catch(() => {});
+  }, [projectId]);
+
   const installed = agents.filter((a) => a.installed).map((a) => a.key);
 
   if (error) return <p className="panel__error">{error}</p>;
@@ -100,6 +130,7 @@ export function PlanView({
           key={plan.plan_id}
           plan={plan}
           projectId={projectId}
+          repoName={repoName}
           installed={installed}
           agentsLoading={agentsLoading}
           onLaunched={reload}
@@ -114,6 +145,7 @@ export function PlanView({
 function PlanCard({
   plan,
   projectId,
+  repoName,
   installed,
   agentsLoading,
   onLaunched,
@@ -122,6 +154,7 @@ function PlanCard({
 }: {
   plan: Plan;
   projectId: string;
+  repoName: string | undefined;
   installed: string[];
   agentsLoading: boolean;
   onLaunched: () => void;
@@ -161,6 +194,7 @@ function PlanCard({
               task={task}
               planId={plan.plan_id}
               projectId={projectId}
+              repoName={repoName}
               installed={installed}
               agentsLoading={agentsLoading}
               onLaunched={onLaunched}
@@ -174,10 +208,25 @@ function PlanCard({
   );
 }
 
+/// What the row knows about the most recent run it launched this session —
+/// enough to populate the metadata hover card. Not persisted; a fresh mount
+/// (e.g. reopening the plan) starts with none until the row launches again.
+type RowLastRun = {
+  runId: string;
+  agent: string;
+  maxIterations: number;
+  startedAt: number;
+  status: RunStatus;
+  /// Set once the run leaves an active status — there's no server "finished
+  /// at" field, so this is the moment the row itself observed the change.
+  finishedAt?: number;
+};
+
 function TaskRow({
   task,
   planId,
   projectId,
+  repoName,
   installed,
   agentsLoading,
   onLaunched,
@@ -187,6 +236,7 @@ function TaskRow({
   task: TaskView;
   planId: string;
   projectId: string;
+  repoName: string | undefined;
   installed: string[];
   agentsLoading: boolean;
   onLaunched: () => void;
@@ -194,11 +244,37 @@ function TaskRow({
   onCompare: (target: CompareTarget) => void;
 }) {
   const StatusIcon = STATUS_ICON[task.status];
+  const [lastRun, setLastRun] = useState<RowLastRun | null>(null);
+  const rowRef = useRef<HTMLLIElement>(null);
+  const { open, handlers } = useHoverOpen(400, rowRef);
+
+  // Track the launched run's terminal transition so the hover card can show
+  // a finished duration instead of freezing on "running".
+  useEffect(() => {
+    if (!lastRun) return;
+    const runId = lastRun.runId;
+    const unlisten = onRunStatus((p) => {
+      if (p.run_id !== runId) return;
+      setLastRun((prev) =>
+        prev && prev.runId === runId
+          ? {
+              ...prev,
+              status: p.status,
+              finishedAt: isActiveRun(p.status) ? undefined : Date.now(),
+            }
+          : prev,
+      );
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, [lastRun?.runId]);
+
   return (
     // tabIndex makes the row itself a keyboard stop so its rest-hidden actions
     // (revealed via :hover / :focus-within in plan.css) are reachable without
     // a pointer.
-    <li className="task-row" tabIndex={0}>
+    <li className="task-row" tabIndex={0} ref={rowRef} {...handlers}>
       <div className="task-row__main">
         <span className={`task-status task-status--${task.status}`}>
           <StatusIcon size={16} className="task-status__icon" />
@@ -245,16 +321,71 @@ function TaskRow({
         installed={installed}
         agentsLoading={agentsLoading}
         onLaunched={onLaunched}
-        onLaunch={(runId, agent, maxIterations) =>
+        onLaunch={(runId, agent, maxIterations) => {
+          setLastRun({
+            runId,
+            agent,
+            maxIterations,
+            startedAt: Date.now(),
+            status: "running",
+          });
           onLaunch({
             runId,
             taskText: task.text,
             taskAnchor: task.anchor,
             agent,
             maxIterations,
-          })
-        }
+          });
+        }}
       />
+      <Popover
+        open={open}
+        onClose={() => {}}
+        anchorRef={rowRef}
+        role="dialog"
+        aria-label={`${normalizeDisplayText(task.text)} details`}
+        className="meta-popover"
+      >
+        <MetaRow
+          icon={<FolderIcon size={14} />}
+          value={repoName ?? "—"}
+          label="Repo"
+        />
+        <MetaRow
+          icon={<GitBranchIcon size={14} />}
+          value={lastRun ? worktreeBranch(lastRun.runId) : "—"}
+          label="Worktree branch"
+        />
+        <MetaRow
+          icon={<AgentIcon size={14} />}
+          value={lastRun?.agent ?? "—"}
+          label="Agent"
+        />
+        <MetaRow
+          icon={<BoxIcon size={14} />}
+          value={
+            lastRun
+              ? `${lastRun.maxIterations} ${lastRun.maxIterations === 1 ? "pass" : "passes"}`
+              : "—"
+          }
+          label="Pass count"
+        />
+        <MetaRow
+          icon={<ClockIcon size={14} />}
+          value={
+            !lastRun ? (
+              "—"
+            ) : isActiveRun(lastRun.status) ? (
+              <Elapsed startedAt={lastRun.startedAt} />
+            ) : lastRun.finishedAt !== undefined ? (
+              `Finished in ${formatDuration(lastRun.finishedAt - lastRun.startedAt)}`
+            ) : (
+              RUN_STATUS_LABEL[lastRun.status]
+            )
+          }
+          label="Elapsed or finished time"
+        />
+      </Popover>
     </li>
   );
 }
