@@ -14,7 +14,7 @@ import { createPortal } from "react-dom";
 import { agentStatus } from "../commands";
 import { onRunEvent } from "../events";
 import type { AgentStatus } from "../types";
-import { RUN_STATUS_LABEL, isActiveRun } from "../status";
+import { RUN_STATUS_ICON, RUN_STATUS_LABEL, isActiveRun } from "../status";
 import { CommandBar } from "./CommandBar";
 import { Elapsed } from "./Elapsed";
 import { DataGrid, eventText, formatDuration, rowsDuration, GridFooter, type GridRow } from "./DataGrid";
@@ -120,6 +120,7 @@ export function LiveRunView({
     run.maxIterations !== undefined
       ? `${run.maxIterations} ${run.maxIterations === 1 ? "pass" : "passes"}`
       : null;
+  const StatusIcon = RUN_STATUS_ICON[run.status];
   const q = filter.trim().toLowerCase();
   const shown = q
     ? events.filter((e) => eventText(e.event).toLowerCase().includes(q))
@@ -133,6 +134,7 @@ export function LiveRunView({
         </button>
         <div className="run-view__ident">
           <span className={`run-view__status status-pill status-pill--${run.status}`}>
+            <StatusIcon size={12} className="status-pill__icon" />
             {RUN_STATUS_LABEL[run.status]}
           </span>
           <span className="run-view__meta">

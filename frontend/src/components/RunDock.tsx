@@ -11,30 +11,9 @@
 
 import type { RunStatus } from "../types";
 import { normalizeDisplayText } from "../displayText";
-import { RUN_STATUS_LABEL, isActiveRun } from "../status";
+import { RUN_STATUS_ICON, RUN_STATUS_LABEL, isActiveRun } from "../status";
 import { Elapsed } from "./Elapsed";
-import {
-  AlertIcon,
-  CheckIcon,
-  ClockIcon,
-  DotIcon,
-  PlayIcon,
-  SquareIcon,
-  XIcon,
-} from "./Icon";
-
-/// Leading glyph per lifecycle token — the dock chip's compact stand-in for the
-/// filled `.status-pill` worn by the other run surfaces. Colored via
-/// `.run-chip__status--${status}` in dock.css, which mirrors `.status-pill`'s
-/// per-status palette.
-const RUN_STATUS_ICON: Record<RunStatus, typeof CheckIcon> = {
-  queued: DotIcon,
-  running: PlayIcon,
-  completed: CheckIcon,
-  failed: AlertIcon,
-  stopped: SquareIcon,
-  "limit-reached": ClockIcon,
-};
+import { SquareIcon, XIcon } from "./Icon";
 
 /// One run tracked by the dock. Seeded at launch, its `status` updated from the
 /// `run_status` stream.

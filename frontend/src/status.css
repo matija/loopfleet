@@ -1,55 +1,64 @@
 /* Run-status pill: the one shared visual for a `RunStatus` token, worn by every
  * run surface — the dock chip, the live view, the timeline, compare. Each host's
  * own class keeps its layout (grid vs flex placement); this owns only the pill's
- * shape, weight, and the per-status colors, so those never drift between
- * surfaces. Values via tokens.css bar the semantic tints, which mirror the
- * task-badge palette. */
+ * shape, weight, glyph, and the per-status colors, so those never drift between
+ * surfaces. A hairline border on a transparent ground carries the state, not a
+ * filled rectangle — color lives on the glyph and label text only. Values via
+ * tokens.css bar the semantic tints, which mirror the task-badge palette. */
 
 .status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   font-size: var(--text-xs);
   font-weight: 600;
   padding: 2px var(--space-2);
   border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
   white-space: nowrap;
-  /* Reserve room for the widest label ("Rate-limited") and center within it, so
-   * a status transition (Queued → Running → Completed) recolors in place instead
-   * of resizing the pill and shifting the task text beside it. inline-block makes
+  /* Reserve room for the widest label ("Rate-limited") plus its glyph, so a
+   * status transition (Queued → Running → Completed) recolors in place instead
+   * of resizing the pill and shifting the task text beside it. inline-flex makes
    * the width floor apply in every host — grid item, flex item, or inline. */
-  display: inline-block;
-  min-width: 7.5em;
-  text-align: center;
+  min-width: 8.5em;
   /* A status change (queued → running → completed) settles into its new color
    * rather than snapping. Neutralized by the prefers-reduced-motion guard. */
   transition: color var(--motion-fast) var(--ease-out),
-    background-color var(--motion-fast) var(--ease-out);
+    border-color var(--motion-fast) var(--ease-out);
+}
+
+.status-pill__icon {
+  flex: none;
 }
 
 .status-pill--queued,
 .status-pill--running {
   color: var(--c-accent-text);
-  background: var(--c-accent-quiet);
+  border-color: var(--c-accent-border);
 }
 
 .status-pill--completed {
   color: var(--c-ok);
-  background: var(--c-ok-quiet);
+  border-color: var(--c-ok-quiet);
 }
 
 .status-pill--failed {
   color: var(--c-danger);
-  background: var(--c-danger-quiet);
+  border-color: var(--c-danger-quiet);
 }
 
 .status-pill--stopped {
   color: var(--c-warn);
-  background: var(--c-warn-quiet);
+  border-color: var(--c-warn-quiet);
 }
 
-/* Rate-limited: a distinct warn tint (amber, denser than stopped) — the run
- * paused on an external limit, not a failure or a user stop. */
+/* Rate-limited: a stronger warn border than stopped — the run paused on an
+ * external limit, not a failure or a user stop. */
 .status-pill--limit-reached {
   color: var(--c-warn);
-  background: var(--c-warn-loud);
+  border-color: var(--c-warn);
 }
 
 /* Running reads as live: a slow, low-contrast breath so an in-flight run is
