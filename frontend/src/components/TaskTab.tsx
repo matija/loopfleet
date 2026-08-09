@@ -3,6 +3,7 @@
 // Reuses `LaunchControl` from the plan body so launch logic lives in one place.
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { agentStatus, getSettings, planOverview } from "../commands";
 import { normalizeDisplayText } from "../displayText";
 import type { AgentStatus, PlanView as Plan, Settings } from "../types";
@@ -21,6 +22,7 @@ export function TaskTab({
   onLaunch,
   onCompare,
   onLaunched,
+  toolbarActions,
 }: {
   projectId: string;
   planId: string;
@@ -30,6 +32,9 @@ export function TaskTab({
   onLaunch: (run: LaunchedRun) => void;
   onCompare: (target: CompareTarget) => void;
   onLaunched: () => void;
+  /// The toolbar's action-slot DOM node (App's Toolbar ref). Run and Compare
+  /// portal there instead of rendering inline.
+  toolbarActions: HTMLElement | null;
 }) {
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +100,7 @@ export function TaskTab({
               maxIterations,
             })
           }
+          actionsPortal={toolbarActions}
         />
       </div>
       <h3 className="task-tab__text">{normalizeDisplayText(task.text)}</h3>
@@ -104,8 +110,9 @@ export function TaskTab({
           iterating.
         </div>
       )}
-      {task.run_count > 0 && (
-        <div className="task-tab__actions">
+      {task.run_count > 0 &&
+        toolbarActions &&
+        createPortal(
           <button
             className="task-row__compare"
             onClick={() =>
@@ -114,9 +121,9 @@ export function TaskTab({
             title="Compare this task's runs and use one"
           >
             {task.run_count} {task.run_count === 1 ? "run" : "runs"} · compare
-          </button>
-        </div>
-      )}
+          </button>,
+          toolbarActions,
+        )}
     </div>
   );
 }

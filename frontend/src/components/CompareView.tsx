@@ -23,6 +23,7 @@ export function CompareView({
   taskText,
   onClose,
   onAccepted,
+  toolbarActions,
 }: {
   planId: string;
   taskAnchor: string;
@@ -30,6 +31,9 @@ export function CompareView({
   onClose: () => void;
   // Called after a run is accepted so the plan's derived status can refresh.
   onAccepted: () => void;
+  // The toolbar's action-slot DOM node. Each run's Accept ("Use this run")
+  // button portals there instead of rendering inline.
+  toolbarActions: HTMLElement | null;
 }) {
   const [compare, setCompare] = useState<Compare | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +89,7 @@ export function CompareView({
                   reload();
                   onAccepted();
                 }}
+                toolbarActions={toolbarActions}
               />
             ))}
           </div>
@@ -99,9 +104,11 @@ export function CompareView({
 function RunColumn({
   run,
   onAccepted,
+  toolbarActions,
 }: {
   run: RunCompare;
   onAccepted: () => void;
+  toolbarActions: HTMLElement | null;
 }) {
   return (
     <div className={`compare__run${run.accepted ? " compare__run--accepted" : ""}`}>
@@ -128,6 +135,7 @@ function RunColumn({
         runId={run.run_id}
         mergeable={run.final_ref !== null}
         onAccepted={onAccepted}
+        actionsPortal={toolbarActions}
       />
     </div>
   );

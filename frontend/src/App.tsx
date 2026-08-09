@@ -113,6 +113,12 @@ export default function App() {
   // reload keeps the sidebar the way it was left.
   const [projectsCollapsed, toggleProjectsCollapsed] =
     useSidebarCollapsed("projects");
+  // The toolbar's action-slot DOM node (Toolbar's ref), threaded down to
+  // whichever view is open so its primary action button(s) can portal there —
+  // Run/Compare for a task, Stop for a live run, Use run/Retry for a finished
+  // run, Accept for a compare. Starts null until Toolbar's first commit.
+  const [toolbarActionsEl, setToolbarActionsEl] =
+    useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     listProjects()
@@ -523,7 +529,10 @@ export default function App() {
       }
     >
       <Toasts toasts={toasts} onDismiss={dismissToast} />
-      <Toolbar breadcrumb={<Breadcrumb crumbs={crumbsFor(view, projects, runs, selectProject)} />} />
+      <Toolbar
+        ref={setToolbarActionsEl}
+        breadcrumb={<Breadcrumb crumbs={crumbsFor(view, projects, runs, selectProject)} />}
+      />
       <div
         className={`main__body${
           view.kind === "run" || view.kind === "compare"
@@ -541,6 +550,7 @@ export default function App() {
             onClose={goBack}
             onAccepted={() => setPlanNonce((n) => n + 1)}
             onRetry={onRetry}
+            toolbarActions={toolbarActionsEl}
           />
         ) : view.kind === "compare" ? (
           <CompareView
@@ -550,6 +560,7 @@ export default function App() {
             taskText={view.taskText}
             onClose={goBack}
             onAccepted={() => setPlanNonce((n) => n + 1)}
+            toolbarActions={toolbarActionsEl}
           />
         ) : view.kind === "task" ? (
           <TaskTab
@@ -568,6 +579,7 @@ export default function App() {
                 taskText: target.taskText,
               })
             }
+            toolbarActions={toolbarActionsEl}
           />
         ) : view.kind === "plan" ? (
           <PlanSurface
@@ -624,6 +636,7 @@ function RunPane({
   onClose,
   onAccepted,
   onRetry,
+  toolbarActions,
 }: {
   runId: string;
   runs: ActiveRun[];
@@ -631,13 +644,20 @@ function RunPane({
   onClose: () => void;
   onAccepted: () => void;
   onRetry: (run: ActiveRun) => void;
+  toolbarActions: HTMLDivElement | null;
 }) {
   const run = runs.find((r) => r.runId === runId);
   if (!run) {
     return <p className="main__placeholder">This run is no longer available.</p>;
   }
   return isActiveRun(run.status) ? (
-    <LiveRunView key={run.runId} run={run} onStop={onStop} onClose={onClose} />
+    <LiveRunView
+      key={run.runId}
+      run={run}
+      onStop={onStop}
+      onClose={onClose}
+      toolbarActions={toolbarActions}
+    />
   ) : (
     <RunTimeline
       key={run.runId}
@@ -645,6 +665,7 @@ function RunPane({
       onClose={onClose}
       onAccepted={onAccepted}
       onRetry={onRetry}
+      toolbarActions={toolbarActions}
     />
   );
 }

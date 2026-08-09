@@ -6,6 +6,7 @@
 // loudly as a review queue (the compare/accept backlog).
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { agentStatus, getSettings, launchRun, planOverview } from "../commands";
 import { normalizeDisplayText } from "../displayText";
 import { NoPlanEmptyState } from "./EmptyState";
@@ -251,6 +252,7 @@ export function LaunchControl({
   settings,
   onLaunched,
   onLaunch,
+  actionsPortal,
 }: {
   projectId: string;
   taskAnchor: string;
@@ -259,6 +261,10 @@ export function LaunchControl({
   settings: Settings | null;
   onLaunched: () => void;
   onLaunch: (runId: string, agent: string, maxIterations: number) => void;
+  /// When set, the Run button (and its result message) portal there instead of
+  /// rendering inline — the toolbar's action slot, wired by TaskTab. Agent
+  /// picker and pass count always stay inline; only the trigger relocates.
+  actionsPortal?: HTMLElement | null;
 }) {
   const preferred =
     settings && installed.includes(settings.default_agent)
@@ -305,6 +311,24 @@ export function LaunchControl({
       setLaunching(false);
     }
   }
+
+  const launchButton = (
+    <>
+      <button
+        className="btn btn--accent launch__go"
+        onClick={launch}
+        disabled={noAgents || launching || !agent}
+        title={noAgents ? "No agent CLI is installed" : undefined}
+      >
+        {launching ? "Launching…" : "Run"}
+      </button>
+      {msg && (
+        <span className={`msg ${msg.ok ? "msg--ok" : "msg--err"}`}>
+          {msg.text}
+        </span>
+      )}
+    </>
+  );
 
   return (
     <div className="launch">
@@ -357,19 +381,7 @@ export function LaunchControl({
           +
         </button>
       </div>
-      <button
-        className="btn btn--accent launch__go"
-        onClick={launch}
-        disabled={noAgents || launching || !agent}
-        title={noAgents ? "No agent CLI is installed" : undefined}
-      >
-        {launching ? "Launching…" : "Run"}
-      </button>
-      {msg && (
-        <span className={`msg ${msg.ok ? "msg--ok" : "msg--err"}`}>
-          {msg.text}
-        </span>
-      )}
+      {actionsPortal ? createPortal(launchButton, actionsPortal) : launchButton}
     </div>
   );
 }

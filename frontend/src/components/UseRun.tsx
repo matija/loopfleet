@@ -6,6 +6,7 @@
 // detour through compare). Consumes only the pre-existing `use_run` command.
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useRun } from "../commands";
 import type { UseRunResult } from "../types";
 
@@ -13,11 +14,16 @@ export function UseRun({
   runId,
   mergeable,
   onAccepted,
+  actionsPortal,
 }: {
   runId: string;
   /// True when the run produced a snapshot to merge (a final iteration ref).
   mergeable: boolean;
   onAccepted: () => void;
+  /// When set, the "Use this run" button portals there instead of rendering
+  /// inline — the toolbar's action slot (RunTimeline's "Use run", CompareView's
+  /// "Accept"). The branch input, hint, result, and error stay inline.
+  actionsPortal?: HTMLElement | null;
 }) {
   const [branch, setBranch] = useState("");
   const [busy, setBusy] = useState(false);
@@ -25,6 +31,16 @@ export function UseRun({
   const [error, setError] = useState<string | null>(null);
 
   const custom = branch.trim() !== "";
+  const useButton = (
+    <button
+      className="btn btn--accent use-run__go"
+      onClick={apply}
+      disabled={!mergeable || busy}
+      title={!mergeable ? "No snapshot to merge" : undefined}
+    >
+      {busy ? "Merging…" : "Use this run"}
+    </button>
+  );
 
   async function apply() {
     setBusy(true);
@@ -54,14 +70,7 @@ export function UseRun({
           aria-label="Target branch"
           title="Leave empty to merge into your current branch. Name a branch to land the run elsewhere."
         />
-        <button
-          className="btn btn--accent use-run__go"
-          onClick={apply}
-          disabled={!mergeable || busy}
-          title={!mergeable ? "No snapshot to merge" : undefined}
-        >
-          {busy ? "Merging…" : "Use this run"}
-        </button>
+        {actionsPortal ? createPortal(useButton, actionsPortal) : useButton}
       </div>
       <p className="use-run__hint">
         {custom ? (
