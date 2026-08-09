@@ -602,6 +602,7 @@ export default function App() {
                 taskText: target.taskText,
               })
             }
+            toolbarActions={toolbarActionsEl}
           />
         ) : (
           <>
