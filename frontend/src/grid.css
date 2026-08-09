@@ -1,7 +1,7 @@
 /* Typed event grid (Workbench task 6): the DB-client data grid — row numbers,
- * a fixed column template, and enum pills in the `type` column. Structural
- * classes only; every value comes from tokens.css bar the per-variant pill
- * hues, which are a genuinely new pattern this grid introduces. */
+ * a fixed column template, and enum labels in the `type` column. Structural
+ * classes only; every value comes from tokens.css. Rows stay at 2px vertical
+ * padding so the stream reads as a log, per DESIGN.md's event-log rule. */
 
 .data-grid {
   --grid-cols: 6em minmax(0, 1fr) 6.5em;
@@ -56,44 +56,40 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* --- enum pills: one stable color per normalized-event tone --- */
+/* --- enum labels: one stable tone per normalized-event type --- */
+/* No fills anywhere in the stream: type is carried by text color and weight
+ * alone (DESIGN.md event-log rule), so no row holds a filled semantic block.
+ * Routine events stay muted; warn/error are the only semantic hues. */
 
 .grid-pill {
   display: inline-block;
   max-width: 100%;
-  padding: 0 var(--space-1);
-  border-radius: 4px; /* tokens-allow: badge radius, tighter than --radius-sm */
   font-family: var(--font-sans);
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: var(--tracking-normal);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: baseline;
-}
-
-/* Routine events carry no fill — plain muted text keeps the stream calm so the
- * warn/error/text variants below are the only things that draw the eye. */
-.grid-pill--neutral {
   color: var(--c-text-muted);
-  font-weight: 400;
-  padding: 0;
 }
 
+/* Agent-output rows: primary ink and weight lift them from the routine stream
+ * without spending the accent hue on a non-action. */
 .grid-pill--text {
-  color: var(--c-accent-text);
-  background: var(--c-accent-quiet);
+  color: var(--c-text);
+  font-weight: 600;
 }
 
 .grid-pill--warn {
   color: var(--c-warn);
-  background: var(--c-warn-quiet);
+  font-weight: 600;
 }
 
 .grid-pill--error {
   color: var(--c-danger);
-  background: var(--c-danger-quiet);
+  font-weight: 600;
 }
 
 /* A quiet em-dash for an empty detail or unknown ts — no box, so absent values
