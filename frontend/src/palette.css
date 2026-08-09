@@ -31,9 +31,9 @@
   display: flex;
   flex-direction: column;
   background: var(--c-surface);
-  border: 1px solid var(--c-border-strong);
+  border: 1px solid var(--c-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-1);
+  box-shadow: var(--shadow-2);
   overflow: hidden;
   /* The panel settles down onto its resting spot while the scrim fades, so the
    * modal reads as arriving rather than blinking into place. */
@@ -51,11 +51,24 @@
   }
 }
 
+.palette__input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.palette__input-icon {
+  position: absolute;
+  left: var(--space-5);
+  color: var(--c-text-faint);
+  pointer-events: none;
+}
+
 .palette__input {
   width: 100%;
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-4) var(--space-5) var(--space-4) calc(var(--space-5) + var(--space-5));
   border: none;
-  border-bottom: 1px solid var(--c-border);
   background: transparent;
   color: var(--c-text);
   font: inherit;
@@ -68,9 +81,12 @@
 
 /* A boxed outline ring would draw a rectangle inside the rounded palette panel
  * on this borderless, always-auto-focused header input, so we suppress it and
- * signal focus by turning the bottom rule indigo instead. */
+ * signal focus by turning the wrap's bottom rule indigo instead. */
 .palette__input:focus {
   outline: none;
+}
+
+.palette__input-wrap:focus-within {
   border-bottom-color: var(--c-accent);
 }
 
@@ -106,23 +122,35 @@
   align-items: center;
   gap: var(--space-3);
   width: 100%;
+  min-height: var(--row-h);
   text-align: left;
   border: 1px solid transparent;
   background: transparent;
   color: var(--c-text-muted);
-  padding: var(--space-2) var(--space-3);
+  padding: 0 var(--space-3);
   border-radius: var(--radius-md);
 }
 
-.palette__row:hover,
-.palette__row--active {
+.palette__row:hover {
   background: var(--c-surface-hover);
   color: var(--c-text);
 }
 
+/* Quiet fill for the selected row — the accent is reserved for genuine
+ * accent affordances elsewhere, not row selection. */
 .palette__row--active {
-  border-color: var(--c-border-strong);
-  background: var(--c-accent-quiet);
+  background: var(--c-surface-3);
+  color: var(--c-text);
+}
+
+.palette__row-icon {
+  flex: none;
+  color: var(--c-text-faint);
+}
+
+.palette__row--active .palette__row-icon,
+.palette__row:hover .palette__row-icon {
+  color: var(--c-text-muted);
 }
 
 .palette__row-body {
