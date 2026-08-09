@@ -44,18 +44,25 @@ export function RunDock({
   onOpen,
   onStop,
   onDismiss,
+  collapsed,
 }: {
   runs: ActiveRun[];
   selectedRunId: string | null;
   onOpen: (runId: string) => void;
   onStop: (runId: string) => void;
   onDismiss: (runId: string) => void;
+  /// Collapsed to just the head strip via the toolbar's panel-bottom toggle.
+  /// App.tsx owns the persisted state; the dock just renders it.
+  collapsed?: boolean;
 }) {
   const activeCount = runs.filter((r) => isActiveRun(r.status)).length;
   const unseenCount = runs.filter((r) => r.unseen).length;
 
   return (
-    <section className="run-dock" aria-label="Active runs">
+    <section
+      className={`run-dock${collapsed ? " run-dock--collapsed" : ""}`}
+      aria-label="Active runs"
+    >
       <div className="run-dock__head">
         <span className="run-dock__title">Runs</span>
         <span className="run-dock__count">
@@ -63,7 +70,7 @@ export function RunDock({
           {unseenCount > 0 ? ` · ${unseenCount} new` : ""}
         </span>
       </div>
-      {runs.length === 0 ? (
+      {collapsed ? null : runs.length === 0 ? (
         <p className="run-dock__empty">
           No runs yet. Launch one from a task above — it will appear here and stay
           stoppable while you work.

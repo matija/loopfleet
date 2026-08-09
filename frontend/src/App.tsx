@@ -25,10 +25,13 @@ import { RunTimeline } from "./components/RunTimeline";
 import { CompareView } from "./components/CompareView";
 import { Toasts, useToasts } from "./components/Toasts";
 import { Toolbar } from "./components/Toolbar";
+import { IconButton } from "./components/Button";
 import {
   ChevronRightIcon,
   DiffIcon,
   FolderIcon,
+  PanelBottomIcon,
+  PanelLeftIcon,
   PlayIcon,
   type IconProps,
 } from "./components/Icon";
@@ -39,10 +42,19 @@ import {
 import { useSidebarCollapsed } from "./sidebarCollapse";
 
 const SIDEBAR_HIDDEN_KEY = "loopfleet.sidebar.hidden";
+const DOCK_COLLAPSED_KEY = "loopfleet.dock.collapsed";
 
 function readSidebarHidden(): boolean {
   try {
     return localStorage.getItem(SIDEBAR_HIDDEN_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function readDockCollapsed(): boolean {
+  try {
+    return localStorage.getItem(DOCK_COLLAPSED_KEY) === "true";
   } catch {
     return false;
   }
@@ -109,6 +121,10 @@ export default function App() {
   // Toggled by the panel-left button in the sidebar top strip or ⌘B, and
   // persisted so the collapsed layout survives a reload.
   const [sidebarHidden, setSidebarHidden] = useState(readSidebarHidden);
+  // Collapsed state of the run dock — separate from the sidebar toggle above.
+  // Toggled by the panel-bottom button in the toolbar's trailing slot, and
+  // persisted so the collapsed dock survives a reload.
+  const [dockCollapsed, setDockCollapsed] = useState(readDockCollapsed);
   // Collapsed state of the "Projects" section disclosure, persisted so a
   // reload keeps the sidebar the way it was left.
   const [projectsCollapsed, toggleProjectsCollapsed] =
@@ -222,7 +238,17 @@ export default function App() {
     }
   }, [sidebarHidden]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(DOCK_COLLAPSED_KEY, String(dockCollapsed));
+    } catch {
+      // localStorage unavailable (private mode, quota) — the toggle just
+      // doesn't persist across reloads.
+    }
+  }, [dockCollapsed]);
+
   const toggleSidebarHidden = useCallback(() => setSidebarHidden((h) => !h), []);
+  const toggleDockCollapsed = useCallback(() => setDockCollapsed((c) => !c), []);
 
   const selected = projects.find((p) => p.id === selectedId) ?? null;
   // A connection's status dot lights while any of its runs is active. The dock
@@ -396,6 +422,7 @@ export default function App() {
         <RunDock
           runs={runs}
           selectedRunId={selectedRunId}
+          collapsed={dockCollapsed}
           onOpen={openRun}
           onStop={(id) => {
             stopRun(id).catch((e) => pushError(String(e)));
@@ -539,6 +566,24 @@ export default function App() {
         filterRef={setToolbarFilterEl}
         actionsRef={setToolbarActionsEl}
         breadcrumb={<Breadcrumb crumbs={crumbsFor(view, projects, runs, selectProject)} />}
+        trailing={
+          <>
+            <IconButton
+              icon={PanelLeftIcon}
+              aria-label="Sidebar"
+              aria-pressed={!sidebarHidden}
+              onClick={toggleSidebarHidden}
+              title="Toggle sidebar (⌘B)"
+            />
+            <IconButton
+              icon={PanelBottomIcon}
+              aria-label="Run dock"
+              aria-pressed={!dockCollapsed}
+              onClick={toggleDockCollapsed}
+              title="Toggle run dock"
+            />
+          </>
+        }
       />
       <div
         className={`main__body${
