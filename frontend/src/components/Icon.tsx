@@ -185,6 +185,14 @@ export function AlertIcon({ size = 16, className }: IconProps) {
   );
 }
 
+export function DotIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...defaultProps}>
+      <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function DownloadIcon({ size = 16, className }: IconProps) {
   return (
     <svg width={size} height={size} className={className} {...defaultProps}>

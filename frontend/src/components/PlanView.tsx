@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import { agentStatus, getSettings, launchRun, planOverview } from "../commands";
 import { normalizeDisplayText } from "../displayText";
 import { NoPlanEmptyState } from "./EmptyState";
+import { AlertIcon, CheckIcon, ClockIcon, DotIcon } from "./Icon";
 import type {
   AgentStatus,
   PlanView as Plan,
@@ -23,6 +24,13 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
   "in-progress": "In progress",
   "completed-unaccepted": "Needs review",
   accepted: "Accepted",
+};
+
+export const STATUS_ICON: Record<TaskStatus, typeof CheckIcon> = {
+  "not-started": DotIcon,
+  "in-progress": ClockIcon,
+  "completed-unaccepted": AlertIcon,
+  accepted: CheckIcon,
 };
 
 /// What a task launch reports upward for the global run dock.
@@ -190,11 +198,13 @@ function TaskRow({
   onCompare: (target: CompareTarget) => void;
 }) {
   const review = task.status === "completed-unaccepted";
+  const StatusIcon = STATUS_ICON[task.status];
   return (
     <li className={`task-row${review ? " task-row--review" : ""}`}>
       <div className="task-row__main">
-        <span className={`task-badge task-badge--${task.status}`}>
-          {STATUS_LABEL[task.status]}
+        <span className={`task-status task-status--${task.status}`}>
+          <StatusIcon size={16} className="task-status__icon" />
+          <span className="task-status__label">{STATUS_LABEL[task.status]}</span>
         </span>
         <span className="task-row__text">
           {normalizeDisplayText(task.text)}

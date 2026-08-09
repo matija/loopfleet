@@ -9,6 +9,7 @@ import { normalizeDisplayText } from "../displayText";
 import type { AgentStatus, PlanView as Plan, Settings } from "../types";
 import {
   LaunchControl,
+  STATUS_ICON,
   STATUS_LABEL,
   type CompareTarget,
   type LaunchedRun,
@@ -75,12 +76,14 @@ export function TaskTab({
   }
 
   const review = task.status === "completed-unaccepted";
+  const StatusIcon = STATUS_ICON[task.status];
   return (
     <div className="task-tab">
       <div className="task-tab__toolbar">
         <div className="task-tab__meta">
-          <span className={`task-badge task-badge--${task.status}`}>
-            {STATUS_LABEL[task.status]}
+          <span className={`task-status task-status--${task.status}`}>
+            <StatusIcon size={16} className="task-status__icon" />
+            <span className="task-status__label">{STATUS_LABEL[task.status]}</span>
           </span>
           <span className="task-tab__plan">{plan.title ?? plan.file_path}</span>
         </div>
