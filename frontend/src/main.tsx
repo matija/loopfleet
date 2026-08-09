@@ -14,6 +14,7 @@ import "./status.css";
 import "./grid.css";
 import "./palette.css";
 import "./toolbar.css";
+import "./popover.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

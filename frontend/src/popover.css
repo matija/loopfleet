@@ -1,0 +1,55 @@
+/* Popover — the single floating-surface primitive (Popover.tsx). Anchored
+ * menus/dialogs share this one fill, hairline, radius, and shadow rather than
+ * each call site inventing its own. Position (top/left) is computed and set
+ * inline by the component; this file owns only the visual shell and the
+ * entrance, whose direction flips to match whichever side of the anchor the
+ * panel landed on. */
+
+.popover {
+  position: fixed;
+  z-index: 300;
+  min-width: 160px;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  padding: var(--space-2);
+  color: var(--c-text);
+}
+
+.popover:focus {
+  outline: none;
+}
+
+/* Settle in from the anchor's edge — down into place when opening below the
+ * anchor, up into place when flipped above it. Neutralized globally by the
+ * prefers-reduced-motion guard in tokens.css. */
+.popover[data-placement="bottom"] {
+  animation: popover-rise-from-top var(--motion-base) var(--ease-out);
+}
+
+.popover[data-placement="top"] {
+  animation: popover-rise-from-bottom var(--motion-base) var(--ease-out);
+}
+
+@keyframes popover-rise-from-top {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes popover-rise-from-bottom {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
