@@ -22,6 +22,16 @@ import { fuzzyMatch } from "../fuzzy";
 import type { PlanView as Plan, Project } from "../types";
 import { RUN_STATUS_LABEL } from "../status";
 import type { ActiveRun } from "./RunDock";
+import { ChecklistIcon, ComposeIcon, FolderIcon, PlayIcon, SearchIcon } from "./Icon";
+
+/// One glyph per result group, so a row's type reads at a glance before its
+/// title does.
+const GROUP_ICON: Record<string, typeof FolderIcon> = {
+  Actions: ComposeIcon,
+  Projects: FolderIcon,
+  Tasks: ChecklistIcon,
+  Runs: PlayIcon,
+};
 
 /// What the palette needs to open a task in the main pane.
 export type PaletteOpenTask = {
@@ -252,16 +262,19 @@ export function CommandPalette({
       }}
     >
       <div className="palette">
-        <input
-          ref={inputRef}
-          className="palette__input"
-          type="text"
-          placeholder="Search projects, tasks, runs, actions…"
-          aria-label="Command palette query"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={onKeyDown}
-        />
+        <div className="palette__input-wrap">
+          <SearchIcon className="palette__input-icon" />
+          <input
+            ref={inputRef}
+            className="palette__input"
+            type="text"
+            placeholder="Search projects, tasks, runs, actions…"
+            aria-label="Command palette query"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+          />
+        </div>
         <div className="palette__list" ref={listRef}>
           {ranked.length === 0 ? (
             <div className="palette__empty">
@@ -274,6 +287,7 @@ export function CommandPalette({
                 {g.rows.map((item) => {
                   const idx = results.indexOf(item);
                   const active = idx === selected;
+                  const GroupIcon = GROUP_ICON[item.group];
                   return (
                     <button
                       key={item.id}
@@ -286,6 +300,7 @@ export function CommandPalette({
                         onClose();
                       }}
                     >
+                      <GroupIcon className="palette__row-icon" />
                       <span className="palette__row-body">
                         <span className="palette__row-title">{item.title}</span>
                         {item.subtitle && (
