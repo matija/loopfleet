@@ -18,11 +18,12 @@ import { LiveRunView } from "./components/LiveRunView";
 import { RunTimeline } from "./components/RunTimeline";
 import { CompareView } from "./components/CompareView";
 import { Toasts, useToasts } from "./components/Toasts";
-import { FolderIcon } from "./components/Icon";
+import { ChevronRightIcon, FolderIcon } from "./components/Icon";
 import {
   CommandPalette,
   type PaletteOpenTask,
 } from "./components/CommandPalette";
+import { useSidebarCollapsed } from "./sidebarCollapse";
 
 // A run streams live while active; once terminal, its persisted timeline (with
 // per-iteration events and diffs) is the surface. Opening a run from the dock
@@ -81,6 +82,10 @@ export default function App() {
   // ⌘K command palette — global keyboard-first navigator across projects,
   // tasks, runs, and quick actions. Toggled by Cmd/Ctrl-K anywhere.
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // Collapsed state of the "Projects" section disclosure, persisted so a
+  // reload keeps the sidebar the way it was left.
+  const [projectsCollapsed, toggleProjectsCollapsed] =
+    useSidebarCollapsed("projects");
 
   useEffect(() => {
     listProjects()
@@ -338,10 +343,18 @@ export default function App() {
       sidebar={
         <>
           <div className="sidebar__section-head">
-            <div className="sidebar__section-label">Projects</div>
+            <button
+              type="button"
+              className="sidebar__section-label sidebar__section-label--disclosure"
+              aria-expanded={!projectsCollapsed}
+              onClick={toggleProjectsCollapsed}
+            >
+              <ChevronRightIcon size={12} className="disclosure__chevron" />
+              Projects
+            </button>
             <AddProject onAdded={onAdded} compact />
           </div>
-          {projects.length > 0 && (
+          {!projectsCollapsed && projects.length > 0 && (
             <div className="sidebar__search">
               <svg
                 className="sidebar__search-icon"
@@ -389,7 +402,7 @@ export default function App() {
               <kbd className="sidebar__search-kbd">⌘K</kbd>
             </div>
           )}
-          {!projectsLoaded ? (
+          {projectsCollapsed ? null : !projectsLoaded ? (
             <div className="sidebar__empty">Loading projects…</div>
           ) : projectsError ? (
             <div className="sidebar__empty sidebar__empty--error">
