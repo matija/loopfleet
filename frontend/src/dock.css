@@ -21,6 +21,12 @@
   line-height: var(--leading-tight);
 }
 
+/* Toolbar panel-bottom toggle collapses the dock to just this head strip —
+ * the run list below stays unrendered, so the row shrinks to its content. */
+.run-dock--collapsed {
+  overflow: visible;
+}
+
 .run-dock__title {
   font-size: var(--text-xs);
   font-weight: 600;
