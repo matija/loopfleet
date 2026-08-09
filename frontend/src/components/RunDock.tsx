@@ -9,11 +9,29 @@
 // Clicking a run opens its live view — the live view component itself lands in
 // the next M7 task; here `onOpen` just carries the selection.
 
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import type { RunStatus } from "../types";
 import { normalizeDisplayText } from "../displayText";
 import { RUN_STATUS_ICON, RUN_STATUS_LABEL, isActiveRun } from "../status";
+import { formatDuration } from "./DataGrid";
 import { Elapsed } from "./Elapsed";
-import { SquareIcon, XIcon } from "./Icon";
+import {
+  AgentIcon,
+  BoxIcon,
+  ClockIcon,
+  FolderIcon,
+  GitBranchIcon,
+  SquareIcon,
+  XIcon,
+} from "./Icon";
+import { Popover } from "./Popover";
 
 /// One run tracked by the dock. Seeded at launch, its `status` updated from the
 /// `run_status` stream.
@@ -39,6 +57,207 @@ export type ActiveRun = {
   unseen?: boolean;
 };
 
+/// Opens `open` after a hover delay, closes it immediately on pointer-leave,
+/// and opens/closes on focus/blur too so keyboard users reach the same
+/// content a mouse hover would reveal. Shared by every metadata hover card
+/// (the dock's run chips here, and PlanView's task rows).
+///
+/// `containerRef`, when given, is checked on blur: focus moving to another
+/// element still inside the container (e.g. a task row's own Run button)
+/// keeps the card open instead of flickering closed and reopening.
+export function useHoverOpen(
+  delayMs = 400,
+  containerRef?: RefObject<HTMLElement | null>,
+) {
+  const [open, setOpen] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  function clearTimer() {
+    if (timer.current !== undefined) {
+      clearTimeout(timer.current);
+      timer.current = undefined;
+    }
+  }
+
+  useEffect(() => clearTimer, []);
+
+  return {
+    open,
+    close: () => {
+      clearTimer();
+      setOpen(false);
+    },
+    handlers: {
+      onMouseEnter: () => {
+        clearTimer();
+        timer.current = setTimeout(() => setOpen(true), delayMs);
+      },
+      onMouseLeave: () => {
+        clearTimer();
+        setOpen(false);
+      },
+      onFocus: () => {
+        clearTimer();
+        setOpen(true);
+      },
+      onBlur: (e: FocusEvent) => {
+        const next = e.relatedTarget as Node | null;
+        if (next && containerRef?.current?.contains(next)) return;
+        clearTimer();
+        setOpen(false);
+      },
+    },
+  };
+}
+
+/// One aligned icon-plus-value row inside a metadata hover card.
+export function MetaRow({
+  icon,
+  value,
+  label,
+}: {
+  icon: ReactNode;
+  value: ReactNode;
+  label: string;
+}) {
+  return (
+    <span className="meta-popover__row">
+      <span className="meta-popover__icon" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="meta-popover__value" aria-label={label}>
+        {value}
+      </span>
+    </span>
+  );
+}
+
+/// The branch a run's isolated worktree checks out — deterministic from the
+/// run id (`crates/gitx/src/worktree.rs`'s `branch_for`), so it needs no
+/// extra field on `ActiveRun`.
+export function worktreeBranch(runId: string): string {
+  return `agent/${runId}`;
+}
+
+function RunChip({
+  run: r,
+  selected,
+  finishedAt,
+  onOpen,
+  onStop,
+  onDismiss,
+}: {
+  run: ActiveRun;
+  selected: boolean;
+  /// Epoch ms captured locally the moment the dock observed this run leave
+  /// an active status — there is no server-side "finished at" field, so this
+  /// is the closest available approximation.
+  finishedAt: number | undefined;
+  onOpen: (runId: string) => void;
+  onStop: (runId: string) => void;
+  onDismiss: (runId: string) => void;
+}) {
+  const active = isActiveRun(r.status);
+  const taskText = normalizeDisplayText(r.taskText);
+  const StatusIcon = RUN_STATUS_ICON[r.status];
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  // `onClose` deliberately no-ops rather than reusing `useHoverOpen`'s
+  // close(): Popover returns focus to its anchor whenever it closes, which
+  // would steal focus back to this chip on every ordinary mouseleave. Leave
+  // and Escape are already handled by the hover handlers below.
+  const { open, handlers } = useHoverOpen();
+
+  return (
+    <li
+      className={`run-chip${selected ? " run-chip--selected" : ""}${r.unseen ? " run-chip--unseen" : ""}`}
+    >
+      <button
+        ref={anchorRef}
+        className="run-chip__open"
+        aria-current={selected}
+        onClick={() => onOpen(r.runId)}
+        title={r.unseen ? `${taskText} — finished, not yet seen` : taskText}
+        {...handlers}
+      >
+        {r.unseen && (
+          <span
+            className="run-chip__unseen"
+            aria-label="Finished, not yet seen"
+          />
+        )}
+        <span
+          className={`run-chip__status run-chip__status--${r.status}`}
+          aria-label={RUN_STATUS_LABEL[r.status]}
+        >
+          <StatusIcon size={14} />
+        </span>
+        <span className="run-chip__task">{taskText}</span>
+        <span className="run-chip__meta">
+          {r.agent} · {r.projectName}
+          {active && <> · <Elapsed startedAt={r.startedAt} /></>}
+        </span>
+      </button>
+      <Popover
+        open={open}
+        onClose={() => {}}
+        anchorRef={anchorRef}
+        role="dialog"
+        aria-label={`${taskText} details`}
+        className="meta-popover"
+      >
+        <MetaRow icon={<FolderIcon size={14} />} value={r.projectName} label="Repo" />
+        <MetaRow
+          icon={<GitBranchIcon size={14} />}
+          value={worktreeBranch(r.runId)}
+          label="Worktree branch"
+        />
+        <MetaRow icon={<AgentIcon size={14} />} value={r.agent} label="Agent" />
+        <MetaRow
+          icon={<BoxIcon size={14} />}
+          value={
+            r.maxIterations !== undefined
+              ? `${r.maxIterations} ${r.maxIterations === 1 ? "pass" : "passes"}`
+              : "—"
+          }
+          label="Pass count"
+        />
+        <MetaRow
+          icon={<ClockIcon size={14} />}
+          value={
+            active ? (
+              <Elapsed startedAt={r.startedAt} />
+            ) : finishedAt !== undefined ? (
+              `Finished in ${formatDuration(finishedAt - r.startedAt)}`
+            ) : (
+              RUN_STATUS_LABEL[r.status]
+            )
+          }
+          label="Elapsed or finished time"
+        />
+      </Popover>
+      {active ? (
+        <button
+          className="run-chip__action"
+          onClick={() => onStop(r.runId)}
+          title="Stop at the next pass boundary"
+          aria-label="Stop run"
+        >
+          <SquareIcon size={14} />
+        </button>
+      ) : (
+        <button
+          className="run-chip__action run-chip__action--dismiss"
+          onClick={() => onDismiss(r.runId)}
+          title="Remove from the dock"
+          aria-label="Dismiss run"
+        >
+          <XIcon size={14} />
+        </button>
+      )}
+    </li>
+  );
+}
+
 export function RunDock({
   runs,
   selectedRunId,
@@ -63,6 +282,19 @@ export function RunDock({
   const idle = runs.length === 0;
   const effectiveCollapsed = collapsed || idle;
 
+  // No server-side "finished at" timestamp rides `ActiveRun` — this captures
+  // the moment the dock itself observes each run leave an active status, so
+  // the hover card can show a finished duration instead of just re-showing
+  // the status label.
+  const finishedAtRef = useRef<Map<string, number>>(new Map());
+  useEffect(() => {
+    for (const r of runs) {
+      if (!isActiveRun(r.status) && !finishedAtRef.current.has(r.runId)) {
+        finishedAtRef.current.set(r.runId, Date.now());
+      }
+    }
+  }, [runs]);
+
   return (
     <section
       className={`run-dock${effectiveCollapsed ? " run-dock--collapsed" : ""}`}
@@ -77,61 +309,17 @@ export function RunDock({
       </div>
       {effectiveCollapsed ? null : (
         <ul className="run-dock__list">
-          {runs.map((r) => {
-            const active = isActiveRun(r.status);
-            const taskText = normalizeDisplayText(r.taskText);
-            const StatusIcon = RUN_STATUS_ICON[r.status];
-            return (
-              <li
-                key={r.runId}
-                className={`run-chip${r.runId === selectedRunId ? " run-chip--selected" : ""}${r.unseen ? " run-chip--unseen" : ""}`}
-              >
-                <button
-                  className="run-chip__open"
-                  aria-current={r.runId === selectedRunId}
-                  onClick={() => onOpen(r.runId)}
-                  title={r.unseen ? `${taskText} — finished, not yet seen` : taskText}
-                >
-                  {r.unseen && (
-                    <span
-                      className="run-chip__unseen"
-                      aria-label="Finished, not yet seen"
-                    />
-                  )}
-                  <span
-                    className={`run-chip__status run-chip__status--${r.status}`}
-                    aria-label={RUN_STATUS_LABEL[r.status]}
-                  >
-                    <StatusIcon size={14} />
-                  </span>
-                  <span className="run-chip__task">{taskText}</span>
-                  <span className="run-chip__meta">
-                    {r.agent} · {r.projectName}
-                    {active && <> · <Elapsed startedAt={r.startedAt} /></>}
-                  </span>
-                </button>
-                {active ? (
-                  <button
-                    className="run-chip__action"
-                    onClick={() => onStop(r.runId)}
-                    title="Stop at the next pass boundary"
-                    aria-label="Stop run"
-                  >
-                    <SquareIcon size={14} />
-                  </button>
-                ) : (
-                  <button
-                    className="run-chip__action run-chip__action--dismiss"
-                    onClick={() => onDismiss(r.runId)}
-                    title="Remove from the dock"
-                    aria-label="Dismiss run"
-                  >
-                    <XIcon size={14} />
-                  </button>
-                )}
-              </li>
-            );
-          })}
+          {runs.map((r) => (
+            <RunChip
+              key={r.runId}
+              run={r}
+              selected={r.runId === selectedRunId}
+              finishedAt={finishedAtRef.current.get(r.runId)}
+              onOpen={onOpen}
+              onStop={onStop}
+              onDismiss={onDismiss}
+            />
+          ))}
         </ul>
       )}
     </section>
