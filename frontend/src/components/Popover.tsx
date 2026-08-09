@@ -6,10 +6,12 @@
 // document.body so it is never clipped by an ancestor's overflow.
 //
 // Dismiss contract: Esc closes, a mousedown outside the panel (and outside
-// the anchor) closes, and focus returns to the anchor element once the
-// popover unmounts — the anchor is usually the button that opened it, so
-// keyboard users land back where they started rather than at the top of
-// the page.
+// the anchor) closes, and both restore focus to the anchor element — the
+// anchor is usually the button that opened it, so keyboard users land back
+// where they started rather than at the top of the page. Closing any other
+// way (e.g. a caller flipping `open` to false, as hover-driven popovers do)
+// does *not* refocus the anchor, since that would re-trigger an onFocus
+// handler on the anchor and reopen the popover.
 
 import {
   useEffect,
@@ -119,12 +121,18 @@ export function Popover({
   }, [open, anchorRef, placement]);
 
   // Esc and outside-click dismissal, scoped to while the popover is open.
+  // Both paths restore focus to the anchor afterward, so keyboard users land
+  // back on the control that opened it. This is deliberately *not* a generic
+  // "on any close, refocus" effect: a hover-driven close (see `useHoverOpen`
+  // in RunDock.tsx) must not refocus the anchor, since doing so would fire
+  // the anchor's own onFocus handler and reopen the popover right back up.
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
         e.preventDefault();
         onClose();
+        anchorRef.current?.focus();
       }
     }
     function onPointerDown(e: MouseEvent) {
@@ -132,6 +140,7 @@ export function Popover({
       if (panelRef.current?.contains(target)) return;
       if (anchorRef.current?.contains(target)) return;
       onClose();
+      anchorRef.current?.focus();
     }
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("mousedown", onPointerDown);
@@ -140,15 +149,6 @@ export function Popover({
       document.removeEventListener("mousedown", onPointerDown);
     };
   }, [open, onClose, anchorRef]);
-
-  // Return focus to the anchor once the popover closes/unmounts, so
-  // keyboard users land back on the control that opened it.
-  useEffect(() => {
-    if (!open) return;
-    return () => {
-      anchorRef.current?.focus();
-    };
-  }, [open, anchorRef]);
 
   if (!open) return null;
 
