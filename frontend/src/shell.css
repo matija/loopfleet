@@ -183,18 +183,21 @@
   padding: 0 var(--space-2);
 }
 
-/* Connection row: status dot + repo name / short-path subtitle. */
+/* Connection row: leading folder icon + status dot + repo name, with the
+ * short-path metadata right-aligned and muted. Fixed to --row-h so rows sit
+ * on the same rhythm as tree-item below. */
 .project-item {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   width: 100%;
+  height: var(--row-h);
   text-align: left;
   border: 1px solid transparent;
   background: transparent;
   color: var(--c-text-muted);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
   margin-bottom: var(--space-1);
 }
 
@@ -203,10 +206,15 @@
   color: var(--c-text);
 }
 
+/* Quiet fill for the current row — the accent is reserved for the status dot. */
 .project-item[aria-current="true"] {
-  background: var(--c-accent-quiet);
-  border-color: var(--c-border-strong);
+  background: var(--c-surface-3);
   color: var(--c-text);
+}
+
+.project-item__icon {
+  flex: none;
+  color: var(--c-text-faint);
 }
 
 .project-item__dot {
@@ -224,14 +232,9 @@
   box-shadow: 0 0 0 3px var(--c-accent-quiet);
 }
 
-.project-item__body {
+.project-item__name {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.project-item__name {
   font-size: var(--text-base);
   font-weight: 500;
   white-space: nowrap;
@@ -240,6 +243,8 @@
 }
 
 .project-item__meta {
+  flex: none;
+  max-width: 40%;
   font-size: var(--text-xs);
   color: var(--c-text-faint);
   white-space: nowrap;
@@ -292,11 +297,12 @@
   align-items: center;
   gap: var(--space-2);
   width: 100%;
+  height: var(--row-h);
   text-align: left;
   border: 1px solid transparent;
   background: transparent;
   color: var(--c-text-muted);
-  padding: var(--space-1) var(--space-2);
+  padding: 0 var(--space-2);
   border-radius: var(--radius-sm);
 }
 
@@ -305,9 +311,15 @@
   color: var(--c-text);
 }
 
+/* Quiet fill for the current row — the accent is reserved for the status dot. */
 .tree-item[aria-current="true"] {
-  background: var(--c-accent-quiet);
+  background: var(--c-surface-3);
   color: var(--c-text);
+}
+
+.tree-item__icon {
+  flex: none;
+  color: var(--c-text-faint);
 }
 
 /* Derived TaskStatus as a colored dot, reusing the badge palette. */

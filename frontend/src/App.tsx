@@ -18,6 +18,7 @@ import { LiveRunView } from "./components/LiveRunView";
 import { RunTimeline } from "./components/RunTimeline";
 import { CompareView } from "./components/CompareView";
 import { Toasts, useToasts } from "./components/Toasts";
+import { FolderIcon } from "./components/Icon";
 import {
   CommandPalette,
   type PaletteOpenTask,
@@ -411,6 +412,7 @@ export default function App() {
                     aria-current={p.id === selectedId}
                     onClick={() => selectProject(p.id)}
                   >
+                    <FolderIcon size={16} className="project-item__icon" />
                     <span
                       className={`project-item__dot${
                         activeProjectNames.has(repoName(p.repo_path))
@@ -418,13 +420,11 @@ export default function App() {
                           : ""
                       }`}
                     />
-                    <span className="project-item__body">
-                      <span className="project-item__name">
-                        {repoName(p.repo_path)}
-                      </span>
-                      <span className="project-item__meta">
-                        {parentPath(p.repo_path)}
-                      </span>
+                    <span className="project-item__name">
+                      {repoName(p.repo_path)}
+                    </span>
+                    <span className="project-item__meta">
+                      {parentPath(p.repo_path)}
                     </span>
                   </button>
                   {p.id === selectedId && (
