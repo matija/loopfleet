@@ -167,19 +167,25 @@
   color: var(--c-text-muted);
 }
 
-/* A measured column so long PRD prose stays readable. */
+/* A measured column so long PRD prose stays readable — capped well under the
+ * panel width so lines don't run past a comfortable reading length. */
 .prd-doc__body {
-  max-width: 78ch;
+  max-width: 72ch;
   line-height: var(--leading-normal);
   color: var(--c-text);
 }
 
 /* --- rendered markdown blocks --- */
 
+/* Heading scale: tighter tracking as size grows, the same negative-tracking
+ * treatment large type gets everywhere else in the app (tokens.css). h4-h6
+ * are eyebrow-style labels, not display type, so they keep their own
+ * (positive) tracking below. */
 .md-h {
   font-weight: 600;
   line-height: var(--leading-tight);
-  margin: var(--space-5) 0 var(--space-2);
+  letter-spacing: var(--tracking-tight);
+  margin: var(--space-6) 0 var(--space-3);
 }
 
 .md-h:first-child {
@@ -204,31 +210,64 @@
   letter-spacing: var(--tracking-wide);
 }
 
+/* Paragraphs get room to breathe — spaced for reading, not packed for
+ * density — while lists (below) stay tighter since their items are already
+ * visually separated by the marker/glyph column. */
 .md-p {
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--space-4);
 }
 
 .md-ul,
 .md-ol {
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--space-4);
   padding-inline-start: var(--space-5);
 }
 
 .md-li {
-  margin: var(--space-1) 0;
+  margin: var(--space-2) 0;
 }
 
-/* Task-list items carry an inline checkbox; drop the bullet so it reads as a box,
- * not a box after a dot. */
+/* Task-list items carry a leading status glyph in place of the bullet — the
+ * same dot/check treatment `.task-status__icon` and `.tree-item__status` use
+ * for a task's derived state, so an authored checklist reads with the same
+ * visual language as the live task rows it mirrors. */
 .md-li:has(> .md-check) {
   list-style: none;
   margin-inline-start: calc(-1 * var(--space-4));
 }
 
 .md-check {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
   margin-inline-end: var(--space-2);
   vertical-align: middle;
-  accent-color: var(--c-accent);
+  display: inline-grid;
+  place-items: center;
+  color: var(--c-text-muted);
+}
+
+/* Unchecked: the same small filled dot as a not-started task's status glyph. */
+.md-check::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Checked: the same checkmark stroke as a completed task's status glyph. */
+.md-check:checked::before {
+  content: "";
+  width: 9px;
+  height: 5px;
+  background: transparent;
+  border-inline-start: 2px solid currentColor;
+  border-block-end: 2px solid currentColor;
+  border-radius: 0;
+  transform: rotate(-45deg) translate(1px, -1.5px);
 }
 
 .md-code {
@@ -240,8 +279,11 @@
   color: var(--c-text);
 }
 
+/* Fenced code: one step up in surface (--c-surface-2, same as the instruction
+ * field) with a hairline border and --radius-md, so it reads as an inset panel
+ * within the prose rather than another shade of the document background. */
 .md-pre {
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--space-4);
   padding: var(--space-3);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-md);
@@ -256,7 +298,7 @@
 }
 
 .md-quote {
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--space-4);
   padding: var(--space-1) var(--space-3);
   border-inline-start: 3px solid var(--c-border-strong);
   color: var(--c-text-muted);
