@@ -232,6 +232,18 @@ export function MaximizeIcon({ size = 16, className }: IconProps) {
   );
 }
 
+// A short checklist glyph: rows of tasks, one already ticked.
+export function ChecklistIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...defaultProps}>
+      <path d="M4.5 6l1.5 1.5L9 4.5" />
+      <path d="M12 6h7.5" />
+      <path d="M5 12h.01M5 18h.01" />
+      <path d="M12 12h7.5M12 18h7.5" />
+    </svg>
+  );
+}
+
 // A document-with-checklist glyph: a plan file waiting to be added.
 export function DocPlusIcon({ size = 26, className }: IconProps) {
   return (
