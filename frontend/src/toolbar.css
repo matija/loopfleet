@@ -44,3 +44,51 @@
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
+
+/* Breadcrumb segments: project / plan / task-run-compare. Non-final segments
+ * are muted (and, when clickable, buttons back up the hierarchy); the final
+ * segment — the current view — reads in full text color. */
+
+.toolbar__crumb-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.toolbar__crumb-sep {
+  color: var(--c-text-faint);
+}
+
+.toolbar__crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font: inherit;
+  font-size: var(--text-base);
+  color: var(--c-text-muted);
+  background: none;
+  border: none;
+  padding: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+button.toolbar__crumb {
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+button.toolbar__crumb:hover {
+  color: var(--c-text);
+}
+
+.toolbar__crumb--current {
+  color: var(--c-text);
+}
+
+.toolbar__crumb-icon {
+  flex: none;
+}

@@ -553,21 +553,6 @@
   border-color: var(--c-border-strong);
 }
 
-.main__header {
-  padding: var(--space-4) var(--space-5) var(--space-3);
-  border-bottom: 1px solid var(--c-border);
-}
-
-.main__header h2 {
-  font-size: var(--text-lg);
-}
-
-.main__header p {
-  margin: var(--space-1) 0 0;
-  font-size: var(--text-sm);
-  color: var(--c-text-muted);
-}
-
 /* The run/task/compare views fill the pane so their internal event streams
  * scroll on their own rather than the whole main pane. */
 
