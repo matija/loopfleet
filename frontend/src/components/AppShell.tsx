@@ -49,6 +49,7 @@ export function AppShell({
       <aside
         className={`sidebar${sidebarHidden ? " sidebar--hidden" : ""}`}
         aria-hidden={sidebarHidden}
+        inert={sidebarHidden ? true : undefined}
       >
         <div className="sidebar__top" data-tauri-drag-region>
           <div className="titlebar__brand-group" data-tauri-drag-region>
