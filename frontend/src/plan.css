@@ -20,20 +20,16 @@
   color: var(--c-text);
 }
 
-/* --- plan card --- */
-
-.plan-card {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-4);
-}
+/* --- plan section --- */
+/* No card frame: the plan sits directly on the canvas. The header carries a
+ * hairline and the task rows' own separators carry the rest of the structure. */
 
 .plan-card__head {
   display: flex;
   align-items: baseline;
   gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--c-border);
 }
 
 .plan-card__head h3 {
@@ -46,9 +42,9 @@
   color: var(--c-text-faint);
 }
 
-/* Shown inside a plan card whose PRD parsed but carries no task list yet. */
+/* Shown under a plan header whose PRD parsed but carries no task list yet. */
 .plan-card__empty {
-  margin: 0;
+  margin: var(--space-3) 0 0;
   color: var(--c-text-muted);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
@@ -57,7 +53,7 @@
 /* --- review queue banner (loud) --- */
 
 .review-banner {
-  margin-bottom: var(--space-4);
+  margin: var(--space-3) 0 var(--space-4);
   padding: var(--space-3);
   border-radius: var(--radius-md);
   background: var(--c-warn-quiet);
@@ -103,6 +99,13 @@
   border: 0;
   border-top: 1px solid var(--c-border);
   transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+/* The header's hairline (or the review banner's own frame) already separates
+ * the list from above — a top rule on the first row would read as a double
+ * line right under it. */
+.task-list > .task-row:first-child {
+  border-top: 0;
 }
 
 .task-row--review {
