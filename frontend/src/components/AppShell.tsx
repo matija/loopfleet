@@ -13,12 +13,15 @@
 // that moves the window.
 
 import type { ReactNode } from "react";
+import { SettingsIcon, XIcon } from "./Icon";
 
 export function AppShell({
   sidebar,
   children,
   dock,
   titlebarTrailing,
+  notice,
+  onOpenSettings,
 }: {
   sidebar: ReactNode;
   children: ReactNode;
@@ -26,6 +29,12 @@ export function AppShell({
   /// Right-aligned content in the top window bar (the ⌘K entry point). Sits
   /// over the drag region but its buttons opt out of dragging.
   titlebarTrailing?: ReactNode;
+  /// Optional dismissible accent notice shown above the Settings row. App.tsx
+  /// owns whether there's anything to announce and how dismissal is tracked —
+  /// AppShell just renders whatever it's given.
+  notice?: { message: ReactNode; onDismiss: () => void } | null;
+  /// Opens the overview view. Backs the pinned Settings row.
+  onOpenSettings: () => void;
 }) {
   return (
     <div className="app-shell">
@@ -38,6 +47,29 @@ export function AppShell({
           {titlebarTrailing}
         </div>
         {sidebar}
+        <div className="sidebar__footer">
+          {notice && (
+            <div className="sidebar__notice">
+              <span className="sidebar__notice-text">{notice.message}</span>
+              <button
+                type="button"
+                className="sidebar__notice-dismiss"
+                onClick={notice.onDismiss}
+                aria-label="Dismiss"
+              >
+                <XIcon size={12} />
+              </button>
+            </div>
+          )}
+          <button
+            type="button"
+            className="sidebar__footer-row"
+            onClick={onOpenSettings}
+          >
+            <SettingsIcon size={16} className="sidebar__footer-icon" />
+            <span>Settings</span>
+          </button>
+        </div>
       </aside>
       <main className="main">{children}</main>
       {dock}
