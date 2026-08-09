@@ -119,6 +119,12 @@ export default function App() {
   // run, Accept for a compare. Starts null until Toolbar's first commit.
   const [toolbarActionsEl, setToolbarActionsEl] =
     useState<HTMLDivElement | null>(null);
+  // The toolbar's filter-slot DOM node, threaded down to LiveRunView so its
+  // task pill / event filter / freshness / agent pill can portal there —
+  // folding that per-tab strip into the shell's single toolbar. Starts null
+  // until Toolbar's first commit.
+  const [toolbarFilterEl, setToolbarFilterEl] =
+    useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     listProjects()
@@ -530,7 +536,8 @@ export default function App() {
     >
       <Toasts toasts={toasts} onDismiss={dismissToast} />
       <Toolbar
-        ref={setToolbarActionsEl}
+        filterRef={setToolbarFilterEl}
+        actionsRef={setToolbarActionsEl}
         breadcrumb={<Breadcrumb crumbs={crumbsFor(view, projects, runs, selectProject)} />}
       />
       <div
@@ -551,6 +558,7 @@ export default function App() {
             onAccepted={() => setPlanNonce((n) => n + 1)}
             onRetry={onRetry}
             toolbarActions={toolbarActionsEl}
+            toolbarFilter={toolbarFilterEl}
           />
         ) : view.kind === "compare" ? (
           <CompareView
@@ -637,6 +645,7 @@ function RunPane({
   onAccepted,
   onRetry,
   toolbarActions,
+  toolbarFilter,
 }: {
   runId: string;
   runs: ActiveRun[];
@@ -645,6 +654,7 @@ function RunPane({
   onAccepted: () => void;
   onRetry: (run: ActiveRun) => void;
   toolbarActions: HTMLDivElement | null;
+  toolbarFilter: HTMLDivElement | null;
 }) {
   const run = runs.find((r) => r.runId === runId);
   if (!run) {
@@ -657,6 +667,7 @@ function RunPane({
       onStop={onStop}
       onClose={onClose}
       toolbarActions={toolbarActions}
+      toolbarFilter={toolbarFilter}
     />
   ) : (
     <RunTimeline

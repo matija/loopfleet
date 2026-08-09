@@ -26,6 +26,7 @@ export function LiveRunView({
   onStop,
   onClose,
   toolbarActions,
+  toolbarFilter,
 }: {
   run: ActiveRun;
   onStop: (runId: string) => void;
@@ -33,6 +34,10 @@ export function LiveRunView({
   /// The toolbar's action-slot DOM node. Stop portals there instead of
   /// rendering inline.
   toolbarActions: HTMLElement | null;
+  /// The toolbar's filter-slot DOM node. The task pill, event filter,
+  /// freshness stamp, and agent pill portal there instead of rendering as a
+  /// separate per-tab bar.
+  toolbarFilter: HTMLElement | null;
 }) {
   // The stream carries no persisted ts (see file header), so we stamp arrival
   // time as each event lands — the grid's `ts` column then reflects when it
@@ -155,6 +160,7 @@ export function LiveRunView({
         )}
 
       <CommandBar
+        toolbarFilter={toolbarFilter}
         task={run.taskText}
         filter={{ value: filter, onChange: setFilter }}
         agent={
