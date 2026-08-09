@@ -8,8 +8,9 @@
 import { useEffect, useState } from "react";
 import { planOverview } from "../commands";
 import { normalizeDisplayText } from "../displayText";
+import { useSidebarCollapsed } from "../sidebarCollapse";
 import type { PlanView as Plan } from "../types";
-import { ChecklistIcon } from "./Icon";
+import { ChecklistIcon, ChevronRightIcon } from "./Icon";
 import { STATUS_LABEL } from "./PlanView";
 
 /// What opening a task from the tree needs to push/focus its tab.
@@ -69,49 +70,82 @@ export function PlanTree({
   return (
     <div className="plan-tree">
       {groups.map(({ plan, tasks }) => (
-        <div key={plan.plan_id} className="plan-tree__group">
-          <div className="plan-tree__group-label">
-            {plan.title ?? plan.file_path}
-          </div>
-          {tasks.map((task) => {
-            const id = `task:${plan.plan_id}:${task.anchor}`;
-            const review = task.status === "completed-unaccepted";
-            return (
-              <button
-                key={task.anchor}
-                className={`tree-item${review ? " tree-item--review" : ""}`}
-                aria-current={id === activeTaskId}
-                onClick={() =>
-                  onOpenTask({
-                    planId: plan.plan_id,
-                    taskAnchor: task.anchor,
-                    taskText: task.text,
-                  })
-                }
-              >
-                <ChecklistIcon size={16} className="tree-item__icon" />
-                <span
-                  className={`tree-item__dot tree-item__dot--${task.status}`}
-                  role="img"
-                  aria-label={STATUS_LABEL[task.status]}
-                  title={STATUS_LABEL[task.status]}
-                />
-                <span className="tree-item__text">
-                  {normalizeDisplayText(task.text)}
-                </span>
-                {task.run_count > 0 && (
-                  <span
-                    className="tree-item__count"
-                    title={`${task.run_count} run(s)`}
-                  >
-                    {task.run_count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        <PlanTreeGroup
+          key={plan.plan_id}
+          plan={plan}
+          tasks={tasks}
+          activeTaskId={activeTaskId}
+          onOpenTask={onOpenTask}
+        />
       ))}
+    </div>
+  );
+}
+
+function PlanTreeGroup({
+  plan,
+  tasks,
+  activeTaskId,
+  onOpenTask,
+}: {
+  plan: Plan;
+  tasks: Plan["tasks"];
+  activeTaskId: string | null;
+  onOpenTask: (task: OpenTask) => void;
+}) {
+  const [collapsed, toggle] = useSidebarCollapsed(`plan:${plan.plan_id}`);
+
+  return (
+    <div className="plan-tree__group">
+      <button
+        type="button"
+        className="plan-tree__group-label plan-tree__group-label--disclosure"
+        aria-expanded={!collapsed}
+        onClick={toggle}
+      >
+        <ChevronRightIcon size={12} className="disclosure__chevron" />
+        <span className="plan-tree__group-label-text">
+          {plan.title ?? plan.file_path}
+        </span>
+      </button>
+      {!collapsed &&
+        tasks.map((task) => {
+          const id = `task:${plan.plan_id}:${task.anchor}`;
+          const review = task.status === "completed-unaccepted";
+          return (
+            <button
+              key={task.anchor}
+              className={`tree-item${review ? " tree-item--review" : ""}`}
+              aria-current={id === activeTaskId}
+              onClick={() =>
+                onOpenTask({
+                  planId: plan.plan_id,
+                  taskAnchor: task.anchor,
+                  taskText: task.text,
+                })
+              }
+            >
+              <ChecklistIcon size={16} className="tree-item__icon" />
+              <span
+                className={`tree-item__dot tree-item__dot--${task.status}`}
+                role="img"
+                aria-label={STATUS_LABEL[task.status]}
+                title={STATUS_LABEL[task.status]}
+              />
+              <span className="tree-item__text">
+                {normalizeDisplayText(task.text)}
+              </span>
+              {task.run_count > 0 && (
+                <span
+                  className="tree-item__count"
+                  title={`${task.run_count} run(s)`}
+                >
+                  {task.run_count}
+                </span>
+              )}
+            </button>
+          );
+        })}
     </div>
   );
 }

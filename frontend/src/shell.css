@@ -96,6 +96,31 @@
   padding: 0;
 }
 
+/* Disclosure chevron shared by the sidebar section header and each plan-tree
+ * group header: a leading rotating chevron in front of the label text,
+ * flipping from → to ↓ via aria-expanded rather than swapping icons. */
+.sidebar__section-label--disclosure,
+.plan-tree__group-label--disclosure {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.disclosure__chevron {
+  flex: none;
+  color: var(--c-text-faint);
+  transition: transform 0.1s ease;
+}
+
+[aria-expanded="true"] .disclosure__chevron {
+  transform: rotate(90deg);
+}
+
 /* "filter tables…"-style live narrowing over the connections list, styled as
  * a borderless list row (icon + muted label + trailing ⌘K) that swaps its
  * label for a live text input on click/focus without changing row height. */
@@ -287,6 +312,10 @@
   text-transform: uppercase;
   letter-spacing: var(--tracking-wide);
   color: var(--c-text-faint);
+}
+
+.plan-tree__group-label-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
