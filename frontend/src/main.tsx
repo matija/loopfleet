@@ -14,6 +14,7 @@ import "./runview.css";
 import "./status.css";
 import "./grid.css";
 import "./palette.css";
+import "./toolbar.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
