@@ -25,6 +25,16 @@ import {
 } from "./components/CommandPalette";
 import { useSidebarCollapsed } from "./sidebarCollapse";
 
+const SIDEBAR_HIDDEN_KEY = "loopfleet.sidebar.hidden";
+
+function readSidebarHidden(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_HIDDEN_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 // A run streams live while active; once terminal, its persisted timeline (with
 // per-iteration events and diffs) is the surface. Opening a run from the dock
 // picks the right one by status, and a still-open live view flips to the
@@ -82,6 +92,10 @@ export default function App() {
   // ⌘K command palette — global keyboard-first navigator across projects,
   // tasks, runs, and quick actions. Toggled by Cmd/Ctrl-K anywhere.
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // Whole-sidebar visibility — separate from the "Projects" disclosure above.
+  // Toggled by the panel-left button in the sidebar top strip or ⌘B, and
+  // persisted so the collapsed layout survives a reload.
+  const [sidebarHidden, setSidebarHidden] = useState(readSidebarHidden);
   // Collapsed state of the "Projects" section disclosure, persisted so a
   // reload keeps the sidebar the way it was left.
   const [projectsCollapsed, toggleProjectsCollapsed] =
@@ -161,6 +175,29 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Global ⌘B / Ctrl-B toggles the sidebar from anywhere, mirroring ⌘K above.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        setSidebarHidden((h) => !h);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_HIDDEN_KEY, String(sidebarHidden));
+    } catch {
+      // localStorage unavailable (private mode, quota) — the toggle just
+      // doesn't persist across reloads.
+    }
+  }, [sidebarHidden]);
+
+  const toggleSidebarHidden = useCallback(() => setSidebarHidden((h) => !h), []);
 
   const selected = projects.find((p) => p.id === selectedId) ?? null;
   // A connection's status dot lights while any of its runs is active. The dock
@@ -316,6 +353,8 @@ export default function App() {
   return (
     <AppShell
       onOpenSettings={paletteOpenOverview}
+      sidebarHidden={sidebarHidden}
+      onToggleSidebar={toggleSidebarHidden}
       notice={null}
       titlebarTrailing={
         <button
