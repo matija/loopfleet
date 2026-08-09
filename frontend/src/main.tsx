@@ -4,7 +4,6 @@ import App from "./App";
 import "@fontsource-variable/inter";
 import "./tokens.css";
 import "./shell.css";
-import "./commandbar.css";
 import "./panels.css";
 import "./plan.css";
 import "./prd.css";

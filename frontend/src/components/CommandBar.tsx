@@ -1,22 +1,25 @@
-// Per-tab command bar (the DB client's per-tab command row). A slim strip at the
-// top of a run/task tab carrying, left to right: an object-name pill (the task),
-// a `WHERE …`-style client-side event filter, then a right cluster with a live
-// "Xs ago" freshness stamp, an agent "Connected"/"missing" status pill, and the
-// Run / Re-run action slot. Every slot is optional — a task tab has no event
-// stream (no filter, no freshness), a run tab has no re-run task context — so the
-// bar renders only the pieces its host supplies. It is purely presentational;
-// filter state, launch logic, and freshness source all live in the host.
+// The live run view's task pill, `WHERE …`-style client-side event filter,
+// freshness stamp, and agent status pill. Portals into the shell's toolbar
+// (`.toolbar__filter`, see Toolbar) so the run view has exactly one control
+// strip instead of the toolbar plus a redundant per-tab bar underneath it.
+// Every slot is optional — a task tab has no event stream (no filter, no
+// freshness) — so only the pieces the host supplies render. It is purely
+// presentational; filter state, agent status, and freshness source all live
+// in the host.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { normalizeDisplayText } from "../displayText";
 
 export function CommandBar({
+  toolbarFilter,
   task,
   filter,
   agent,
   since,
-  children,
 }: {
+  /// The toolbar's filter-slot DOM node to portal into; renders nothing until set.
+  toolbarFilter: HTMLElement | null;
   /// Object-name pill text — the task the tab is bound to.
   task: string;
   /// The `WHERE …` client-side event filter, when the tab has an event stream.
@@ -25,17 +28,16 @@ export function CommandBar({
   agent?: { name: string; connected: boolean };
   /// Epoch ms of the last activity to stamp "Xs ago" against; omit to hide.
   since?: number;
-  /// The Run / Re-run control, rendered at the far right.
-  children?: ReactNode;
 }) {
-  return (
-    <div className="command-bar">
-      <span className="command-bar__task" title={normalizeDisplayText(task)}>
+  if (!toolbarFilter) return null;
+  return createPortal(
+    <>
+      <span className="toolbar__task" title={normalizeDisplayText(task)}>
         {normalizeDisplayText(task)}
       </span>
       {filter && (
         <input
-          className="command-bar__filter"
+          className="toolbar__filter-input"
           type="text"
           placeholder="WHERE event type or text…"
           aria-label="Filter events"
@@ -43,24 +45,24 @@ export function CommandBar({
           onChange={(e) => filter.onChange(e.target.value)}
         />
       )}
-      <div className="command-bar__right">
+      <div className="toolbar__status">
         {since !== undefined && <Freshness since={since} />}
         {agent && (
           <span
-            className={`command-bar__agent command-bar__agent--${
+            className={`toolbar__agent toolbar__agent--${
               agent.connected ? "on" : "off"
             }`}
             title={`Agent ${agent.name}: ${
               agent.connected ? "found on PATH" : "not installed"
             }`}
           >
-            <span className="command-bar__agent-dot" />
+            <span className="toolbar__agent-dot" />
             {agent.name} · {agent.connected ? "Connected" : "missing"}
           </span>
         )}
-        {children}
       </div>
-    </div>
+    </>,
+    toolbarFilter,
   );
 }
 
@@ -74,7 +76,7 @@ function Freshness({ since }: { since: number }) {
     return () => clearInterval(id);
   }, []);
   return (
-    <span className="command-bar__ago" aria-label="Time since last event">
+    <span className="toolbar__ago" aria-label="Time since last event">
       {ago(since)}
     </span>
   );
