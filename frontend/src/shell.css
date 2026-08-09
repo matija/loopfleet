@@ -8,6 +8,14 @@
   height: 100%;
 }
 
+/* Collapses the sidebar column to zero width (toggled by the panel-left
+ * button in the strip below, the restore button in the main pane, or ⌘B —
+ * see App.tsx). The sidebar itself stays mounted so its scroll position and
+ * disclosure state survive the round trip; `.sidebar--hidden` just clips it. */
+.app-shell--sidebar-hidden {
+  grid-template-columns: 0 1fr;
+}
+
 /* --- sidebar top strip ---
  * Replaces the old full-width title bar: the sidebar now spans the full
  * window height, and this strip carries the drag region at its top. The
@@ -28,6 +36,16 @@
   -webkit-app-region: drag;
   app-region: drag;
   user-select: none;
+}
+
+/* Groups the brand with the collapse toggle so both sit at the strip's start
+ * edge — keeps the toggle clear of `.titlebar__k`, which is absolutely
+ * positioned against the strip's right edge. */
+.titlebar__brand-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
 }
 
 .titlebar__brand {
@@ -70,9 +88,36 @@
   border-right: 1px solid var(--c-border);
 }
 
+.sidebar--hidden {
+  overflow: hidden;
+  border-right: none;
+}
+
 .main {
   grid-column: 2;
   grid-row: 1;
+}
+
+/* Bare panel-left icon button that lives in the sidebar top strip; opts out
+ * of the strip's drag region so it stays clickable. */
+.sidebar__collapse-btn {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px; /* tokens-allow: fixed icon-button hit target, off the space/row scale */
+  border: none;
+  background: transparent;
+  color: var(--c-text-muted);
+  border-radius: var(--radius-sm);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.sidebar__collapse-btn:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
 }
 
 .sidebar__section-head {
@@ -475,11 +520,37 @@
 /* --- main pane --- */
 
 .main {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* Mirrors `.sidebar__collapse-btn`: floats over the main pane's top-left
+ * corner while the sidebar is collapsed, so it's always there to bring the
+ * sidebar back regardless of scroll position. */
+.main__restore-sidebar {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px; /* tokens-allow: fixed icon-button hit target, off the space/row scale */
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface-2);
+  color: var(--c-text-muted);
+}
+
+.main__restore-sidebar:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+  border-color: var(--c-border-strong);
 }
 
 .main__header {

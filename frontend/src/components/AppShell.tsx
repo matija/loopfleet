@@ -13,7 +13,7 @@
 // that moves the window.
 
 import type { ReactNode } from "react";
-import { SettingsIcon, XIcon } from "./Icon";
+import { PanelLeftIcon, SettingsIcon, XIcon } from "./Icon";
 
 export function AppShell({
   sidebar,
@@ -22,6 +22,8 @@ export function AppShell({
   titlebarTrailing,
   notice,
   onOpenSettings,
+  sidebarHidden,
+  onToggleSidebar,
 }: {
   sidebar: ReactNode;
   children: ReactNode;
@@ -35,14 +37,35 @@ export function AppShell({
   notice?: { message: ReactNode; onDismiss: () => void } | null;
   /// Opens the overview view. Backs the pinned Settings row.
   onOpenSettings: () => void;
+  /// Whether the sidebar column is collapsed to zero width. App.tsx owns the
+  /// persisted state and the ⌘B shortcut; AppShell just renders the two
+  /// mirrored toggle buttons (one in the strip, one in the main pane) so the
+  /// sidebar is always recoverable.
+  sidebarHidden: boolean;
+  onToggleSidebar: () => void;
 }) {
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
+    <div className={`app-shell${sidebarHidden ? " app-shell--sidebar-hidden" : ""}`}>
+      <aside
+        className={`sidebar${sidebarHidden ? " sidebar--hidden" : ""}`}
+        aria-hidden={sidebarHidden}
+      >
         <div className="sidebar__top" data-tauri-drag-region>
-          <div className="titlebar__brand" data-tauri-drag-region>
-            <span className="titlebar__mark" aria-hidden="true" />
-            <span className="titlebar__name">loopfleet</span>
+          <div className="titlebar__brand-group" data-tauri-drag-region>
+            <div className="titlebar__brand" data-tauri-drag-region>
+              <span className="titlebar__mark" aria-hidden="true" />
+              <span className="titlebar__name">loopfleet</span>
+            </div>
+            <button
+              type="button"
+              className="sidebar__collapse-btn"
+              onClick={onToggleSidebar}
+              title="Hide sidebar (⌘B)"
+              aria-label="Hide sidebar"
+              tabIndex={sidebarHidden ? -1 : 0}
+            >
+              <PanelLeftIcon size={15} />
+            </button>
           </div>
           {titlebarTrailing}
         </div>
@@ -71,7 +94,20 @@ export function AppShell({
           </button>
         </div>
       </aside>
-      <main className="main">{children}</main>
+      <main className="main">
+        {sidebarHidden && (
+          <button
+            type="button"
+            className="main__restore-sidebar"
+            onClick={onToggleSidebar}
+            title="Show sidebar (⌘B)"
+            aria-label="Show sidebar"
+          >
+            <PanelLeftIcon size={15} />
+          </button>
+        )}
+        {children}
+      </main>
       {dock}
     </div>
   );
