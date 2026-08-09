@@ -5,18 +5,18 @@
 /* --- Tasks / PRD toggle --- */
 
 .plan-toggle {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  min-height: var(--control-h);
-  margin-bottom: var(--space-4);
-  border-bottom: 1px solid var(--c-border);
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
 }
 
 .plan-toggle__tab {
-  align-self: stretch;
+  height: var(--control-h);
   border: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: calc(var(--radius-sm) - 2px);
   background: transparent;
   color: var(--c-text-muted);
   padding: 0 var(--space-2);
@@ -25,12 +25,11 @@
 
 .plan-toggle__tab:hover {
   color: var(--c-text);
-  background: var(--c-surface-hover);
 }
 
 .plan-toggle__tab--active {
   color: var(--c-text);
-  border-bottom-color: var(--c-accent);
+  background: var(--c-surface-3);
 }
 
 /* --- document --- */
