@@ -315,6 +315,8 @@ export default function App() {
 
   return (
     <AppShell
+      onOpenSettings={paletteOpenOverview}
+      notice={null}
       titlebarTrailing={
         <button
           className="titlebar__k"
