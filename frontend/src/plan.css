@@ -210,14 +210,25 @@
 /* Agent picker: a segmented button group. Each installed agent is a toggle;
  * the chosen one lifts onto the accent surface so the pick reads at a glance
  * without opening a menu. */
+/* min-width covers the known agent set (claude, pi, cursor) at full label
+ * width so the group doesn't grow once `agentStatus()` resolves and swaps
+ * the skeleton for the real buttons — nothing else in the row should shift. */
 .launch__agents {
   display: inline-flex;
   align-items: stretch;
   height: var(--control-h);
+  min-width: 132px;
   border: 1px solid var(--c-border);
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--c-surface);
+}
+
+/* Loading skeleton: same box (height/width via min-width above), no buttons —
+ * a muted placeholder fill instead of real content flashing in late. */
+.launch__agents--loading {
+  background: var(--c-surface-hover);
+  opacity: 0.6;
 }
 
 .launch__agent {
