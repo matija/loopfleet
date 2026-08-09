@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+} from "react";
 import { launchRun, listProjects, stopRun } from "./commands";
 import { normalizeDisplayText } from "./displayText";
 import { onRunStatus } from "./events";
@@ -18,7 +24,14 @@ import { LiveRunView } from "./components/LiveRunView";
 import { RunTimeline } from "./components/RunTimeline";
 import { CompareView } from "./components/CompareView";
 import { Toasts, useToasts } from "./components/Toasts";
-import { ChevronRightIcon, FolderIcon } from "./components/Icon";
+import { Toolbar } from "./components/Toolbar";
+import {
+  ChevronRightIcon,
+  DiffIcon,
+  FolderIcon,
+  PlayIcon,
+  type IconProps,
+} from "./components/Icon";
 import {
   CommandPalette,
   type PaletteOpenTask,
@@ -510,14 +523,7 @@ export default function App() {
       }
     >
       <Toasts toasts={toasts} onDismiss={dismissToast} />
-      {view.kind !== "run" && view.kind !== "compare" && (
-        <div className="main__header">
-          <h2>{headerFor(view, projects, runs).title}</h2>
-          {headerFor(view, projects, runs).subtitle && (
-            <p>{headerFor(view, projects, runs).subtitle}</p>
-          )}
-        </div>
-      )}
+      <Toolbar breadcrumb={<Breadcrumb crumbs={crumbsFor(view, projects, runs, selectProject)} />} />
       <div
         className={`main__body${
           view.kind === "run" || view.kind === "compare"
@@ -643,38 +649,124 @@ function RunPane({
   );
 }
 
-// Header title/subtitle for the active view's context.
-function headerFor(
-  v: View,
+// One breadcrumb segment in the toolbar: project → plan → task/run/compare.
+// `onClick` is only set when the caller passes `onSelectProject` (App wires
+// its `selectProject`); without it every segment renders as inert text.
+export type Crumb = {
+  label: string;
+  icon?: ComponentType<IconProps>;
+  onClick?: () => void;
+};
+
+// Pure breadcrumb model for the active view. Runs carry their own project
+// name/id (set at launch, see `onLaunch`), which is how the `run` case finds
+// its project without a projects lookup. `compare` has no projectId on the
+// view itself, so it best-effort recovers one from a run sharing its task
+// anchor — the compare flow is only reachable from a task with existing runs.
+export function crumbsFor(
+  view: View,
   projects: Project[],
   runs: ActiveRun[],
-): { title: string; subtitle: string } {
-  switch (v.kind) {
-    case "overview":
-      return {
-        title: "Overview",
-        subtitle:
-          "Supervise looping coding agents in sandboxed git worktrees.",
-      };
-    case "plan": {
-      const p = projects.find((x) => x.id === v.projectId);
-      return {
-        title: p ? repoName(p.repo_path) : "Plan",
-        subtitle: p ? p.repo_path : "",
-      };
-    }
-    case "task":
-      return { title: "Task", subtitle: "" };
-    case "run": {
-      const r = runs.find((x) => x.runId === v.runId);
-      return {
-        title: "Run",
-        subtitle: r ? normalizeDisplayText(r.taskText) : "",
-      };
-    }
-    case "compare":
-      return { title: "Compare", subtitle: normalizeDisplayText(v.taskText) };
+  onSelectProject?: (projectId: string) => void,
+): Crumb[] {
+  function projectCrumb(projectId: string | undefined, label: string): Crumb {
+    return {
+      label,
+      icon: FolderIcon,
+      onClick:
+        projectId && onSelectProject
+          ? () => onSelectProject(projectId)
+          : undefined,
+    };
   }
+
+  function planCrumb(projectId: string | undefined): Crumb {
+    return {
+      label: "Plan",
+      onClick:
+        projectId && onSelectProject
+          ? () => onSelectProject(projectId)
+          : undefined,
+    };
+  }
+
+  switch (view.kind) {
+    case "overview":
+      return [{ label: "Overview" }];
+    case "plan": {
+      const p = projects.find((x) => x.id === view.projectId);
+      return [
+        projectCrumb(view.projectId, p ? repoName(p.repo_path) : "Project"),
+        { label: "Plan" },
+      ];
+    }
+    case "task": {
+      const p = projects.find((x) => x.id === view.projectId);
+      return [
+        projectCrumb(view.projectId, p ? repoName(p.repo_path) : "Project"),
+        planCrumb(view.projectId),
+        { label: normalizeDisplayText(view.taskText) },
+      ];
+    }
+    case "run": {
+      const r = runs.find((x) => x.runId === view.runId);
+      if (!r) return [{ label: "Run", icon: PlayIcon }];
+      return [
+        projectCrumb(r.projectId, r.projectName),
+        planCrumb(r.projectId),
+        { label: normalizeDisplayText(r.taskText), icon: PlayIcon },
+      ];
+    }
+    case "compare": {
+      const r = runs.find((x) => x.taskAnchor === view.taskAnchor);
+      const crumbs: Crumb[] = [];
+      if (r) {
+        crumbs.push(projectCrumb(r.projectId, r.projectName));
+        crumbs.push(planCrumb(r.projectId));
+      }
+      crumbs.push({
+        label: normalizeDisplayText(view.taskText),
+        icon: DiffIcon,
+      });
+      return crumbs;
+    }
+  }
+}
+
+// Renders a Crumb[] as `--text-base` muted segments joined by dim "/"
+// separators, with the final (current) segment in `--c-text`. Non-final
+// segments with an `onClick` are buttons; everything else is inert text.
+function Breadcrumb({ crumbs }: { crumbs: Crumb[] }) {
+  return (
+    <>
+      {crumbs.map((c, i) => {
+        const isLast = i === crumbs.length - 1;
+        const Icon = c.icon;
+        const content = (
+          <>
+            {Icon && <Icon size={13} className="toolbar__crumb-icon" />}
+            {c.label}
+          </>
+        );
+        return (
+          <span className="toolbar__crumb-group" key={i}>
+            {i > 0 && <span className="toolbar__crumb-sep">/</span>}
+            {!isLast && c.onClick ? (
+              <button type="button" className="toolbar__crumb" onClick={c.onClick}>
+                {content}
+              </button>
+            ) : (
+              <span
+                className={`toolbar__crumb${isLast ? " toolbar__crumb--current" : ""}`}
+              >
+                {content}
+              </span>
+            )}
+          </span>
+        );
+      })}
+    </>
+  );
 }
 
 // The trailing path segment — the connection row's title.
