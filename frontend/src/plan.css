@@ -92,15 +92,46 @@
   justify-content: space-between;
   gap: var(--space-4);
   flex-wrap: wrap;
-  padding: var(--space-2) 0;
-  border-radius: 0;
+  min-height: var(--row-h);
+  box-sizing: border-box;
+  /* Horizontal padding pulled back out with negative margins so the hover fill
+   * bleeds past the text column without shifting where the text starts. */
+  padding: var(--space-2);
+  margin-inline: calc(-1 * var(--space-2));
+  border-radius: var(--radius-sm);
   background: transparent;
   border: 0;
   border-top: 1px solid var(--c-border);
+  transition: background-color var(--motion-fast) var(--ease-out);
 }
 
 .task-row--review {
   background: var(--c-warn-wash);
+}
+
+/* The row is the interactive region: pointer over it, keyboard focus on it (the
+ * li is a tab stop), or focus inside it (tabbing onto the revealed actions, or
+ * the launch menu being open) all count as "this row is engaged". */
+.task-row:is(:hover, :focus-within, :has(.launch__menu), :has(.launch .msg)) {
+  background: var(--c-surface-hover);
+}
+
+/* Row actions rest hidden and surface only while the row is engaged.
+ * `visibility` (not `display`) so the cluster keeps its full width at rest and
+ * nothing in the row reflows when it appears. The `:has()` arms keep the
+ * control shown while its own popovers (agent menu, launch result) are up even
+ * if the pointer wanders off the row — WKWebView doesn't move focus to clicked
+ * buttons, so :focus-within alone can't hold it open. */
+.task-row .launch,
+.task-row .task-row__compare-cue {
+  visibility: hidden;
+}
+
+.task-row:is(:hover, :focus-within, :has(.launch__menu), :has(.launch .msg))
+  .launch,
+.task-row:is(:hover, :focus-within, :has(.launch__menu), :has(.launch .msg))
+  .task-row__compare-cue {
+  visibility: visible;
 }
 
 .task-row__main {
@@ -140,16 +171,32 @@
   cursor: help;
 }
 
+/* At rest the button reads as a bare run-count readout ("3 runs"), which stays
+ * visible whenever the count is non-zero. The chip chrome and the "· compare"
+ * cue only surface while the row is engaged; the border is transparent rather
+ * than absent so gaining it doesn't change the button's box. */
 .task-row__compare {
-  border: 1px solid var(--c-border);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  background: var(--c-surface-2);
+  background: transparent;
   padding: 2px var(--space-2);
+  cursor: pointer;
+}
+
+.task-row:is(:hover, :focus-within) .task-row__compare {
+  border-color: var(--c-border);
+  background: var(--c-surface-2);
 }
 
 .task-row__compare:hover {
   color: var(--c-text);
   border-color: var(--c-accent);
+}
+
+/* Keep the cue's width in the sum even while hidden (visibility, above), and
+ * preserve its leading space against the count. */
+.task-row__compare-cue {
+  white-space: pre;
 }
 
 /* --- status cell --- */

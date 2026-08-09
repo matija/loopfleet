@@ -191,7 +191,10 @@ function TaskRow({
   const review = task.status === "completed-unaccepted";
   const StatusIcon = STATUS_ICON[task.status];
   return (
-    <li className={`task-row${review ? " task-row--review" : ""}`}>
+    // tabIndex makes the row itself a keyboard stop so its rest-hidden actions
+    // (revealed via :hover / :focus-within in plan.css) are reachable without
+    // a pointer.
+    <li className={`task-row${review ? " task-row--review" : ""}`} tabIndex={0}>
       <div className="task-row__main">
         <span className={`task-status task-status--${task.status}`}>
           <StatusIcon size={16} className="task-status__icon" />
@@ -220,7 +223,15 @@ function TaskRow({
             }
             title="Compare this task's runs and use one"
           >
-            {task.run_count} {task.run_count === 1 ? "run" : "runs"} · compare
+            {/* The count is the always-visible readout; the "compare" cue and
+              * chip chrome only surface on row hover/focus (plan.css). */}
+            <span className="task-row__run-count">
+              {task.run_count} {task.run_count === 1 ? "run" : "runs"}
+            </span>
+            <span className="task-row__compare-cue">
+              {" "}
+              · compare
+            </span>
           </button>
         )}
       </div>
