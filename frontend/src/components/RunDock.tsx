@@ -13,6 +13,28 @@ import type { RunStatus } from "../types";
 import { normalizeDisplayText } from "../displayText";
 import { RUN_STATUS_LABEL, isActiveRun } from "../status";
 import { Elapsed } from "./Elapsed";
+import {
+  AlertIcon,
+  CheckIcon,
+  ClockIcon,
+  DotIcon,
+  PlayIcon,
+  SquareIcon,
+  XIcon,
+} from "./Icon";
+
+/// Leading glyph per lifecycle token — the dock chip's compact stand-in for the
+/// filled `.status-pill` worn by the other run surfaces. Colored via
+/// `.run-chip__status--${status}` in dock.css, which mirrors `.status-pill`'s
+/// per-status palette.
+const RUN_STATUS_ICON: Record<RunStatus, typeof CheckIcon> = {
+  queued: DotIcon,
+  running: PlayIcon,
+  completed: CheckIcon,
+  failed: AlertIcon,
+  stopped: SquareIcon,
+  "limit-reached": ClockIcon,
+};
 
 /// One run tracked by the dock. Seeded at launch, its `status` updated from the
 /// `run_status` stream.
@@ -79,6 +101,7 @@ export function RunDock({
           {runs.map((r) => {
             const active = isActiveRun(r.status);
             const taskText = normalizeDisplayText(r.taskText);
+            const StatusIcon = RUN_STATUS_ICON[r.status];
             return (
               <li
                 key={r.runId}
@@ -96,8 +119,11 @@ export function RunDock({
                       aria-label="Finished, not yet seen"
                     />
                   )}
-                  <span className={`run-chip__status status-pill status-pill--${r.status}`}>
-                    {RUN_STATUS_LABEL[r.status]}
+                  <span
+                    className={`run-chip__status run-chip__status--${r.status}`}
+                    aria-label={RUN_STATUS_LABEL[r.status]}
+                  >
+                    <StatusIcon size={14} />
                   </span>
                   <span className="run-chip__task">{taskText}</span>
                   <span className="run-chip__meta">
@@ -110,8 +136,9 @@ export function RunDock({
                     className="run-chip__action"
                     onClick={() => onStop(r.runId)}
                     title="Stop at the next pass boundary"
+                    aria-label="Stop run"
                   >
-                    Stop
+                    <SquareIcon size={14} />
                   </button>
                 ) : (
                   <button
@@ -120,7 +147,7 @@ export function RunDock({
                     title="Remove from the dock"
                     aria-label="Dismiss run"
                   >
-                    ✕
+                    <XIcon size={14} />
                   </button>
                 )}
               </li>
