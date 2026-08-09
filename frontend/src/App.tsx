@@ -15,6 +15,7 @@ import { AddProject, pickAndRegisterProject } from "./components/AddProject";
 import { AgentStatusPanel } from "./components/AgentStatusPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SandboxBoundaryPanel } from "./components/SandboxBoundaryPanel";
+import { SurfaceCard, SurfaceCardGrid } from "./components/SurfaceCard";
 import type { CompareTarget, LaunchedRun } from "./components/PlanView";
 import { PlanSurface } from "./components/PlanSurface";
 import { PlanTree } from "./components/PlanTree";
@@ -27,12 +28,15 @@ import { Toasts, useToasts } from "./components/Toasts";
 import { Toolbar } from "./components/Toolbar";
 import { IconButton } from "./components/Button";
 import {
+  AgentIcon,
+  BoxIcon,
   ChevronRightIcon,
   DiffIcon,
   FolderIcon,
   PanelBottomIcon,
   PanelLeftIcon,
   PlayIcon,
+  SettingsIcon,
   type IconProps,
 } from "./components/Icon";
 import {
@@ -650,18 +654,7 @@ export default function App() {
             toolbarActions={toolbarActionsEl}
           />
         ) : (
-          <>
-            <p className="main__placeholder">
-              {projects.length === 0
-                ? "Add a git repo in the sidebar to launch looping agents against its plan. Below: the agents on this machine, your run defaults, and the sandbox boundary every run is confined by."
-                : "Pick a project in the sidebar to open its plan and launch runs. Below: the agents on this machine, your run defaults, and the sandbox boundary every run is confined by."}
-            </p>
-            <div className="overview">
-              <AgentStatusPanel />
-              <SettingsPanel />
-              <SandboxBoundaryPanel />
-            </div>
-          </>
+          <Overview />
         )}
       </div>
       <CommandPalette
@@ -676,6 +669,53 @@ export default function App() {
         onOpenOverview={paletteOpenOverview}
       />
     </AppShell>
+  );
+}
+
+// The overview's three machine-level surfaces, each an entry-point tile.
+type OverviewSection = "agents" | "defaults" | "sandbox";
+
+// The no-project main pane: a surface-card grid over the machine-level panels.
+// Each card toggles its panel open beneath the grid — one section at a time,
+// clicking the open card's tile again collapses it. The panels themselves
+// (agent chips, settings form, sandbox rules) are unchanged; the cards only
+// gate when they mount.
+function Overview() {
+  const [expanded, setExpanded] = useState<OverviewSection | null>(null);
+
+  const toggle = (section: OverviewSection) =>
+    setExpanded((cur) => (cur === section ? null : section));
+
+  return (
+    <div className="overview">
+      <SurfaceCardGrid>
+        <SurfaceCard
+          icon={<AgentIcon />}
+          title="Agents"
+          description="Agent CLIs on this machine, with version drift"
+          onClick={() => toggle("agents")}
+        />
+        <SurfaceCard
+          icon={<SettingsIcon />}
+          title="Run defaults"
+          description="Default agent, iteration count, concurrency cap"
+          onClick={() => toggle("defaults")}
+        />
+        <SurfaceCard
+          icon={<BoxIcon />}
+          title="Sandbox boundary"
+          description="What every run's OS sandbox does and doesn't confine"
+          onClick={() => toggle("sandbox")}
+        />
+      </SurfaceCardGrid>
+      {expanded === "agents" ? (
+        <AgentStatusPanel />
+      ) : expanded === "defaults" ? (
+        <SettingsPanel />
+      ) : expanded === "sandbox" ? (
+        <SandboxBoundaryPanel />
+      ) : null}
+    </div>
   );
 }
 
