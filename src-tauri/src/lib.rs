@@ -445,6 +445,7 @@ async fn launch_run(
         state.stops.clone(),
         state.unacknowledged_runs.clone(),
         state.scheduled_resumes.clone(),
+        0,
     )
     .await
 }
@@ -467,6 +468,11 @@ fn spawn_run(
     stops: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
     unacknowledged: Arc<AtomicI64>,
     scheduled_resumes: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
+    // How many prior resumes led to this run: 0 for a fresh manual launch,
+    // otherwise the attempt number of the pending resume that spawned it.
+    // Carried forward (and capped at `MAX_RESUME_ATTEMPTS`) so a chain of
+    // rate-limited resumes for the same original run eventually gives up.
+    resume_attempt: u32,
 ) -> RunFuture {
     Box::pin(async move {
     let adapter = build_adapter(&agent).ok_or_else(|| format!("unknown agent: {agent}"))?;
@@ -696,9 +702,16 @@ fn spawn_run(
         // in memory) so a crash or restart during the wait doesn't lose the
         // schedule — `rearm_pending_resumes` re-creates this same in-memory
         // task from that row at startup. No (or already-past) reset time means
-        // we can't know it is safe to retry, so we leave it for the user.
-        if outcome.state == RunState::LimitReached {
-            if let Some(delay) = delay_until(outcome.reset_at.as_deref(), OffsetDateTime::now_utc()) {
+        // we can't know it is safe to retry, so we leave it for the user. Each
+        // resume in the chain bumps `resume_attempt`; past `MAX_RESUME_ATTEMPTS`
+        // we stop scheduling and leave the run for the user. A resumed run that
+        // ends in any other state never reaches here, so the count implicitly
+        // resets: the next time this task is launched (manually) it starts back
+        // at attempt 0.
+        let next_attempt = resume_attempt + 1;
+        if outcome.state == RunState::LimitReached && next_attempt <= MAX_RESUME_ATTEMPTS {
+            let buffer = resume_buffer(next_attempt);
+            if let Some(delay) = delay_until(outcome.reset_at.as_deref(), OffsetDateTime::now_utc(), buffer) {
                 let (app, db, git, data_dir, stops, unacknowledged, scheduled_resumes) = sched;
                 let (project_id, task_anchor, agent, max_iterations) = rerun;
                 let resume_run_id = cfg.run_id.clone();
@@ -713,7 +726,7 @@ fn spawn_run(
                             agent: agent.clone(),
                             pass_count: max_iterations,
                             resume_at: resume_at_millis,
-                            attempt: 1,
+                            attempt: next_attempt,
                         },
                     );
                 }
@@ -733,6 +746,7 @@ fn spawn_run(
                     let _ = spawn_run(
                         project_id, task_anchor, agent, max_iterations,
                         app, db, git, data_dir, stops, unacknowledged, resumes_for_task.clone(),
+                        next_attempt,
                     )
                     .await;
                     resumes_for_task.lock().unwrap().remove(&resume_run_id);
@@ -794,9 +808,14 @@ fn rearm_pending_resumes(app: &AppHandle) {
         );
 
         // Reuses `delay_until`, the same buffered wait a live rate-limit
-        // schedule computes: `Some(delay)` for a still-future resume_at, `None`
-        // once it's already due — which the loop below treats as "fire now".
-        let delay = delay_until(Some(&resume_at_str), OffsetDateTime::now_utc());
+        // schedule computes (with the buffer for this row's attempt number):
+        // `Some(delay)` for a still-future resume_at, `None` once it's already
+        // due — which the loop below treats as "fire now".
+        let delay = delay_until(
+            Some(&resume_at_str),
+            OffsetDateTime::now_utc(),
+            resume_buffer(resume.attempt),
+        );
 
         let db = state.db.clone();
         let git = state.git.clone();
@@ -811,6 +830,7 @@ fn rearm_pending_resumes(app: &AppHandle) {
         let task_anchor = resume.task_anchor.clone();
         let agent = resume.agent.clone();
         let max_iterations = resume.pass_count;
+        let attempt = resume.attempt;
 
         let handle = tauri::async_runtime::spawn(async move {
             if let Some(delay) = delay {
@@ -819,6 +839,7 @@ fn rearm_pending_resumes(app: &AppHandle) {
             let _ = spawn_run(
                 project_id, task_anchor, agent, max_iterations,
                 app, db, git, data_dir, stops, unacknowledged, resumes_for_task.clone(),
+                attempt,
             )
             .await;
             resumes_for_task.lock().unwrap().remove(&resume_run_id);
@@ -921,17 +942,33 @@ fn task_title(task_text: &str) -> String {
 }
 
 /// How long to wait before re-running a rate-limited run: the gap between `now`
-/// and the agent-reported `reset_at` (ISO-8601 / RFC 3339). `None` when there is
-/// no reset time, it doesn't parse, or it is already in the past — i.e. "don't
-/// auto-reschedule". We only retry when we know a future instant the limit lifts,
-/// so a re-run never hammers a still-exhausted limit.
-fn delay_until(reset_at: Option<&str>, now: OffsetDateTime) -> Option<std::time::Duration> {
+/// and the agent-reported `reset_at` (ISO-8601 / RFC 3339), plus `buffer`.
+/// `None` when there is no reset time, it doesn't parse, or it (even with the
+/// buffer added) is already in the past — i.e. "don't auto-reschedule". We only
+/// retry when we know a future instant the limit lifts, so a re-run never
+/// hammers a still-exhausted limit.
+fn delay_until(
+    reset_at: Option<&str>,
+    now: OffsetDateTime,
+    buffer: time::Duration,
+) -> Option<std::time::Duration> {
     let reset = OffsetDateTime::parse(reset_at?, &Rfc3339).ok()?;
-    // One-minute safety buffer past the reported reset time, since providers'
-    // reset clocks aren't always exact.
-    let target = reset + time::Duration::seconds(60);
+    let target = reset + buffer;
     // `TryFrom<time::Duration>` fails for a negative span, so a past reset → None.
     std::time::Duration::try_from(target - now).ok()
+}
+
+/// A resumed run is retried at most this many times before we give up and leave
+/// it for the user — a limit that keeps repeatedly-rate-limited work from
+/// scheduling itself forever.
+const MAX_RESUME_ATTEMPTS: u32 = 3;
+
+/// Safety buffer added past the agent-reported reset time for a given resume
+/// attempt (1 = first resume): 60s, doubling each attempt, since providers'
+/// reset clocks aren't always exact and a repeatedly-limited task likely needs
+/// more room to clear.
+fn resume_buffer(attempt: u32) -> time::Duration {
+    time::Duration::seconds(60 * 2i64.pow(attempt.saturating_sub(1)))
 }
 
 /// Clear the OS-level "finished runs waiting" signal — dock badge count and any
@@ -1242,21 +1279,29 @@ mod tests {
     #[test]
     fn no_reschedule_without_a_parseable_reset_time() {
         let now = OffsetDateTime::now_utc();
-        assert!(delay_until(None, now).is_none());
-        assert!(delay_until(Some("whenever"), now).is_none());
+        let buffer = resume_buffer(1);
+        assert!(delay_until(None, now, buffer).is_none());
+        assert!(delay_until(Some("whenever"), now, buffer).is_none());
     }
 
     #[test]
     fn no_reschedule_when_the_reset_is_already_past() {
         let now = OffsetDateTime::parse("2025-01-15T10:00:00Z", &Rfc3339).unwrap();
         // Even with the one-minute buffer added, this reset is still in the past.
-        assert!(delay_until(Some("2025-01-15T09:58:00Z"), now).is_none());
+        assert!(delay_until(Some("2025-01-15T09:58:00Z"), now, resume_buffer(1)).is_none());
     }
 
     #[test]
     fn delay_is_the_gap_to_a_future_reset_plus_a_one_minute_buffer() {
         let now = OffsetDateTime::parse("2025-01-15T10:00:00Z", &Rfc3339).unwrap();
-        let delay = delay_until(Some("2025-01-15T10:05:00Z"), now).unwrap();
+        let delay = delay_until(Some("2025-01-15T10:05:00Z"), now, resume_buffer(1)).unwrap();
         assert_eq!(delay, std::time::Duration::from_secs(300 + 60));
+    }
+
+    #[test]
+    fn resume_buffer_doubles_per_attempt() {
+        assert_eq!(resume_buffer(1), time::Duration::seconds(60));
+        assert_eq!(resume_buffer(2), time::Duration::seconds(120));
+        assert_eq!(resume_buffer(3), time::Duration::seconds(240));
     }
 }
