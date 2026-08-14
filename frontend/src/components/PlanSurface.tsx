@@ -17,12 +17,15 @@ export function PlanSurface({
   planNonce,
   onLaunch,
   onCompare,
+  onError,
   toolbarActions,
 }: {
   projectId: string;
   planNonce: number;
   onLaunch: (run: LaunchedRun) => void;
   onCompare: (target: CompareTarget) => void;
+  /// Surfaces command failures (a failed export) through the app's toasts.
+  onError: (message: string) => void;
   /// The toolbar's action-slot DOM node. The Tasks/PRD toggle portals there
   /// instead of rendering inline.
   toolbarActions: HTMLElement | null;
@@ -64,11 +67,12 @@ export function PlanSurface({
             projectId={projectId}
             onLaunch={onLaunch}
             onCompare={onCompare}
+            onError={onError}
           />
           <SandboxOverrides projectId={projectId} />
         </>
       ) : (
-        <PrdView key={projectId} projectId={projectId} />
+        <PrdView key={projectId} projectId={projectId} onError={onError} />
       )}
     </>
   );
