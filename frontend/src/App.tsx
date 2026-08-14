@@ -5,9 +5,15 @@ import {
   useState,
   type ComponentType,
 } from "react";
-import { acknowledgeRuns, launchRun, listProjects, stopRun } from "./commands";
+import {
+  acknowledgeRuns,
+  cancelScheduledResume,
+  launchRun,
+  listProjects,
+  stopRun,
+} from "./commands";
 import { normalizeDisplayText } from "./displayText";
-import { onRunStatus } from "./events";
+import { onRunStatus, onScheduledResume, onScheduledResumeCancelled } from "./events";
 import type { Project } from "./types";
 import { isActiveRun } from "./status";
 import { AppShell } from "./components/AppShell";
@@ -187,6 +193,68 @@ export default function App() {
         ),
       ),
     );
+    return () => {
+      un.then((f) => f());
+    };
+  }, []);
+
+  // Client-side timers that clear a run's `pendingResume` marker once its
+  // resume actually fires — there is no backend "fired" event, only the
+  // `resume_at` the schedule was set for, so we clear locally when that
+  // instant passes. Keyed by run id so a cancel (below) can also clear the
+  // matching timer instead of leaving it to fire on a since-cleared run.
+  const resumeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
+  useEffect(() => {
+    return () => {
+      for (const t of resumeTimersRef.current.values()) clearTimeout(t);
+    };
+  }, []);
+
+  // A rate-limited run's re-run has been scheduled: surface "resuming at…" on
+  // its dock chip until the resume fires or is cancelled.
+  useEffect(() => {
+    const un = onScheduledResume((p) => {
+      const resumeAtMs = new Date(p.resume_at).getTime();
+      setRuns((prev) =>
+        prev.map((r) =>
+          r.runId === p.run_id ? { ...r, pendingResume: { resumeAt: resumeAtMs } } : r,
+        ),
+      );
+      const existing = resumeTimersRef.current.get(p.run_id);
+      if (existing) clearTimeout(existing);
+      const delay = Math.max(0, resumeAtMs - Date.now());
+      const timer = setTimeout(() => {
+        resumeTimersRef.current.delete(p.run_id);
+        setRuns((prev) =>
+          prev.map((r) =>
+            r.runId === p.run_id ? { ...r, pendingResume: undefined } : r,
+          ),
+        );
+      }, delay);
+      resumeTimersRef.current.set(p.run_id, timer);
+    });
+    return () => {
+      un.then((f) => f());
+    };
+  }, []);
+
+  // A scheduled re-run was cancelled before it fired: drop its "resuming at…"
+  // marker and the local timer that would have cleared it anyway.
+  useEffect(() => {
+    const un = onScheduledResumeCancelled((p) => {
+      const existing = resumeTimersRef.current.get(p.run_id);
+      if (existing) {
+        clearTimeout(existing);
+        resumeTimersRef.current.delete(p.run_id);
+      }
+      setRuns((prev) =>
+        prev.map((r) =>
+          r.runId === p.run_id ? { ...r, pendingResume: undefined } : r,
+        ),
+      );
+    });
     return () => {
       un.then((f) => f());
     };
@@ -442,6 +510,9 @@ export default function App() {
           onDismiss={(id) => {
             setRuns((prev) => prev.filter((r) => r.runId !== id));
             if (view.kind === "run" && view.runId === id) goBack();
+          }}
+          onCancelResume={(id) => {
+            cancelScheduledResume(id).catch((e) => pushError(String(e)));
           }}
         />
       }

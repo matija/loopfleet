@@ -232,3 +232,18 @@ export type RunStatusPayload = {
   run_id: string;
   status: RunStatus;
 };
+
+/// A rate-limited run's re-run has been scheduled, pushed on the
+/// `scheduled_resume` Tauri event. `resume_at` is RFC 3339.
+/// `src-tauri::ScheduledResumePayload`.
+export type ScheduledResumePayload = {
+  run_id: string;
+  resume_at: string;
+};
+
+/// A previously scheduled re-run was cancelled before it fired, pushed on the
+/// `scheduled_resume_cancelled` Tauri event.
+/// `src-tauri::ScheduledResumeCancelledPayload`.
+export type ScheduledResumeCancelledPayload = {
+  run_id: string;
+};

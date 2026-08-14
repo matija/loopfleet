@@ -104,6 +104,12 @@ export function stopRun(runId: string): Promise<void> {
   return invoke("stop_run", { runId });
 }
 
+/// Abort a pending rate-limit re-run before it fires, keyed by the original
+/// run's id.
+export function cancelScheduledResume(runId: string): Promise<void> {
+  return invoke("cancel_scheduled_resume", { runId });
+}
+
 /// Clear the OS-level dock badge/attention signal — the command counterpart to
 /// clearing the in-app `unseen` marker on focus or per-run acknowledge.
 export function acknowledgeRuns(): Promise<void> {

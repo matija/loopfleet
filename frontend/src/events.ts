@@ -4,7 +4,12 @@
 // call the result to stop listening (e.g. in a React effect cleanup).
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { RunEventPayload, RunStatusPayload } from "./types";
+import type {
+  RunEventPayload,
+  RunStatusPayload,
+  ScheduledResumeCancelledPayload,
+  ScheduledResumePayload,
+} from "./types";
 
 /// Subscribe to per-event updates for any run. The callback receives the run id,
 /// the event's `seq`, and the normalized event payload.
@@ -20,4 +25,24 @@ export function onRunStatus(
   handler: (payload: RunStatusPayload) => void,
 ): Promise<UnlistenFn> {
   return listen<RunStatusPayload>("run_status", (e) => handler(e.payload));
+}
+
+/// Subscribe to a rate-limited run's re-run being scheduled — the resume time
+/// rides `resume_at` (RFC 3339).
+export function onScheduledResume(
+  handler: (payload: ScheduledResumePayload) => void,
+): Promise<UnlistenFn> {
+  return listen<ScheduledResumePayload>("scheduled_resume", (e) =>
+    handler(e.payload),
+  );
+}
+
+/// Subscribe to a scheduled re-run being cancelled before it fired.
+export function onScheduledResumeCancelled(
+  handler: (payload: ScheduledResumeCancelledPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<ScheduledResumeCancelledPayload>(
+    "scheduled_resume_cancelled",
+    (e) => handler(e.payload),
+  );
 }
