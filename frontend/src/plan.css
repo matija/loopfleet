@@ -162,12 +162,16 @@
   color: var(--c-text);
   font-size: var(--text-base);
   min-width: 0;
-  /* Center the first line within the shared control-height band so a single-line
-   * row still reads centered against the badge and launch controls, and a
-   * wrapped row keeps that first line aligned with them. */
-  display: flex;
-  align-items: center;
-  min-height: var(--control-h);
+  /* Rows show a taskSummary(), which is already short, but clamp to two lines
+   * so no row can ever grow past that regardless of viewport width. Clamping
+   * needs the -webkit-box display, so the first line is centered within the
+   * shared control-height band via padding rather than flex centering. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  padding-block: max(0px, calc((var(--control-h) - 1lh) / 2));
 }
 
 .task-row__checked,
