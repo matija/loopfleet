@@ -1211,8 +1211,11 @@ fn save_report(app: &AppHandle, default_name: &str, html: &str) -> Result<Option
 /// HTML report, saved via a native save dialog defaulting to a name built from
 /// the task's text, then revealed in Finder. Returns the saved path, or `None`
 /// if the user cancelled the dialog.
+// Async so the command leaves the main thread: `blocking_save_file` parks the
+// calling thread while the dialog runs on the main event loop, so calling it
+// from a sync (main-thread) command deadlocks the whole app.
 #[tauri::command]
-fn export_task_report(
+async fn export_task_report(
     app: AppHandle,
     plan_id: String,
     task_anchor: String,
@@ -1231,8 +1234,10 @@ fn export_task_report(
 /// as a standalone HTML report, saved via a native save dialog defaulting to a
 /// name built from the plan's title, then revealed in Finder. Returns the saved
 /// path, or `None` if the user cancelled the dialog.
+// Async for the same reason as `export_task_report`: the blocking save dialog
+// must not run on the main thread.
 #[tauri::command]
-fn export_plan_report(
+async fn export_plan_report(
     app: AppHandle,
     plan_id: String,
     state: State<'_, AppState>,
