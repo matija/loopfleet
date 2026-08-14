@@ -27,12 +27,22 @@ pub use runs::{
     RunSummary,
 };
 
+mod pending_resumes;
+pub use pending_resumes::{
+    delete_pending_resume, insert_pending_resume, list_pending_resumes, NewPendingResume,
+    PendingResume,
+};
+
 /// Ordered list of migrations. Each entry is `(name, sql)`; names double as the
 /// applied-migrations key, so they must be unique and never reordered. Add new
 /// migrations by appending — never editing an already-shipped entry.
 const MIGRATIONS: &[(&str, &str)] = &[
     ("0001_init", include_str!("migrations/0001_init.sql")),
     ("0002_settings", include_str!("migrations/0002_settings.sql")),
+    (
+        "0003_pending_resumes",
+        include_str!("migrations/0003_pending_resumes.sql"),
+    ),
 ];
 
 /// Open a SQLite database at `path`, enable foreign keys, and apply all pending
@@ -106,6 +116,7 @@ mod tests {
             "iterations",
             "sessions",
             "events",
+            "pending_resumes",
             "schema_migrations",
         ] {
             assert!(t.contains(&expected.to_string()), "missing table {expected}");
