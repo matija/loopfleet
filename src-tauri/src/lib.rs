@@ -904,6 +904,17 @@ fn notify_run_terminal(app: &AppHandle, task_text: &str, state: RunState) -> boo
 /// a banner click behaves exactly like focusing the app.
 #[cfg(target_os = "macos")]
 fn show_clickable_notification(app: &AppHandle, title: &str, body: &str) -> bool {
+    // Without an explicit sending application, mac-notification-sys resolves
+    // one from the placeholder name "use_default", which makes Launch Services
+    // pop a "Where is use_default?" chooser on every notification. Pin the
+    // bundle id the same way tauri-plugin-notification does (Terminal in dev,
+    // where our own bundle isn't registered); repeat calls return an
+    // AlreadySet error we can ignore.
+    let _ = notify_rust::set_application(if tauri::is_dev() {
+        "com.apple.Terminal"
+    } else {
+        &app.config().identifier
+    });
     let mut notification = notify_rust::Notification::new();
     notification.summary(title).body(body);
     match notification.show() {
