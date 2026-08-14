@@ -70,6 +70,38 @@ pub fn upsert_task(
     Ok(())
 }
 
+/// One task row, read back by its `(plan_id, task_anchor)` key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskRow {
+    pub text: String,
+    pub checked: bool,
+}
+
+/// Load one task's authored fields by its anchor, or `None` if no such task is
+/// synced. Used by the report exporter, which needs a single task's text and
+/// authored-checked state without re-parsing or re-syncing the plan file.
+pub fn load_task(
+    conn: &Connection,
+    plan_id: &str,
+    task_anchor: &str,
+) -> rusqlite::Result<Option<TaskRow>> {
+    conn.query_row(
+        "SELECT text, checked FROM tasks WHERE plan_id = ?1 AND normalized_text = ?2",
+        params![plan_id, task_anchor],
+        |r| {
+            Ok(TaskRow {
+                text: r.get(0)?,
+                checked: r.get::<_, i64>(1)? != 0,
+            })
+        },
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

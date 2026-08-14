@@ -17,9 +17,12 @@
 
 use std::fmt::Write as _;
 
+use loopfleet_gitx::run_cumulative_diff_at;
+use loopfleet_store::Connection;
+
 use crate::event::NormalizedEvent;
-use crate::task_status::TaskStatus;
-use crate::timeline::DiffView;
+use crate::task_status::{derive_status, TaskRun as TaskRunState, TaskStatus};
+use crate::timeline::{to_diff_view, DiffView};
 use crate::RunState;
 
 /// One task's stored data, assembled by the caller for rendering.
@@ -93,6 +96,169 @@ pub fn render_plan_report(plan: &PlanReport) -> String {
         body.push_str("<p class=\"meta\">No tasks in this plan.</p>\n");
     }
     document(title, &body)
+}
+
+// --- assembly ---
+//
+// The functions below gather a task's or plan's stored data (task/run rows,
+// event log, cumulative diffs) into the structs above, for `render_*` to turn
+// into HTML. Kept in this module (rather than `lib.rs`) because they are the
+// direct data-source counterpart to the renderer — the same "what a report
+// contains" decision governs both.
+
+/// Why a report could not be assembled.
+#[derive(Debug)]
+pub enum ReportError {
+    /// No such task or plan is synced.
+    NotFound(String),
+    /// Reading the plan file failed.
+    Io(std::io::Error),
+    /// Reading the stored task/run/event data failed.
+    Store(rusqlite::Error),
+}
+
+impl std::fmt::Display for ReportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReportError::NotFound(id) => write!(f, "not found: {id}"),
+            ReportError::Io(e) => write!(f, "reading plan: {e}"),
+            ReportError::Store(e) => write!(f, "reading report data: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for ReportError {}
+
+impl From<rusqlite::Error> for ReportError {
+    fn from(e: rusqlite::Error) -> Self {
+        ReportError::Store(e)
+    }
+}
+
+/// Assemble the report for one task: its authored fields, derived status, and
+/// every run bound to it (events plus cumulative diff), in launch order.
+pub fn task_report(conn: &Connection, plan_id: &str, task_anchor: &str) -> Result<TaskReport, ReportError> {
+    let task_row = loopfleet_store::load_task(conn, plan_id, task_anchor)?
+        .ok_or_else(|| ReportError::NotFound(task_anchor.to_string()))?;
+    let summaries: Vec<_> = loopfleet_store::list_runs_for_plan(conn, plan_id)?
+        .into_iter()
+        .filter(|s| s.task_anchor == task_anchor)
+        .collect();
+    let status = derive_status(
+        &summaries
+            .iter()
+            .filter_map(|s| {
+                RunState::from_token(&s.status).map(|state| TaskRunState {
+                    state,
+                    accepted: s.accepted,
+                })
+            })
+            .collect::<Vec<_>>(),
+        task_row.checked,
+    );
+    let runs = summaries
+        .iter()
+        .map(|s| build_run_report(conn, s))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(TaskReport {
+        anchor: task_anchor.to_string(),
+        text: task_row.text,
+        checked: task_row.checked,
+        status,
+        runs,
+    })
+}
+
+/// Assemble the report for a whole plan: its identity plus every task's
+/// report, in document order.
+pub fn plan_report(conn: &Connection, plan_id: &str) -> Result<PlanReport, ReportError> {
+    let file_path = loopfleet_store::plan_file_path(conn, plan_id)?
+        .ok_or_else(|| ReportError::NotFound(plan_id.to_string()))?;
+    let markdown = std::fs::read_to_string(&file_path).map_err(ReportError::Io)?;
+    let parsed = crate::plan::parse_plan(&markdown);
+    let summaries = loopfleet_store::list_runs_for_plan(conn, plan_id)?;
+
+    let mut tasks = Vec::with_capacity(parsed.tasks.len());
+    for t in &parsed.tasks {
+        let task_summaries: Vec<_> = summaries
+            .iter()
+            .filter(|s| s.task_anchor == t.anchor.normalized_text)
+            .collect();
+        let status = derive_status(
+            &task_summaries
+                .iter()
+                .filter_map(|s| {
+                    RunState::from_token(&s.status).map(|state| TaskRunState {
+                        state,
+                        accepted: s.accepted,
+                    })
+                })
+                .collect::<Vec<_>>(),
+            t.checked,
+        );
+        let runs = task_summaries
+            .iter()
+            .map(|s| build_run_report(conn, s))
+            .collect::<Result<Vec<_>, _>>()?;
+        tasks.push(TaskReport {
+            anchor: t.anchor.normalized_text.clone(),
+            text: t.text.clone(),
+            checked: t.checked,
+            status,
+            runs,
+        });
+    }
+
+    Ok(PlanReport {
+        title: parsed.title,
+        file_path: Some(file_path),
+        tasks,
+    })
+}
+
+/// Assemble one run's report: its metadata, first/last event timestamps, every
+/// normalized event in log order, and its cumulative diff against the final
+/// iteration's shadow ref (`None` if it produced no snapshot).
+fn build_run_report(
+    conn: &Connection,
+    summary: &loopfleet_store::RunSummary,
+) -> Result<RunReport, ReportError> {
+    let run_id = &summary.id;
+    let detail = loopfleet_store::load_run(conn, run_id)?
+        .ok_or_else(|| ReportError::NotFound(run_id.clone()))?;
+    let iterations = loopfleet_store::load_iterations(conn, run_id)?;
+    let stored_events = loopfleet_store::load_events(conn, run_id)?;
+
+    let started_ts = stored_events.first().map(|e| e.ts / 1000);
+    let ended_ts = stored_events.last().map(|e| e.ts / 1000);
+    let events = stored_events
+        .iter()
+        .filter_map(|e| {
+            serde_json::from_str::<NormalizedEvent>(&e.event_json)
+                .ok()
+                .map(|event| ReportEvent { ts: e.ts / 1000, event })
+        })
+        .collect();
+
+    let final_iter = iterations.last();
+    let diff = final_iter.and_then(|it| {
+        run_cumulative_diff_at(std::path::Path::new(&detail.repo_path), run_id, it.n)
+            .ok()
+            .map(to_diff_view)
+    });
+
+    Ok(RunReport {
+        run_id: run_id.clone(),
+        agent: detail.agent,
+        outcome: RunState::from_token(&detail.status)
+            .ok_or_else(|| ReportError::NotFound(format!("unknown run status: {}", detail.status)))?,
+        accepted: summary.accepted,
+        started_ts,
+        ended_ts,
+        events,
+        diff,
+    })
 }
 
 // --- sections ---
