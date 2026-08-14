@@ -5,7 +5,7 @@ import {
   useState,
   type ComponentType,
 } from "react";
-import { launchRun, listProjects, stopRun } from "./commands";
+import { acknowledgeRuns, launchRun, listProjects, stopRun } from "./commands";
 import { normalizeDisplayText } from "./displayText";
 import { onRunStatus } from "./events";
 import type { Project } from "./types";
@@ -196,6 +196,9 @@ export default function App() {
   // means the user is looking again, so clear every finished run's attention
   // marker. Opening a specific finished run acknowledges just that one (below).
   // The `some` guard keeps focus events that change nothing from re-rendering.
+  // Also clears the OS-level dock badge/attention signal, since a JS `focus`
+  // event doesn't necessarily coincide with the native window-focus transition
+  // the backend otherwise relies on to clear it.
   useEffect(() => {
     function onFocus() {
       setRuns((prev) =>
@@ -203,6 +206,7 @@ export default function App() {
           ? prev.map((r) => (r.unseen ? { ...r, unseen: false } : r))
           : prev,
       );
+      acknowledgeRuns().catch(() => {});
     }
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
@@ -277,12 +281,14 @@ export default function App() {
 
   // Open a run in the main pane and acknowledge it — opening a finished run is
   // the per-run counterpart to acknowledge-on-focus, clearing its attention
-  // marker. Shared by the dock and the ⌘K palette.
+  // marker (and, since opening a run implies the window is focused, the same
+  // OS-level dock badge/attention signal). Shared by the dock and the ⌘K palette.
   const openRun = useCallback((runId: string) => {
     setView({ kind: "run", runId });
     setRuns((prev) =>
       prev.map((r) => (r.runId === runId && r.unseen ? { ...r, unseen: false } : r)),
     );
+    acknowledgeRuns().catch(() => {});
   }, []);
 
   // Return to the selected project's plan, or the overview when nothing is
