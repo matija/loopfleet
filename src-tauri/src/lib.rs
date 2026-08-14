@@ -694,8 +694,11 @@ fn spawn_run(
 /// so a re-run never hammers a still-exhausted limit.
 fn delay_until(reset_at: Option<&str>, now: OffsetDateTime) -> Option<std::time::Duration> {
     let reset = OffsetDateTime::parse(reset_at?, &Rfc3339).ok()?;
+    // One-minute safety buffer past the reported reset time, since providers'
+    // reset clocks aren't always exact.
+    let target = reset + time::Duration::seconds(60);
     // `TryFrom<time::Duration>` fails for a negative span, so a past reset → None.
-    std::time::Duration::try_from(reset - now).ok()
+    std::time::Duration::try_from(target - now).ok()
 }
 
 /// Clear the OS-level "finished runs waiting" signal — dock badge count and any
@@ -977,13 +980,14 @@ mod tests {
     #[test]
     fn no_reschedule_when_the_reset_is_already_past() {
         let now = OffsetDateTime::parse("2025-01-15T10:00:00Z", &Rfc3339).unwrap();
-        assert!(delay_until(Some("2025-01-15T09:59:00Z"), now).is_none());
+        // Even with the one-minute buffer added, this reset is still in the past.
+        assert!(delay_until(Some("2025-01-15T09:58:00Z"), now).is_none());
     }
 
     #[test]
-    fn delay_is_the_gap_to_a_future_reset() {
+    fn delay_is_the_gap_to_a_future_reset_plus_a_one_minute_buffer() {
         let now = OffsetDateTime::parse("2025-01-15T10:00:00Z", &Rfc3339).unwrap();
         let delay = delay_until(Some("2025-01-15T10:05:00Z"), now).unwrap();
-        assert_eq!(delay, std::time::Duration::from_secs(300));
+        assert_eq!(delay, std::time::Duration::from_secs(300 + 60));
     }
 }
