@@ -1,8 +1,11 @@
 #!/usr/bin/env node
-// Token-discipline check: every frontend/src/*.css file (besides tokens.css,
-// which *defines* the raw values) must reference design tokens rather than
-// hardcoding a color or a radius/height in px. This keeps --c-*, --radius-*,
-// --space-*, etc. as the single source of truth for the design system.
+// Token-discipline check: every frontend/src/**/*.css file (besides
+// tokens.css, which *defines* the raw values) must reference design tokens
+// rather than hardcoding a color, a color-mix() re-derivation of a hue, or a
+// radius/height in px. This keeps --c-*, --radius-*, --space-*, etc. as the
+// single source of truth for the design system — new surfaces must consume
+// the semantic ramp tokens (-wash/-quiet/-tint/-loud) rather than eyeballing
+// their own alpha/mix step at the call site.
 //
 // Intentional exceptions (a handful of decorative one-offs that don't belong
 // in the token scale, e.g. a 6px status dot) are allowed by adding a comment
@@ -16,15 +19,30 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 const SRC_DIR = fileURLToPath(new URL("../src/", import.meta.url));
 const ALLOWLIST_MARKER = "tokens-allow";
 
 const HEX_COLOR_RE = /#[0-9a-fA-F]{3,8}\b/g;
 const RGB_FUNC_RE = /\brgba?\(/g;
+const COLOR_MIX_RE = /\bcolor-mix\(/g;
 const PX_RADIUS_HEIGHT_RE =
   /\b(?:border-radius|border-(?:top|bottom)-(?:left|right)-radius|height|min-height|max-height)\s*:\s*[0-9.]+px/g;
+
+function listCssFiles(dir) {
+  const entries = readdirSync(dir, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...listCssFiles(path));
+    } else if (entry.isFile() && entry.name.endsWith(".css")) {
+      files.push(path);
+    }
+  }
+  return files;
+}
 
 function isAllowed(lines, index) {
   const line = lines[index];
@@ -46,6 +64,9 @@ function findViolations(file, contents) {
     for (const match of line.matchAll(RGB_FUNC_RE)) {
       violations.push({ file, line: i + 1, kind: "rgb()/rgba() literal", value: match[0] });
     }
+    for (const match of line.matchAll(COLOR_MIX_RE)) {
+      violations.push({ file, line: i + 1, kind: "color-mix() literal", value: match[0] });
+    }
     for (const match of line.matchAll(PX_RADIUS_HEIGHT_RE)) {
       violations.push({ file, line: i + 1, kind: "bare px radius/height", value: match[0].trim() });
     }
@@ -55,14 +76,14 @@ function findViolations(file, contents) {
 }
 
 function main() {
-  const cssFiles = readdirSync(SRC_DIR)
-    .filter((name) => name.endsWith(".css") && name !== "tokens.css")
+  const cssFiles = listCssFiles(SRC_DIR)
+    .filter((path) => relative(SRC_DIR, path) !== "tokens.css")
     .sort();
 
-  const violations = cssFiles.flatMap((name) => {
-    const path = join(SRC_DIR, name);
+  const violations = cssFiles.flatMap((path) => {
+    const rel = `src/${relative(SRC_DIR, path)}`;
     const contents = readFileSync(path, "utf8");
-    return findViolations(`src/${name}`, contents);
+    return findViolations(rel, contents);
   });
 
   if (violations.length === 0) {
