@@ -12,6 +12,7 @@ use loopfleet_gitx::GitActor;
 use loopfleet_sandbox::{confine_prefix, RenderParams};
 use loopfleet_store::{Connection, NewRun, Project, RunSummary};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
@@ -1161,6 +1162,93 @@ fn get_project(conn: &Connection, id: &str) -> Result<Project, String> {
     .map_err(|_| format!("unknown project: {id}"))
 }
 
+/// A filename-safe version of a title: strip characters the filesystem (or a
+/// zip/email attachment step downstream) would choke on, collapse whitespace,
+/// and cap the length so a long task line doesn't produce an unwieldy path.
+fn report_file_stem(title: &str) -> String {
+    const MAX_CHARS: usize = 80;
+    let cleaned: String = title
+        .trim()
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' => '-',
+            c if c.is_control() => ' ',
+            c => c,
+        })
+        .collect();
+    let collapsed = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    let stem: String = collapsed.chars().take(MAX_CHARS).collect();
+    if stem.is_empty() {
+        "report".to_string()
+    } else {
+        stem
+    }
+}
+
+/// Write `html` to a path the user chooses via a native save dialog (defaulting
+/// to `default_name`), then reveal the saved file in Finder. Returns the chosen
+/// path, or `None` if the user cancelled the dialog.
+fn save_report(app: &AppHandle, default_name: &str, html: &str) -> Result<Option<String>, String> {
+    let chosen = app
+        .dialog()
+        .file()
+        .set_file_name(default_name)
+        .add_filter("HTML", &["html"])
+        .blocking_save_file();
+    let Some(file_path) = chosen else {
+        return Ok(None);
+    };
+    let path = file_path.into_path().map_err(|e| e.to_string())?;
+    std::fs::write(&path, html).map_err(|e| format!("writing report: {e}"))?;
+
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg("-R").arg(&path).spawn();
+
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+/// Export one task's stored data (its runs, events, and diffs) as a standalone
+/// HTML report, saved via a native save dialog defaulting to a name built from
+/// the task's text, then revealed in Finder. Returns the saved path, or `None`
+/// if the user cancelled the dialog.
+#[tauri::command]
+fn export_task_report(
+    app: AppHandle,
+    plan_id: String,
+    task_anchor: String,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    let report = {
+        let conn = state.db.lock().unwrap();
+        loopfleet_core::task_report(&conn, &plan_id, &task_anchor).map_err(|e| e.to_string())?
+    };
+    let default_name = format!("{}.html", report_file_stem(&report.text));
+    let html = loopfleet_core::render_task_report(&report);
+    save_report(&app, &default_name, &html)
+}
+
+/// Export a whole plan's stored data (every task, its runs, events, and diffs)
+/// as a standalone HTML report, saved via a native save dialog defaulting to a
+/// name built from the plan's title, then revealed in Finder. Returns the saved
+/// path, or `None` if the user cancelled the dialog.
+#[tauri::command]
+fn export_plan_report(
+    app: AppHandle,
+    plan_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    let report = {
+        let conn = state.db.lock().unwrap();
+        loopfleet_core::plan_report(&conn, &plan_id).map_err(|e| e.to_string())?
+    };
+    let default_name = format!(
+        "{}.html",
+        report_file_stem(report.title.as_deref().unwrap_or("Plan report"))
+    );
+    let html = loopfleet_core::render_plan_report(&report);
+    save_report(&app, &default_name, &html)
+}
+
 /// Discover the v1 agent CLIs: which are installed, their detected version, and
 /// whether it matches the version the adapter was tested against. Lets the UI
 /// show availability up front and warn on version drift (PRD Risks).
@@ -1277,7 +1365,9 @@ pub fn run() {
             cancel_scheduled_resume,
             acknowledge_runs,
             compare_task,
-            use_run
+            use_run,
+            export_task_report,
+            export_plan_report
         ])
         .run(tauri::generate_context!())
         .expect("error while running loopfleet");

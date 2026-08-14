@@ -35,7 +35,8 @@ pub use progress::{
     contents_mark_complete, file_marks_complete, watch_for_completion, COMPLETION_MARKER,
 };
 pub use report::{
-    render_plan_report, render_task_report, PlanReport, ReportEvent, RunReport, TaskReport,
+    plan_report, render_plan_report, render_task_report, task_report, PlanReport, ReportError,
+    ReportEvent, RunReport, TaskReport,
 };
 pub use run_loop::{run_loop, IterationRecord, LoopConfig, LoopOutcome};
 pub use supervisor::{InvalidTransition, RunProcess, RunState};

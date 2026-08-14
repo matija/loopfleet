@@ -134,6 +134,23 @@ export function compareTask(
   return invoke("compare_task", { planId, taskAnchor });
 }
 
+/// Export one task's stored data as a standalone HTML report via a native save
+/// dialog (defaulting to a name built from the task's text), revealed in
+/// Finder on success. Resolves to the saved path, or `null` if cancelled.
+export function exportTaskReport(
+  planId: string,
+  taskAnchor: string,
+): Promise<string | null> {
+  return invoke("export_task_report", { planId, taskAnchor });
+}
+
+/// Export a whole plan's stored data as a standalone HTML report via a native
+/// save dialog (defaulting to a name built from the plan's title), revealed in
+/// Finder on success. Resolves to the saved path, or `null` if cancelled.
+export function exportPlanReport(planId: string): Promise<string | null> {
+  return invoke("export_plan_report", { planId });
+}
+
 /// "Use this run": merge the run's final state into a target branch and mark
 /// the run accepted. `targetBranch = null` (or empty) merges into the repo's
 /// currently checked-out branch under a descriptive merge commit — the default.
