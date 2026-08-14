@@ -423,7 +423,12 @@ export function LaunchControl({
   const [passes, setPasses] = useState<number | "">("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [launching, setLaunching] = useState(false);
-  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  // Success swaps the button's own label briefly rather than popping a
+  // floating confirmation — a Popover here would portal to document.body and
+  // could land on top of the next task's row. Errors still use the Popover
+  // below since they need to stay put until the user reads/dismisses them.
+  const [justLaunched, setJustLaunched] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; ok: false } | null>(null);
   const initialized = useRef(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const chevronRef = useRef<HTMLButtonElement>(null);
@@ -461,9 +466,10 @@ export function LaunchControl({
         agent,
         maxIterations,
       });
-      setMsg({ text: "Launched", ok: true });
       onLaunch(runId, agent, maxIterations);
       onLaunched();
+      setJustLaunched(true);
+      setTimeout(() => setJustLaunched(false), 1500);
     } catch (e) {
       setMsg({ text: String(e), ok: false });
     } finally {
@@ -474,7 +480,7 @@ export function LaunchControl({
   // Mirrored onto the DOM so plan.css's `:has(.launch--engaged)` can keep the
   // row visible while the menu/result popover is open — both now portal to
   // document.body via Popover, out of reach of a plain `:has(.launch__menu)`.
-  const engaged = menuOpen || msg !== null;
+  const engaged = menuOpen || msg !== null || justLaunched;
 
   const content = (
     <div
@@ -490,7 +496,7 @@ export function LaunchControl({
         disabled={noAgents || launching || !agent}
         chevronRef={chevronRef}
       >
-        {launching ? "Launching…" : "Run"}
+        {launching ? "Launching…" : justLaunched ? "Launched" : "Run"}
       </SplitButton>
       <Popover
         open={menuOpen}
@@ -558,9 +564,7 @@ export function LaunchControl({
         placement="bottom-end"
         role="dialog"
         aria-label="Launch result"
-        className={
-          msg ? `launch__result msg ${msg.ok ? "msg--ok" : "msg--err"}` : "launch__result msg"
-        }
+        className="launch__result msg msg--err"
       >
         {msg?.text}
       </Popover>
