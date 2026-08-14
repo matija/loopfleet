@@ -25,6 +25,12 @@ export const RUN_STATUS_LABEL: Record<RunStatus, string> = {
   "limit-reached": "Rate-limited",
 };
 
+/// Meta line for a rate-limited run whose automatic resume chain hit the
+/// backend's attempt cap (`MAX_RESUME_ATTEMPTS`): no further re-run is coming,
+/// the run is left to the user. One shared string so every surface reads the
+/// same "no more retries coming" wording beside the `limit-reached` label.
+export const RETRIES_EXHAUSTED_LABEL = "Rate-limited · retries exhausted";
+
 /// Leading glyph per lifecycle token, drawn in currentColor so it always
 /// matches the status text it sits beside.
 export const RUN_STATUS_ICON: Record<RunStatus, (props: IconProps) => JSX.Element> = {
