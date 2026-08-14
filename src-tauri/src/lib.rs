@@ -40,6 +40,10 @@ struct AppState {
     /// and haven't been seen since — mirrored onto the dock badge, cleared when
     /// the window regains focus.
     unacknowledged_runs: Arc<AtomicI64>,
+    /// Handle to a pending rate-limit re-run's sleep-then-relaunch task, keyed
+    /// by the original run id, so `cancel_scheduled_resume` can abort it before
+    /// it fires.
+    scheduled_resumes: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
 }
 
 /// A live run event pushed to the UI as it happens: the run it belongs to, its
@@ -58,6 +62,20 @@ struct RunEventPayload {
 struct RunStatusPayload {
     run_id: String,
     status: String,
+}
+
+/// A rate-limited run's re-run has been scheduled, pushed to the UI so it can
+/// show when the original run will resume (and offer to cancel it).
+#[derive(Clone, serde::Serialize)]
+struct ScheduledResumePayload {
+    run_id: String,
+    resume_at: String,
+}
+
+/// A previously scheduled re-run was cancelled before it fired.
+#[derive(Clone, serde::Serialize)]
+struct ScheduledResumeCancelledPayload {
+    run_id: String,
 }
 
 /// Persist one event to the run's log and push it to the live UI. Returns the
@@ -425,6 +443,7 @@ async fn launch_run(
         state.data_dir.clone(),
         state.stops.clone(),
         state.unacknowledged_runs.clone(),
+        state.scheduled_resumes.clone(),
     )
     .await
 }
@@ -446,6 +465,7 @@ fn spawn_run(
     data_dir: PathBuf,
     stops: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
     unacknowledged: Arc<AtomicI64>,
+    scheduled_resumes: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
 ) -> RunFuture {
     Box::pin(async move {
     let adapter = build_adapter(&agent).ok_or_else(|| format!("unknown agent: {agent}"))?;
@@ -570,6 +590,7 @@ fn spawn_run(
     let git = git.clone();
     let stops = stops.clone();
     let unacknowledged = unacknowledged.clone();
+    let scheduled_resumes = scheduled_resumes.clone();
     let sched = (
         app.clone(),
         db.clone(),
@@ -577,6 +598,7 @@ fn spawn_run(
         data_dir.clone(),
         stops.clone(),
         unacknowledged.clone(),
+        scheduled_resumes.clone(),
     );
     tauri::async_runtime::spawn(async move {
         // Watch the worktree for file changes (the app-sourced `FileChanged`
@@ -669,16 +691,30 @@ fn spawn_run(
         // means we can't know it is safe to retry, so we leave it for the user.
         if outcome.state == RunState::LimitReached {
             if let Some(delay) = delay_until(outcome.reset_at.as_deref(), OffsetDateTime::now_utc()) {
-                let (app, db, git, data_dir, stops, unacknowledged) = sched;
+                let (app, db, git, data_dir, stops, unacknowledged, scheduled_resumes) = sched;
                 let (project_id, task_anchor, agent, max_iterations) = rerun;
-                tauri::async_runtime::spawn(async move {
+                let resume_run_id = cfg.run_id.clone();
+                let resume_at = OffsetDateTime::now_utc() + delay;
+                let _ = app.emit(
+                    "scheduled_resume",
+                    ScheduledResumePayload {
+                        run_id: resume_run_id.clone(),
+                        resume_at: resume_at
+                            .format(&Rfc3339)
+                            .unwrap_or_else(|_| resume_at.to_string()),
+                    },
+                );
+                let resumes_for_task = scheduled_resumes.clone();
+                let handle = tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(delay).await;
                     let _ = spawn_run(
                         project_id, task_anchor, agent, max_iterations,
-                        app, db, git, data_dir, stops, unacknowledged,
+                        app, db, git, data_dir, stops, unacknowledged, resumes_for_task.clone(),
                     )
                     .await;
+                    resumes_for_task.lock().unwrap().remove(&resume_run_id);
                 });
+                scheduled_resumes.lock().unwrap().insert(cfg.run_id.clone(), handle);
             }
         }
     });
@@ -731,6 +767,31 @@ fn stop_run(run_id: String, state: State<'_, AppState>) -> Result<(), String> {
             Ok(())
         }
         None => Err(format!("run is not active: {run_id}")),
+    }
+}
+
+/// Abort a pending rate-limit re-run before it fires, keyed by the original
+/// run's id. Emits `scheduled_resume_cancelled` so the UI can drop the
+/// "resuming at…" indicator.
+#[tauri::command]
+fn cancel_scheduled_resume(
+    run_id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let handle = state.scheduled_resumes.lock().unwrap().remove(&run_id);
+    match handle {
+        Some(handle) => {
+            handle.abort();
+            let _ = app.emit(
+                "scheduled_resume_cancelled",
+                ScheduledResumeCancelledPayload {
+                    run_id: run_id.clone(),
+                },
+            );
+            Ok(())
+        }
+        None => Err(format!("no scheduled resume for run: {run_id}")),
     }
 }
 
@@ -924,6 +985,7 @@ pub fn run() {
                 stops: Arc::new(Mutex::new(HashMap::new())),
                 edits: Arc::new(Mutex::new(HashMap::new())),
                 unacknowledged_runs: Arc::new(AtomicI64::new(0)),
+                scheduled_resumes: Arc::new(Mutex::new(HashMap::new())),
             });
 
             // Regaining focus counts as acknowledging any runs that finished
@@ -958,6 +1020,7 @@ pub fn run() {
             plan_runs,
             run_timeline,
             stop_run,
+            cancel_scheduled_resume,
             acknowledge_runs,
             compare_task,
             use_run
