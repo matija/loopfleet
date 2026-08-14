@@ -178,6 +178,25 @@ pub fn load_run(conn: &Connection, run_id: &str) -> rusqlite::Result<Option<RunD
     })
 }
 
+/// The project a run belongs to (joined through plan → project), or `None` if
+/// the run doesn't exist. Used to re-arm a persisted pending resume at startup,
+/// which only carries the run id, not the project id `launch_run` needs.
+pub fn project_id_for_run(conn: &Connection, run_id: &str) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT pl.project_id
+         FROM runs r
+         JOIN plans pl ON r.plan_id = pl.id
+         WHERE r.id = ?1",
+        [run_id],
+        |r| r.get(0),
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+}
+
 /// A run's bearing on its task's derived status: just its `status` token and
 /// acceptance flag, keyed by the task it is bound to.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -284,6 +303,16 @@ mod tests {
         assert_eq!(detail.repo_path, "/r");
         assert_eq!(detail.max_iterations, 5);
         assert!(load_run(&conn, "nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn project_id_for_run_joins_through_plan() {
+        let conn = crate::open(":memory:").unwrap();
+        let pid = seed(&conn);
+        insert_run(&conn, &new_run("r1", &pid, "task a", "running")).unwrap();
+
+        assert_eq!(project_id_for_run(&conn, "r1").unwrap().as_deref(), Some("p"));
+        assert!(project_id_for_run(&conn, "nope").unwrap().is_none());
     }
 
     #[test]

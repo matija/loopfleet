@@ -23,8 +23,8 @@ pub use plans::{plan_file_path, plan_id, upsert_plan, upsert_task};
 mod runs;
 pub use runs::{
     count_active_runs, fail_interrupted_runs, insert_iteration, insert_run, list_runs_for_plan,
-    load_iterations, load_run, set_run_accepted, update_run_status, IterationRow, NewRun, RunDetail,
-    RunSummary,
+    load_iterations, load_run, project_id_for_run, set_run_accepted, update_run_status,
+    IterationRow, NewRun, RunDetail, RunSummary,
 };
 
 mod pending_resumes;
