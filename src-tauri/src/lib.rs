@@ -12,6 +12,7 @@ use loopfleet_gitx::GitActor;
 use loopfleet_sandbox::{confine_prefix, RenderParams};
 use loopfleet_store::{Connection, NewRun, Project, RunSummary};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_notification::{NotificationExt, PermissionState};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use tokio::sync::watch;
@@ -671,11 +672,16 @@ fn spawn_run(
         );
 
         // The UI already reflects terminal state for a focused window, so the
-        // OS-level nudge (attention request + dock badge) is only for when the
-        // user isn't looking.
+        // OS-level nudge is only for when the user isn't looking: a system
+        // notification naming the task and outcome, falling back to the prior
+        // attention-request nudge when notifications are undeliverable (no
+        // permission, or the platform lacks the plugin). The dock badge still
+        // tracks the unacknowledged count either way.
         if let Some(window) = app.get_webview_window("main") {
             if !window.is_focused().unwrap_or(false) {
-                let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
+                if !notify_run_terminal(&app, &cfg.task_text, outcome.state) {
+                    let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
+                }
                 #[cfg(target_os = "macos")]
                 {
                     let count = unacknowledged.fetch_add(1, Ordering::SeqCst) + 1;
@@ -721,6 +727,51 @@ fn spawn_run(
 
     Ok(run_id)
     })
+}
+
+/// Post a system notification for a run's terminal state, titled with the
+/// bound task's summary and bodied with the outcome. Requests notification
+/// permission on first use (a one-time OS prompt); returns `false` without
+/// showing anything if permission is denied, the request errors, or the
+/// notification fails to post, so the caller can fall back to the existing
+/// dock-badge/attention-request signal instead of losing the nudge entirely.
+fn notify_run_terminal(app: &AppHandle, task_text: &str, state: RunState) -> bool {
+    let outcome = match state {
+        RunState::Completed => "completed",
+        RunState::Failed => "failed",
+        RunState::Stopped => "stopped",
+        RunState::LimitReached => "hit a rate limit",
+        RunState::Queued | RunState::Running => return false,
+    };
+    let notifier = app.notification();
+    let granted = match notifier.permission_state() {
+        Ok(PermissionState::Granted) => true,
+        Ok(PermissionState::Denied) => false,
+        // Unknown/not yet asked (or the check itself failed): ask once. A
+        // denied or errored request degrades silently to the dock signal.
+        _ => matches!(notifier.request_permission(), Ok(PermissionState::Granted)),
+    };
+    if !granted {
+        return false;
+    }
+    notifier
+        .builder()
+        .title(task_title(task_text))
+        .body(format!("Run {outcome}."))
+        .show()
+        .is_ok()
+}
+
+/// A notification title from a task's bound text: its first line, capped so
+/// long task descriptions don't overflow the OS notification chrome.
+fn task_title(task_text: &str) -> String {
+    const MAX_CHARS: usize = 80;
+    let first_line = task_text.lines().next().unwrap_or(task_text).trim();
+    if first_line.chars().count() <= MAX_CHARS {
+        return first_line.to_string();
+    }
+    let truncated: String = first_line.chars().take(MAX_CHARS).collect();
+    format!("{truncated}…")
 }
 
 /// How long to wait before re-running a rate-limited run: the gap between `now`
@@ -949,6 +1000,7 @@ fn agent_dirs() -> Vec<PathBuf> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
