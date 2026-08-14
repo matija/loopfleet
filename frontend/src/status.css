@@ -41,12 +41,32 @@
 
 .status-pill--completed {
   color: var(--c-ok);
-  border-color: var(--c-ok-quiet);
+  border-color: var(--c-ok);
 }
 
 .status-pill--failed {
   color: var(--c-danger);
-  border-color: var(--c-danger-quiet);
+  border-color: var(--c-danger);
+}
+
+/* Completed/failed carry a quiet semantic fill behind the glyph only — a small
+ * backing disc sized to the icon, not the pill or the row it sits in — so the
+ * pill's terminal states read slightly heavier than the transient ones without
+ * turning into a filled badge. Negative margin cancels the padding so the
+ * glyph's footprint (and the pill's reserved min-width) doesn't shift. */
+.status-pill--completed .status-pill__icon,
+.status-pill--failed .status-pill__icon {
+  border-radius: 999px;
+  padding: 2px;
+  margin: -2px;
+}
+
+.status-pill--completed .status-pill__icon {
+  background: var(--c-ok-quiet);
+}
+
+.status-pill--failed .status-pill__icon {
+  background: var(--c-danger-quiet);
 }
 
 .status-pill--stopped {
