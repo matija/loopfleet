@@ -177,6 +177,12 @@
   text-overflow: ellipsis;
 }
 
+/* A pending scheduled resume ("Rate-limited · resuming at HH:MM") reads warn,
+ * not accent — it's an outcome to notice, not the run-launch affordance. */
+.run-chip__meta--warn {
+  color: var(--c-warn);
+}
+
 /* Live elapsed stamp on running runs (dock + run view); tabular figures keep
    its width steady as the seconds tick. */
 .run-elapsed {
@@ -202,4 +208,9 @@
 
 .run-chip__action--dismiss:hover {
   background: var(--c-surface-hover);
+}
+
+.run-chip__action--cancel-resume:hover {
+  background: var(--c-warn-loud);
+  color: var(--c-text);
 }

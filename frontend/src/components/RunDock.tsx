@@ -55,6 +55,10 @@ export type ActiveRun = {
   /// Set when the run finished while it wasn't the open view — the dock's
   /// attention marker. Cleared by acknowledge-on-focus or opening the run.
   unseen?: boolean;
+  /// Set on a `limit-reached` run when the backend has scheduled an automatic
+  /// re-run for it (`scheduled_resume`), carrying the epoch ms it fires at.
+  /// Cleared when the resume fires or is cancelled — App.tsx owns the timer.
+  pendingResume?: { resumeAt: number };
 };
 
 /// Opens `open` after a hover delay, closes it immediately on pointer-leave,
@@ -170,6 +174,7 @@ function RunChip({
   onOpen,
   onStop,
   onDismiss,
+  onCancelResume,
 }: {
   run: ActiveRun;
   selected: boolean;
@@ -180,6 +185,7 @@ function RunChip({
   onOpen: (runId: string) => void;
   onStop: (runId: string) => void;
   onDismiss: (runId: string) => void;
+  onCancelResume: (runId: string) => void;
 }) {
   const active = isActiveRun(r.status);
   const taskText = normalizeDisplayText(r.taskText);
@@ -216,10 +222,20 @@ function RunChip({
           <StatusIcon size={14} />
         </span>
         <span className="run-chip__task">{taskText}</span>
-        <span className="run-chip__meta">
-          {r.agent} · {r.projectName}
-          {active && <> · <Elapsed startedAt={r.startedAt} /></>}
-        </span>
+        {r.pendingResume ? (
+          <span className="run-chip__meta run-chip__meta--warn">
+            Rate-limited · resuming at{" "}
+            {new Date(r.pendingResume.resumeAt).toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+          </span>
+        ) : (
+          <span className="run-chip__meta">
+            {r.agent} · {r.projectName}
+            {active && <> · <Elapsed startedAt={r.startedAt} /></>}
+          </span>
+        )}
       </button>
       <Popover
         open={open}
@@ -269,6 +285,15 @@ function RunChip({
         >
           <SquareIcon size={14} />
         </button>
+      ) : r.pendingResume ? (
+        <button
+          className="run-chip__action run-chip__action--cancel-resume"
+          onClick={() => onCancelResume(r.runId)}
+          title="Cancel the scheduled resume"
+          aria-label="Cancel scheduled resume"
+        >
+          <XIcon size={14} />
+        </button>
       ) : (
         <button
           className="run-chip__action run-chip__action--dismiss"
@@ -289,6 +314,7 @@ export function RunDock({
   onOpen,
   onStop,
   onDismiss,
+  onCancelResume,
   collapsed,
 }: {
   runs: ActiveRun[];
@@ -296,6 +322,7 @@ export function RunDock({
   onOpen: (runId: string) => void;
   onStop: (runId: string) => void;
   onDismiss: (runId: string) => void;
+  onCancelResume: (runId: string) => void;
   /// Collapsed to just the head strip via the toolbar's panel-bottom toggle.
   /// App.tsx owns the persisted state; the dock just renders it.
   collapsed?: boolean;
@@ -343,6 +370,7 @@ export function RunDock({
               onOpen={onOpen}
               onStop={onStop}
               onDismiss={onDismiss}
+              onCancelResume={onCancelResume}
             />
           ))}
         </ul>
