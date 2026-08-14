@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { planOverview } from "../commands";
-import { normalizeDisplayText } from "../displayText";
+import { taskSummary } from "../displayText";
 import { useSidebarCollapsed } from "../sidebarCollapse";
 import type { PlanView as Plan } from "../types";
 import { ChevronRightIcon } from "./Icon";
@@ -133,7 +133,7 @@ function PlanTreeGroup({
                 <StatusIcon size={16} />
               </span>
               <span className="tree-item__text">
-                {normalizeDisplayText(task.text)}
+                {taskSummary(task.text)}
               </span>
               {task.run_count > 0 && (
                 <span
