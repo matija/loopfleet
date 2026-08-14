@@ -51,9 +51,10 @@
 }
 
 /* --- review queue banner --- */
-/* One quiet summary row above the list: neutral hairline frame, with the amber
- * glyph and count as the only accents. The per-row signal is the amber status
- * glyph on the affected rows, not a background wash. */
+/* One summary row above the list, carrying the same strengthened amber that
+ * `.status-pill` uses for its own review/warn states (full --c-warn border
+ * plus a quiet wash, not just a neutral frame), so the outcome reads amber
+ * here too rather than only on the affected rows' status glyph. */
 
 .review-banner {
   display: flex;
@@ -62,7 +63,8 @@
   margin: var(--space-3) 0 var(--space-4);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
-  border: 1px solid var(--c-border);
+  border: 1px solid var(--c-warn);
+  background: var(--c-warn-wash);
   color: var(--c-text-muted);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);

@@ -28,7 +28,7 @@ import {
   GitBranchIcon,
 } from "./Icon";
 import { Popover } from "./Popover";
-import { MetaRow, useHoverOpen, worktreeBranch } from "./RunDock";
+import { finishedRunTone, MetaRow, useHoverOpen, worktreeBranch } from "./RunDock";
 import type {
   AgentStatus,
   PlanView as Plan,
@@ -384,6 +384,13 @@ function TaskRow({
             )
           }
           label="Elapsed or finished time"
+          tone={
+            !lastRun || isActiveRun(lastRun.status)
+              ? task.status === "completed-unaccepted"
+                ? "warn"
+                : undefined
+              : finishedRunTone(lastRun.status)
+          }
         />
       </Popover>
     </li>
