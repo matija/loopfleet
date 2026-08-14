@@ -19,7 +19,12 @@ import {
 } from "react";
 import type { RunStatus } from "../types";
 import { taskSummary } from "../displayText";
-import { RUN_STATUS_ICON, RUN_STATUS_LABEL, isActiveRun } from "../status";
+import {
+  RETRIES_EXHAUSTED_LABEL,
+  RUN_STATUS_ICON,
+  RUN_STATUS_LABEL,
+  isActiveRun,
+} from "../status";
 import { formatDuration } from "./DataGrid";
 import { Elapsed } from "./Elapsed";
 import {
@@ -59,6 +64,11 @@ export type ActiveRun = {
   /// re-run for it (`scheduled_resume`), carrying the epoch ms it fires at.
   /// Cleared when the resume fires or is cancelled — App.tsx owns the timer.
   pendingResume?: { resumeAt: number };
+  /// Set on a `limit-reached` run when the backend's automatic resume chain hit
+  /// its attempt cap: no further re-run is coming, so the chip reads "retries
+  /// exhausted" instead of a resume time. Mutually exclusive with
+  /// `pendingResume` — exhaustion means nothing was scheduled.
+  resumeExhausted?: boolean;
 };
 
 /// Opens `open` after a hover delay, closes it immediately on pointer-leave,
@@ -229,6 +239,10 @@ function RunChip({
               hour: "numeric",
               minute: "2-digit",
             })}
+          </span>
+        ) : r.resumeExhausted ? (
+          <span className="run-chip__meta run-chip__meta--warn">
+            {RETRIES_EXHAUSTED_LABEL}
           </span>
         ) : (
           <span className="run-chip__meta">
