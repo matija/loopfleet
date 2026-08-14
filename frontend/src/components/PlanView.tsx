@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { agentStatus, launchRun, listProjects, planOverview } from "../commands";
-import { normalizeDisplayText } from "../displayText";
+import { taskSummary } from "../displayText";
 import { onRunStatus } from "../events";
 import { readLaunchPrefs, writeLaunchPrefs } from "../launchPrefs";
 import { isActiveRun, RUN_STATUS_LABEL } from "../status";
@@ -281,7 +281,7 @@ function TaskRow({
           <span className="task-status__label">{STATUS_LABEL[task.status]}</span>
         </span>
         <span className="task-row__text">
-          {normalizeDisplayText(task.text)}
+          {taskSummary(task.text)}
         </span>
         {task.checked && (
           <span
@@ -343,7 +343,7 @@ function TaskRow({
         onClose={() => {}}
         anchorRef={rowRef}
         role="dialog"
-        aria-label={`${normalizeDisplayText(task.text)} details`}
+        aria-label={`${taskSummary(task.text)} details`}
         className="meta-popover"
       >
         <MetaRow
