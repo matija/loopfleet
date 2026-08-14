@@ -47,15 +47,7 @@ export function Toasts({
     <div className="toasts" role="region" aria-label="Errors" aria-live="assertive">
       {toasts.map((t) => (
         <div key={t.id} className="toast" role="alert">
-          {/* A quiet danger fill sits behind the glyph only (not the toast
-              body), matching the completed/failed status-pill treatment —
-              --c-danger is already the toast's full-strength text color, this
-              just raises the glyph's own weight to match. */}
-          <span
-            className="toast__icon"
-            aria-hidden="true"
-            style={{ background: "var(--c-danger-quiet)", borderRadius: "999px", padding: 2, margin: -2 }}
-          >
+          <span className="toast__icon" aria-hidden="true">
             ⚠
           </span>
           <span className="toast__msg">{t.message}</span>

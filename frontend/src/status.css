@@ -49,7 +49,7 @@
   border-color: var(--c-danger);
 }
 
-/* Completed/failed carry a quiet semantic fill behind the glyph only — a small
+/* Completed/failed carry a semantic tint behind the glyph only — a small
  * backing disc sized to the icon, not the pill or the row it sits in — so the
  * pill's terminal states read slightly heavier than the transient ones without
  * turning into a filled badge. Negative margin cancels the padding so the
@@ -62,11 +62,11 @@
 }
 
 .status-pill--completed .status-pill__icon {
-  background: var(--c-ok-quiet);
+  background: var(--c-ok-tint);
 }
 
 .status-pill--failed .status-pill__icon {
-  background: var(--c-danger-quiet);
+  background: var(--c-danger-tint);
 }
 
 .status-pill--stopped {

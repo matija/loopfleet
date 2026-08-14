@@ -597,10 +597,18 @@
   }
 }
 
+/* A danger tint sits behind the glyph only (not the toast body), matching the
+ * completed/failed status-pill treatment (status.css) — --c-danger is already
+ * the toast's full-strength text color, this just raises the glyph's own
+ * weight to match. */
 .toast__icon {
   flex: none;
   color: var(--c-danger);
   line-height: var(--text-sm);
+  background: var(--c-danger-tint);
+  border-radius: 999px;
+  padding: 2px;
+  margin: -2px;
 }
 
 .toast__msg {
