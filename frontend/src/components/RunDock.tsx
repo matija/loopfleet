@@ -18,7 +18,7 @@ import {
   type RefObject,
 } from "react";
 import type { RunStatus } from "../types";
-import { normalizeDisplayText } from "../displayText";
+import { taskSummary } from "../displayText";
 import { RUN_STATUS_ICON, RUN_STATUS_LABEL, isActiveRun } from "../status";
 import { formatDuration } from "./DataGrid";
 import { Elapsed } from "./Elapsed";
@@ -188,7 +188,7 @@ function RunChip({
   onCancelResume: (runId: string) => void;
 }) {
   const active = isActiveRun(r.status);
-  const taskText = normalizeDisplayText(r.taskText);
+  const taskText = taskSummary(r.taskText);
   const StatusIcon = RUN_STATUS_ICON[r.status];
   const anchorRef = useRef<HTMLButtonElement>(null);
   // `onClose` deliberately no-ops rather than reusing `useHoverOpen`'s
