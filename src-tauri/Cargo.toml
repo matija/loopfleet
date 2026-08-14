@@ -28,3 +28,6 @@ loopfleet-adapters.workspace = true
 loopfleet-sandbox.workspace = true
 loopfleet-gitx.workspace = true
 loopfleet-store.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+notify-rust = "4"

@@ -754,12 +754,54 @@ fn notify_run_terminal(app: &AppHandle, task_text: &str, state: RunState) -> boo
     if !granted {
         return false;
     }
-    notifier
-        .builder()
-        .title(task_title(task_text))
-        .body(format!("Run {outcome}."))
-        .show()
-        .is_ok()
+    let title = task_title(task_text);
+    let body = format!("Run {outcome}.");
+
+    // The tauri notification plugin's `.show()` discards the OS handle needed
+    // to observe a banner click, so on macOS we go straight to `notify-rust`
+    // (the plugin's own backend) to keep that handle and wire the click to
+    // the same focus/acknowledge path a real window-focus event takes.
+    #[cfg(target_os = "macos")]
+    {
+        show_clickable_notification(app, &title, &body)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        notifier.builder().title(title).body(body).show().is_ok()
+    }
+}
+
+/// macOS-only: show a notification via `notify-rust` directly and, on a
+/// background thread, block for the user's response. A click (any response
+/// other than dismissal) brings the main window to front and clears the
+/// unseen-runs signal through [`acknowledge_runs`] — the same path the native
+/// window-focus handler and the frontend's manual acknowledge calls use — so
+/// a banner click behaves exactly like focusing the app.
+#[cfg(target_os = "macos")]
+fn show_clickable_notification(app: &AppHandle, title: &str, body: &str) -> bool {
+    let mut notification = notify_rust::Notification::new();
+    notification.summary(title).body(body);
+    match notification.show() {
+        Ok(handle) => {
+            let app = app.clone();
+            std::thread::spawn(move || {
+                handle.wait_for_action(move |action| {
+                    if action == "__closed" {
+                        return;
+                    }
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.unminimize();
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                    let state = app.state::<AppState>();
+                    let _ = acknowledge_runs(app.clone(), state);
+                });
+            });
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 /// A notification title from a task's bound text: its first line, capped so

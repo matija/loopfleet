@@ -2032,6 +2032,7 @@ dependencies = [
  "loopfleet-gitx",
  "loopfleet-sandbox",
  "loopfleet-store",
+ "notify-rust",
  "serde",
  "serde_json",
  "tauri",
