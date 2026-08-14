@@ -19,25 +19,27 @@ pub mod event;
 pub mod overview;
 pub mod plan;
 pub mod progress;
+pub mod report;
 pub mod run_loop;
 pub mod supervisor;
 pub mod task_status;
 pub mod timeline;
-pub use adapter::{
-    AdapterError, AgentAdapter, RunHandle, RunSpec, SessionHandle, SessionSeed,
-};
+pub use adapter::{AdapterError, AgentAdapter, RunHandle, RunSpec, SessionHandle, SessionSeed};
 pub use compare::{compare_view, CompareError, CompareView, RunCompare};
 pub use event::{Lane, NormalizedEvent, Usage};
 pub use overview::{plan_overview, OverviewError, PlanView, TaskView};
 pub use plan::{
     discover_plans, parse_plan, parse_plan_file, ParsedPlan, ParsedTask, PlanConvention, TaskAnchor,
 };
-pub use task_status::{derive_status, TaskRun, TaskStatus};
 pub use progress::{
     contents_mark_complete, file_marks_complete, watch_for_completion, COMPLETION_MARKER,
 };
+pub use report::{
+    render_plan_report, render_task_report, PlanReport, ReportEvent, RunReport, TaskReport,
+};
 pub use run_loop::{run_loop, IterationRecord, LoopConfig, LoopOutcome};
 pub use supervisor::{InvalidTransition, RunProcess, RunState};
+pub use task_status::{derive_status, TaskRun, TaskStatus};
 pub use timeline::{
     run_timeline, DiffView, FileChangeView, IterationView, RunTimeline, TimelineError,
     TimelineEvent,
