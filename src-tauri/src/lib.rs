@@ -692,15 +692,31 @@ fn spawn_run(
 
         // A run that ended limit-reached waits out the rate limit: if the agent
         // gave a reset time still in the future, schedule a fresh re-run of the
-        // same task at that time. Held only in memory — like every run, a pending
-        // re-run does not survive an app restart. No (or already-past) reset time
-        // means we can't know it is safe to retry, so we leave it for the user.
+        // same task at that time. Persisted to `pending_resumes` (not just held
+        // in memory) so a crash or restart during the wait doesn't lose the
+        // schedule — `rearm_pending_resumes` re-creates this same in-memory
+        // task from that row at startup. No (or already-past) reset time means
+        // we can't know it is safe to retry, so we leave it for the user.
         if outcome.state == RunState::LimitReached {
             if let Some(delay) = delay_until(outcome.reset_at.as_deref(), OffsetDateTime::now_utc()) {
                 let (app, db, git, data_dir, stops, unacknowledged, scheduled_resumes) = sched;
                 let (project_id, task_anchor, agent, max_iterations) = rerun;
                 let resume_run_id = cfg.run_id.clone();
                 let resume_at = OffsetDateTime::now_utc() + delay;
+                let resume_at_millis = (resume_at.unix_timestamp_nanos() / 1_000_000) as i64;
+                if let Ok(conn) = db.lock() {
+                    let _ = loopfleet_store::insert_pending_resume(
+                        &conn,
+                        &loopfleet_store::NewPendingResume {
+                            run_id: resume_run_id.clone(),
+                            task_anchor: task_anchor.clone(),
+                            agent: agent.clone(),
+                            pass_count: max_iterations,
+                            resume_at: resume_at_millis,
+                            attempt: 1,
+                        },
+                    );
+                }
                 let _ = app.emit(
                     "scheduled_resume",
                     ScheduledResumePayload {
@@ -711,6 +727,7 @@ fn spawn_run(
                     },
                 );
                 let resumes_for_task = scheduled_resumes.clone();
+                let resume_db = db.clone();
                 let handle = tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(delay).await;
                     let _ = spawn_run(
@@ -719,6 +736,9 @@ fn spawn_run(
                     )
                     .await;
                     resumes_for_task.lock().unwrap().remove(&resume_run_id);
+                    if let Ok(conn) = resume_db.lock() {
+                        let _ = loopfleet_store::delete_pending_resume(&conn, &resume_run_id);
+                    }
                 });
                 scheduled_resumes.lock().unwrap().insert(cfg.run_id.clone(), handle);
             }
@@ -727,6 +747,90 @@ fn spawn_run(
 
     Ok(run_id)
     })
+}
+
+/// Re-create every persisted `pending_resumes` row as a live scheduled resume,
+/// called once at startup. A pending resume survives a crash or quit (unlike an
+/// active run, which `fail_interrupted_runs` gives up on) because it's already
+/// past its task and just waiting out a rate limit — so recovering it, rather
+/// than dropping it, is both safe and the whole point of persisting it. Each
+/// entry is re-armed through the same buffered `delay_until` path a live
+/// schedule uses: still in the future, it's slept out again (with the same
+/// safety buffer); already due, it fires right away. Either way the
+/// `scheduled_resume` event is re-emitted so the frontend's resume chip and
+/// Cancel action reattach exactly as if the wait had never been interrupted.
+fn rearm_pending_resumes(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let pending = {
+        let conn = state.db.lock().unwrap();
+        loopfleet_store::list_pending_resumes(&conn).unwrap_or_default()
+    };
+
+    for resume in pending {
+        let project_id = {
+            let conn = state.db.lock().unwrap();
+            loopfleet_store::project_id_for_run(&conn, &resume.run_id).unwrap_or(None)
+        };
+        // The original run vanished (shouldn't happen given the FK cascade,
+        // but guards against a row the cascade somehow missed) — nothing to
+        // resume.
+        let Some(project_id) = project_id else {
+            let conn = state.db.lock().unwrap();
+            let _ = loopfleet_store::delete_pending_resume(&conn, &resume.run_id);
+            continue;
+        };
+
+        let resume_at = OffsetDateTime::from_unix_timestamp(resume.resume_at / 1000)
+            .unwrap_or_else(|_| OffsetDateTime::now_utc());
+        let resume_at_str = resume_at
+            .format(&Rfc3339)
+            .unwrap_or_else(|_| resume_at.to_string());
+        let _ = app.emit(
+            "scheduled_resume",
+            ScheduledResumePayload {
+                run_id: resume.run_id.clone(),
+                resume_at: resume_at_str.clone(),
+            },
+        );
+
+        // Reuses `delay_until`, the same buffered wait a live rate-limit
+        // schedule computes: `Some(delay)` for a still-future resume_at, `None`
+        // once it's already due — which the loop below treats as "fire now".
+        let delay = delay_until(Some(&resume_at_str), OffsetDateTime::now_utc());
+
+        let db = state.db.clone();
+        let git = state.git.clone();
+        let data_dir = state.data_dir.clone();
+        let stops = state.stops.clone();
+        let unacknowledged = state.unacknowledged_runs.clone();
+        let scheduled_resumes = state.scheduled_resumes.clone();
+        let resumes_for_task = scheduled_resumes.clone();
+        let resume_db = db.clone();
+        let app = app.clone();
+        let resume_run_id = resume.run_id.clone();
+        let task_anchor = resume.task_anchor.clone();
+        let agent = resume.agent.clone();
+        let max_iterations = resume.pass_count;
+
+        let handle = tauri::async_runtime::spawn(async move {
+            if let Some(delay) = delay {
+                tokio::time::sleep(delay).await;
+            }
+            let _ = spawn_run(
+                project_id, task_anchor, agent, max_iterations,
+                app, db, git, data_dir, stops, unacknowledged, resumes_for_task.clone(),
+            )
+            .await;
+            resumes_for_task.lock().unwrap().remove(&resume_run_id);
+            if let Ok(conn) = resume_db.lock() {
+                let _ = loopfleet_store::delete_pending_resume(&conn, &resume_run_id);
+            }
+        });
+        scheduled_resumes
+            .lock()
+            .unwrap()
+            .insert(resume.run_id.clone(), handle);
+    }
 }
 
 /// Post a system notification for a run's terminal state, titled with the
@@ -876,6 +980,9 @@ fn cancel_scheduled_resume(
     match handle {
         Some(handle) => {
             handle.abort();
+            if let Ok(conn) = state.db.lock() {
+                let _ = loopfleet_store::delete_pending_resume(&conn, &run_id);
+            }
             let _ = app.emit(
                 "scheduled_resume_cancelled",
                 ScheduledResumeCancelledPayload {
@@ -1081,6 +1188,11 @@ pub fn run() {
                 unacknowledged_runs: Arc::new(AtomicI64::new(0)),
                 scheduled_resumes: Arc::new(Mutex::new(HashMap::new())),
             });
+
+            // Recover any rate-limit resume a crash or quit interrupted mid-wait
+            // (see `rearm_pending_resumes`), so the resume chip and its Cancel
+            // action reappear exactly as they were before the restart.
+            rearm_pending_resumes(&app.handle().clone());
 
             // Regaining focus counts as acknowledging any runs that finished
             // while the user was away — clear the dock badge along with it.
