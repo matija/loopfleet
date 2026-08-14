@@ -110,26 +110,50 @@ export function useHoverOpen(
   };
 }
 
-/// One aligned icon-plus-value row inside a metadata hover card.
+/// One aligned icon-plus-value row inside a metadata hover card. `tone`, when
+/// given, carries the same strengthened semantic color as `.status-pill` (warn
+/// for a review-pending outcome, danger for a failed run) so a row reporting
+/// that outcome reads red/amber here too, not only in the dock chip.
 export function MetaRow({
   icon,
   value,
   label,
+  tone,
 }: {
   icon: ReactNode;
   value: ReactNode;
   label: string;
+  tone?: "warn" | "danger";
 }) {
   return (
     <span className="meta-popover__row">
       <span className="meta-popover__icon" aria-hidden="true">
         {icon}
       </span>
-      <span className="meta-popover__value" aria-label={label}>
+      <span
+        className={`meta-popover__value${tone ? ` meta-popover__value--${tone}` : ""}`}
+        aria-label={label}
+      >
         {value}
       </span>
     </span>
   );
+}
+
+/// Maps a finished run's status to the `MetaRow` tone that matches
+/// `.status-pill`'s strengthened color for that status — danger for failed,
+/// warn for the other non-success terminal states. `undefined` for active or
+/// successfully-completed runs, which carry no outcome accent.
+export function finishedRunTone(status: RunStatus): "warn" | "danger" | undefined {
+  switch (status) {
+    case "failed":
+      return "danger";
+    case "stopped":
+    case "limit-reached":
+      return "warn";
+    default:
+      return undefined;
+  }
 }
 
 /// The branch a run's isolated worktree checks out — deterministic from the
@@ -233,6 +257,7 @@ function RunChip({
             )
           }
           label="Elapsed or finished time"
+          tone={active ? undefined : finishedRunTone(r.status)}
         />
       </Popover>
       {active ? (

@@ -84,3 +84,14 @@
   text-overflow: ellipsis;
   align-self: center;
 }
+
+/* A row reporting a review-pending or failed outcome carries the same
+ * strengthened semantic color as `.status-pill`, so the outcome reads
+ * red/amber in the hover card too, not only in the dock chip's own glyph. */
+.meta-popover__value--warn {
+  color: var(--c-warn);
+}
+
+.meta-popover__value--danger {
+  color: var(--c-danger);
+}
