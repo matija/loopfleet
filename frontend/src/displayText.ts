@@ -14,9 +14,9 @@ export function normalizeDisplayText(value: string): string {
     .trim();
 }
 
-const SUMMARY_LIMIT = 140;
+const SUMMARY_LIMIT = 90;
 
-// Compact one-line summary of a task: the first sentence, or the first 140
+// Compact one-line summary of a task: the first sentence, or the first 90
 // characters cut at a word boundary, whichever is shorter. Ends with an
 // ellipsis whenever text was dropped. Measured against the normalized text so
 // Markdown syntax never counts toward the limit.

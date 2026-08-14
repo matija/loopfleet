@@ -175,6 +175,11 @@ function PlanCard({
   onError: (message: string) => void;
 }) {
   const review = plan.tasks.filter((t) => t.status === "completed-unaccepted");
+  // Accepted tasks fall out of the working set: they render in their own
+  // "Done" section below the open tasks (authored order preserved within each
+  // group), so the index leads with what's left to do.
+  const open = plan.tasks.filter((t) => t.status !== "accepted");
+  const done = plan.tasks.filter((t) => t.status === "accepted");
 
   return (
     <section className="plan-card">
@@ -205,22 +210,53 @@ function PlanCard({
           launch runs against them.
         </p>
       ) : (
-        <ul className="task-list">
-          {plan.tasks.map((task) => (
-            <TaskRow
-              key={task.anchor}
-              task={task}
-              planId={plan.plan_id}
-              projectId={projectId}
-              repoName={repoName}
-              installed={installed}
-              agentsLoading={agentsLoading}
-              onLaunched={onLaunched}
-              onLaunch={onLaunch}
-              onCompare={onCompare}
-            />
-          ))}
-        </ul>
+        <>
+          {open.length > 0 && (
+            <ul className="task-list">
+              {open.map((task) => (
+                <TaskRow
+                  key={task.anchor}
+                  task={task}
+                  planId={plan.plan_id}
+                  projectId={projectId}
+                  repoName={repoName}
+                  installed={installed}
+                  agentsLoading={agentsLoading}
+                  onLaunched={onLaunched}
+                  onLaunch={onLaunch}
+                  onCompare={onCompare}
+                />
+              ))}
+            </ul>
+          )}
+          {done.length > 0 && (
+            <>
+              <div className="task-list__done-head">
+                <CheckIcon size={14} className="task-list__done-icon" />
+                <span>
+                  Done · {done.length} accepted
+                  {open.length === 0 ? " — all tasks accepted" : ""}
+                </span>
+              </div>
+              <ul className="task-list task-list--done">
+                {done.map((task) => (
+                  <TaskRow
+                    key={task.anchor}
+                    task={task}
+                    planId={plan.plan_id}
+                    projectId={projectId}
+                    repoName={repoName}
+                    installed={installed}
+                    agentsLoading={agentsLoading}
+                    onLaunched={onLaunched}
+                    onLaunch={onLaunch}
+                    onCompare={onCompare}
+                  />
+                ))}
+              </ul>
+            </>
+          )}
+        </>
       )}
     </section>
   );

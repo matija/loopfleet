@@ -21,27 +21,27 @@ describe("taskSummary", () => {
     expect(taskSummary("Does it build? Check CI first.")).toBe("Does it build…");
   });
 
-  it("cuts at a word boundary within 140 chars when there is no sentence boundary", () => {
+  it("cuts at a word boundary within 90 chars when there is no sentence boundary", () => {
     const words = Array(40).fill("component").join(" "); // 399 chars, no punctuation
     const summary = taskSummary(words);
     expect(summary.endsWith("…")).toBe(true);
     const text = summary.slice(0, -1);
-    expect(text.length).toBeLessThanOrEqual(140);
+    expect(text.length).toBeLessThanOrEqual(90);
     // Never mid-word: the clipped text must align with a word boundary.
     expect(words.startsWith(text)).toBe(true);
     expect(words[text.length]).toBe(" ");
   });
 
-  it("uses the 140-char cut when the first sentence boundary lies beyond it", () => {
-    const long = "word ".repeat(35).trim() + ". Second sentence."; // boundary at 175
+  it("uses the 90-char cut when the first sentence boundary lies beyond it", () => {
+    const long = "word ".repeat(25).trim() + ". Second sentence."; // boundary at 125
     const summary = taskSummary(long);
     expect(summary.endsWith("…")).toBe(true);
-    expect(summary.length).toBeLessThanOrEqual(141);
+    expect(summary.length).toBeLessThanOrEqual(91);
   });
 
-  it("hard-cuts a single unbroken run longer than 140 chars", () => {
+  it("hard-cuts a single unbroken run longer than 90 chars", () => {
     const run = "x".repeat(200);
-    expect(taskSummary(run)).toBe("x".repeat(140) + "…");
+    expect(taskSummary(run)).toBe("x".repeat(90) + "…");
   });
 
   it("strips markdown before measuring", () => {
@@ -49,9 +49,9 @@ describe("taskSummary", () => {
   });
 
   it("does not count markdown syntax toward the limit", () => {
-    // 138 visible chars once markdown is stripped, but >140 raw.
-    const visible = "a".repeat(134) + " end";
-    const marked = "**" + "a".repeat(134) + "** `end`";
+    // 88 visible chars once markdown is stripped, but >90 raw.
+    const visible = "a".repeat(84) + " end";
+    const marked = "**" + "a".repeat(84) + "** `end`";
     expect(taskSummary(marked)).toBe(visible);
   });
 

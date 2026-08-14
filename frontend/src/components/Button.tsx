@@ -4,7 +4,7 @@
 // slot, and a split button whose chevron opens a separate menu from the
 // main action.
 
-import type { ButtonHTMLAttributes, ReactNode, RefObject } from "react";
+import type { ButtonHTMLAttributes, JSX, ReactNode, RefObject } from "react";
 import { ChevronDownIcon } from "./Icon";
 
 type IconComponent = (props: { size?: number; className?: string }) => JSX.Element;

@@ -16,10 +16,10 @@
  * surfaces and raised cards, respectively. Persistent panels (sidebar,
  * titlebar, main) still take no shadow — they're part of the one black
  * field, not overlays. */
-  --c-bg: #0a0a0b;
-  --c-surface: #0a0a0b;
-  --c-surface-2: #141416;
-  --c-surface-3: #1c1c1f;
+  --c-bg: #131316;
+  --c-surface: #131316;
+  --c-surface-2: #1d1d21;
+  --c-surface-3: #26262b;
   --c-surface-hover: rgba(255, 255, 255, 0.04);
   /* Hairlines, not lines: translucent white so a divider reads the same weight
    * over the base field and over a raised fill. */
@@ -32,20 +32,20 @@
    * blended --c-surface-hover fill). AA requires 4.5:1 for body-size text;
    * all three steps clear it everywhere, --c-text-faint with the least
    * headroom (it's the one to re-check first if the canvas darkens further):
-   *   --c-text        vs --c-bg #0a0a0b:        16.77:1
-   *   --c-text        vs --c-surface-2 #141416: 15.59:1
-   *   --c-text        vs --c-surface-3 #1c1c1f: 14.41:1
-   *   --c-text-muted  vs --c-bg #0a0a0b:         7.62:1
-   *   --c-text-muted  vs --c-surface-2 #141416:  7.09:1
-   *   --c-text-muted  vs --c-surface-3 #1c1c1f:  6.55:1
-   *   --c-text-faint  vs --c-bg #0a0a0b:         5.40:1
-   *   --c-text-faint  vs --c-surface-2 #141416:  5.02:1
-   *   --c-text-faint  vs --c-surface-3 #1c1c1f:  4.64:1  (tightest margin)
-   *   --c-text-faint  vs --c-surface-hover:      5.03:1
+   *   --c-text        vs --c-bg #131316:        15.72:1
+   *   --c-text        vs --c-surface-2 #1d1d21: 14.24:1
+   *   --c-text        vs --c-surface-3 #26262b: 12.76:1
+   *   --c-text-muted  vs --c-bg #131316:         7.14:1
+   *   --c-text-muted  vs --c-surface-2 #1d1d21:  6.47:1
+   *   --c-text-muted  vs --c-surface-3 #26262b:  5.80:1
+   *   --c-text-faint  vs --c-bg #131316:         6.15:1
+   *   --c-text-faint  vs --c-surface-2 #1d1d21:  5.57:1
+   *   --c-text-faint  vs --c-surface-3 #26262b:  5.00:1  (tightest margin)
+   *   --c-text-faint  vs --c-surface-hover:      5.64:1
    */
   --c-text: #ececee;
   --c-text-muted: #a0a0a8;
-  --c-text-faint: #85858c;
+  --c-text-faint: #94949b;
 
   /* --- color: accent + semantic --- */
   --c-accent: #6275f2;
@@ -69,24 +69,24 @@
    * carries the hue without the full-saturation border (e.g. a stopped-run
    * pill's outline); -tint is the glyph-background step, a small backing disc
    * sized to an icon rather than a wash under text; -loud is the emphatic step
-   * for banners and filled controls. The danger -loud step is the 0.2 mix
+   * for banners and filled controls. The danger -loud step is the 0.14 mix
    * pre-flattened against --c-bg: it backs the toast, which floats over
    * arbitrary content and must not let it show through. */
   /* Measured WCAG 2.1 contrast for the glyph/text step of each hue (the
    * -wash and -quiet fills sit underneath body text, so they're not text
    * colors and aren't checked here). All three clear AA's 4.5:1 body-text
-   * floor against every canvas they're drawn on, --c-danger with the least
-   * headroom:
-   *   --c-ok      vs --c-bg #0a0a0b:          7.79:1
-   *   --c-ok      vs --c-surface-2 #141416:   7.24:1
-   *   --c-ok      vs --c-surface-3 #1c1c1f:   6.69:1
-   *   --c-warn    vs --c-bg #0a0a0b:          7.84:1
-   *   --c-warn    vs --c-surface-2 #141416:   7.29:1
-   *   --c-warn    vs --c-surface-3 #1c1c1f:   6.74:1
-   *   --c-danger  vs --c-bg #0a0a0b:          5.90:1
-   *   --c-danger  vs --c-surface-2 #141416:   5.49:1
-   *   --c-danger  vs --c-surface-3 #1c1c1f:   5.07:1
-   *   --c-danger  vs --c-danger-loud #3a1817: 4.74:1  (toast text-on-fill case)
+   * floor against every canvas they're drawn on, --c-text-faint with the
+   * least headroom (see the text table above):
+   *   --c-ok      vs --c-bg #131316:          7.30:1
+   *   --c-ok      vs --c-surface-2 #1d1d21:   6.61:1
+   *   --c-ok      vs --c-surface-3 #26262b:   5.93:1
+   *   --c-warn    vs --c-bg #131316:          7.35:1
+   *   --c-warn    vs --c-surface-2 #1d1d21:   6.66:1
+   *   --c-warn    vs --c-surface-3 #26262b:   5.97:1
+   *   --c-danger  vs --c-bg #131316:          6.61:1
+   *   --c-danger  vs --c-surface-2 #1d1d21:   5.99:1
+   *   --c-danger  vs --c-surface-3 #26262b:   5.36:1
+   *   --c-danger  vs --c-danger-loud #332021: 5.46:1  (toast text-on-fill case)
    *
    * The one hue pair that does fail AA text contrast is --c-accent
    * (#6275f2) directly on --c-accent-quiet (#23294d): 3.57:1, below the
@@ -104,11 +104,11 @@
   --c-warn-quiet: rgba(210, 153, 34, 0.14);
   --c-warn-tint: rgba(210, 153, 34, 0.16);
   --c-warn-loud: rgba(210, 153, 34, 0.2);
-  --c-danger: #f85149;
-  --c-danger-wash: rgba(248, 81, 73, 0.08);
-  --c-danger-quiet: rgba(248, 81, 73, 0.15);
-  --c-danger-tint: rgba(248, 81, 73, 0.17);
-  --c-danger-loud: #3a1817;
+  --c-danger: #fb6d66;
+  --c-danger-wash: rgba(251, 109, 102, 0.08);
+  --c-danger-quiet: rgba(251, 109, 102, 0.15);
+  --c-danger-tint: rgba(251, 109, 102, 0.17);
+  --c-danger-loud: #332021;
 
   /* Scrim behind modal overlays (the palette). */
   --c-scrim: rgba(0, 0, 0, 0.5);

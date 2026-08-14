@@ -4,6 +4,7 @@
 // glyph, and the active/finished split never drift between them. Pairs with
 // `.status-pill` in status.css, which owns the matching per-status colors.
 
+import type { JSX } from "react";
 import type { RunStatus } from "./types";
 import {
   AlertIcon,
