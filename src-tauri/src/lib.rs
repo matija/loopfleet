@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use loopfleet_adapters::{ClaudeAdapter, CursorAdapter, PiAdapter};
@@ -35,6 +36,10 @@ struct AppState {
     data_dir: PathBuf,
     stops: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
     edits: Arc<Mutex<HashMap<String, PendingEdit>>>,
+    /// Runs that reached a terminal state while the main window was unfocused
+    /// and haven't been seen since — mirrored onto the dock badge, cleared when
+    /// the window regains focus.
+    unacknowledged_runs: Arc<AtomicI64>,
 }
 
 /// A live run event pushed to the UI as it happens: the run it belongs to, its
@@ -419,6 +424,7 @@ async fn launch_run(
         state.git.clone(),
         state.data_dir.clone(),
         state.stops.clone(),
+        state.unacknowledged_runs.clone(),
     )
     .await
 }
@@ -439,6 +445,7 @@ fn spawn_run(
     git: GitActor,
     data_dir: PathBuf,
     stops: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
+    unacknowledged: Arc<AtomicI64>,
 ) -> RunFuture {
     Box::pin(async move {
     let adapter = build_adapter(&agent).ok_or_else(|| format!("unknown agent: {agent}"))?;
@@ -562,7 +569,15 @@ fn spawn_run(
     let db = db.clone();
     let git = git.clone();
     let stops = stops.clone();
-    let sched = (app.clone(), db.clone(), git.clone(), data_dir.clone(), stops.clone());
+    let unacknowledged = unacknowledged.clone();
+    let sched = (
+        app.clone(),
+        db.clone(),
+        git.clone(),
+        data_dir.clone(),
+        stops.clone(),
+        unacknowledged.clone(),
+    );
     tauri::async_runtime::spawn(async move {
         // Watch the worktree for file changes (the app-sourced `FileChanged`
         // lane) and stream them alongside the agent's events. Polls git status
@@ -633,6 +648,20 @@ fn spawn_run(
             },
         );
 
+        // The UI already reflects terminal state for a focused window, so the
+        // OS-level nudge (attention request + dock badge) is only for when the
+        // user isn't looking.
+        if let Some(window) = app.get_webview_window("main") {
+            if !window.is_focused().unwrap_or(false) {
+                let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
+                #[cfg(target_os = "macos")]
+                {
+                    let count = unacknowledged.fetch_add(1, Ordering::SeqCst) + 1;
+                    let _ = window.set_badge_count(Some(count));
+                }
+            }
+        }
+
         // A run that ended limit-reached waits out the rate limit: if the agent
         // gave a reset time still in the future, schedule a fresh re-run of the
         // same task at that time. Held only in memory — like every run, a pending
@@ -640,13 +669,13 @@ fn spawn_run(
         // means we can't know it is safe to retry, so we leave it for the user.
         if outcome.state == RunState::LimitReached {
             if let Some(delay) = delay_until(outcome.reset_at.as_deref(), OffsetDateTime::now_utc()) {
-                let (app, db, git, data_dir, stops) = sched;
+                let (app, db, git, data_dir, stops, unacknowledged) = sched;
                 let (project_id, task_anchor, agent, max_iterations) = rerun;
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(delay).await;
                     let _ = spawn_run(
                         project_id, task_anchor, agent, max_iterations,
-                        app, db, git, data_dir, stops,
+                        app, db, git, data_dir, stops, unacknowledged,
                     )
                     .await;
                 });
@@ -873,7 +902,22 @@ pub fn run() {
                 data_dir: dir,
                 stops: Arc::new(Mutex::new(HashMap::new())),
                 edits: Arc::new(Mutex::new(HashMap::new())),
+                unacknowledged_runs: Arc::new(AtomicI64::new(0)),
             });
+
+            // Regaining focus counts as acknowledging any runs that finished
+            // while the user was away — clear the dock badge along with it.
+            if let Some(window) = app.get_webview_window("main") {
+                let unacknowledged = app.state::<AppState>().unacknowledged_runs.clone();
+                let badge_window = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Focused(true) = event {
+                        unacknowledged.store(0, Ordering::SeqCst);
+                        #[cfg(target_os = "macos")]
+                        let _ = badge_window.set_badge_count(None);
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
