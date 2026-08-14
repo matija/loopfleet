@@ -104,6 +104,12 @@ export function stopRun(runId: string): Promise<void> {
   return invoke("stop_run", { runId });
 }
 
+/// Clear the OS-level dock badge/attention signal — the command counterpart to
+/// clearing the in-app `unseen` marker on focus or per-run acknowledge.
+export function acknowledgeRuns(): Promise<void> {
+  return invoke("acknowledge_runs");
+}
+
 /// Every run bound to any task in a plan.
 export function planRuns(planId: string): Promise<RunSummary[]> {
   return invoke("plan_runs", { planId });

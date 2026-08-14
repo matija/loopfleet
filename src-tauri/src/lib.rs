@@ -698,6 +698,24 @@ fn delay_until(reset_at: Option<&str>, now: OffsetDateTime) -> Option<std::time:
     std::time::Duration::try_from(reset - now).ok()
 }
 
+/// Clear the OS-level "finished runs waiting" signal — dock badge count and any
+/// pending attention request. The manual counterpart to the native window-focus
+/// handler installed in `run()`: that handler only fires on an OS-level focus
+/// change, but the frontend also clears its in-app `unseen` marker on a JS
+/// `focus` event and when a specific finished run is opened, neither of which
+/// necessarily coincides with a native focus transition. Called from those same
+/// two paths so the OS signal clears exactly when the in-app marker does.
+#[tauri::command]
+fn acknowledge_runs(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    state.unacknowledged_runs.store(0, Ordering::SeqCst);
+    if let Some(window) = app.get_webview_window("main") {
+        #[cfg(target_os = "macos")]
+        let _ = window.set_badge_count(None);
+        let _ = window.request_user_attention(None);
+    }
+    Ok(())
+}
+
 /// Request a stop of an active run. Signals the run's cancel channel; the loop
 /// stops at the current pass boundary (SIGTERMing the agent's process group) and
 /// finalizes its status (`stopped`). Errors if the run is not active.
@@ -937,6 +955,7 @@ pub fn run() {
             plan_runs,
             run_timeline,
             stop_run,
+            acknowledge_runs,
             compare_task,
             use_run
         ])
