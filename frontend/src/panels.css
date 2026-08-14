@@ -89,6 +89,43 @@
   filter: brightness(1.08);
 }
 
+/* --- export affordance --- */
+/* A quiet secondary control (see ExportButton). Saving a report is an errand
+ * beside the surface's real work, so at rest it reads as faint text with a
+ * hairline box, and only picks up border and surface on hover — the same
+ * restraint `.task-row__compare` uses, but always legible since it isn't
+ * revealed by hovering a row. */
+
+.export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  padding: 2px var(--space-2);
+  min-height: var(--control-h);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--c-text-faint);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.export-btn:hover:not(:disabled) {
+  background: var(--c-surface-2);
+  border-color: var(--c-accent);
+  color: var(--c-text);
+}
+
+.export-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.export-btn__icon {
+  flex: none;
+}
+
 /* --- inline save/status message --- */
 
 .msg {

@@ -4,9 +4,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { agentStatus, planOverview } from "../commands";
+import { agentStatus, exportTaskReport, planOverview } from "../commands";
 import { normalizeDisplayText } from "../displayText";
 import type { AgentStatus, PlanView as Plan } from "../types";
+import { ExportButton } from "./ExportButton";
 import { AlertIcon } from "./Icon";
 import {
   LaunchControl,
@@ -24,6 +25,7 @@ export function TaskTab({
   onLaunch,
   onCompare,
   onLaunched,
+  onError,
   toolbarActions,
 }: {
   projectId: string;
@@ -34,6 +36,8 @@ export function TaskTab({
   onLaunch: (run: LaunchedRun) => void;
   onCompare: (target: CompareTarget) => void;
   onLaunched: () => void;
+  /// Surfaces command failures (a failed export) through the app's toasts.
+  onError: (message: string) => void;
   /// The toolbar's action-slot DOM node (App's Toolbar ref). Run and Compare
   /// portal there instead of rendering inline.
   toolbarActions: HTMLElement | null;
@@ -110,18 +114,28 @@ export function TaskTab({
           iterating.
         </div>
       )}
+      {/* Compare and Export both read off the task's runs, so they appear
+       * together once there is at least one — a task with no runs has nothing
+       * to compare and nothing to report on. */}
       {task.run_count > 0 &&
         toolbarActions &&
         createPortal(
-          <button
-            className="task-row__compare"
-            onClick={() =>
-              onCompare({ planId, taskAnchor, taskText: task.text })
-            }
-            title="Compare this task's runs and use one"
-          >
-            {task.run_count} {task.run_count === 1 ? "run" : "runs"} · compare
-          </button>,
+          <>
+            <button
+              className="task-row__compare"
+              onClick={() =>
+                onCompare({ planId, taskAnchor, taskText: task.text })
+              }
+              title="Compare this task's runs and use one"
+            >
+              {task.run_count} {task.run_count === 1 ? "run" : "runs"} · compare
+            </button>
+            <ExportButton
+              onExport={() => exportTaskReport(planId, taskAnchor)}
+              onError={onError}
+              title="Save this task's runs, events, and diffs as an HTML report"
+            />
+          </>,
           toolbarActions,
         )}
     </div>

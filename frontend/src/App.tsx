@@ -707,6 +707,7 @@ export default function App() {
             nonce={planNonce}
             onLaunch={onLaunch}
             onLaunched={() => setPlanNonce((n) => n + 1)}
+            onError={pushError}
             onCompare={(target: CompareTarget) =>
               setView({
                 kind: "compare",
@@ -722,6 +723,7 @@ export default function App() {
             projectId={view.projectId}
             planNonce={planNonce}
             onLaunch={onLaunch}
+            onError={pushError}
             onCompare={(target: CompareTarget) =>
               setView({
                 kind: "compare",

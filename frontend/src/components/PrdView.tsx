@@ -22,6 +22,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   agentStatus,
+  exportPlanReport,
   getSettings,
   planEdit,
   planEditApply,
@@ -31,6 +32,7 @@ import {
 import { renderMarkdown } from "../markdown";
 import { diffLines } from "../textDiff";
 import { NoPlanEmptyState } from "./EmptyState";
+import { ExportButton } from "./ExportButton";
 import { Patch } from "./RunTimeline";
 import type { PlanEditProposal, PlanView as Plan } from "../types";
 
@@ -38,7 +40,14 @@ import type { PlanEditProposal, PlanView as Plan } from "../types";
 // instruction; `running` is the agent pass; `review` shows the returned diff.
 type Phase = "instruct" | "running" | "review";
 
-export function PrdView({ projectId }: { projectId: string }) {
+export function PrdView({
+  projectId,
+  onError,
+}: {
+  projectId: string;
+  /// Surfaces command failures (a failed export) through the app's toasts.
+  onError: (message: string) => void;
+}) {
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -245,14 +254,24 @@ export function PrdView({ projectId }: { projectId: string }) {
                   )}
                 </div>
               ) : (
-                <button
-                  className="btn prd-doc__edit"
-                  onClick={() => startEdit(plan)}
-                  disabled={!canStart}
-                  title={editDisabledTitle}
-                >
-                  {editLabel}
-                </button>
+                <div className="prd-doc__actions">
+                  {/* Exporting is safe to offer at rest but not mid-edit: the
+                    * report is built from what is stored, which is not yet what
+                    * an unaccepted proposal shows. */}
+                  <ExportButton
+                    onExport={() => exportPlanReport(plan.plan_id)}
+                    onError={onError}
+                    title="Save this plan — every task's runs, events, and diffs — as an HTML report"
+                  />
+                  <button
+                    className="btn prd-doc__edit"
+                    onClick={() => startEdit(plan)}
+                    disabled={!canStart}
+                    title={editDisabledTitle}
+                  >
+                    {editLabel}
+                  </button>
+                </div>
               )}
             </header>
 

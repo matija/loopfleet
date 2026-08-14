@@ -8,7 +8,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { agentStatus, launchRun, listProjects, planOverview } from "../commands";
+import {
+  agentStatus,
+  exportPlanReport,
+  launchRun,
+  listProjects,
+  planOverview,
+} from "../commands";
 import { taskSummary } from "../displayText";
 import { onRunStatus } from "../events";
 import { readLaunchPrefs, writeLaunchPrefs } from "../launchPrefs";
@@ -17,6 +23,7 @@ import { SplitButton } from "./Button";
 import { formatDuration } from "./DataGrid";
 import { Elapsed } from "./Elapsed";
 import { NoPlanEmptyState } from "./EmptyState";
+import { ExportButton } from "./ExportButton";
 import {
   AgentIcon,
   AlertIcon,
@@ -71,10 +78,13 @@ export function PlanView({
   projectId,
   onLaunch,
   onCompare,
+  onError,
 }: {
   projectId: string;
   onLaunch: (run: LaunchedRun) => void;
   onCompare: (target: CompareTarget) => void;
+  /// Surfaces command failures (a failed export) through the app's toasts.
+  onError: (message: string) => void;
 }) {
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -136,6 +146,7 @@ export function PlanView({
           onLaunched={reload}
           onLaunch={onLaunch}
           onCompare={onCompare}
+          onError={onError}
         />
       ))}
     </div>
@@ -151,6 +162,7 @@ function PlanCard({
   onLaunched,
   onLaunch,
   onCompare,
+  onError,
 }: {
   plan: Plan;
   projectId: string;
@@ -160,6 +172,7 @@ function PlanCard({
   onLaunched: () => void;
   onLaunch: (run: LaunchedRun) => void;
   onCompare: (target: CompareTarget) => void;
+  onError: (message: string) => void;
 }) {
   const review = plan.tasks.filter((t) => t.status === "completed-unaccepted");
 
@@ -168,6 +181,11 @@ function PlanCard({
       <header className="plan-card__head">
         <h3>{plan.title ?? plan.file_path}</h3>
         <span className="plan-card__path">{plan.file_path}</span>
+        <ExportButton
+          onExport={() => exportPlanReport(plan.plan_id)}
+          onError={onError}
+          title="Save every task in this plan — its runs, events, and diffs — as an HTML report"
+        />
       </header>
 
       {review.length > 0 && (
