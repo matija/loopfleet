@@ -5,6 +5,7 @@
 //! live `TaskStatus`; acceptance is a separate flag, not a status.
 
 use rusqlite::{params, Connection};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// A run to persist at launch. Worktree/branch/profile/progress paths are
 /// app-managed (the git actor and sandbox produce them); the run starts in
@@ -50,13 +51,33 @@ pub fn insert_run(conn: &Connection, run: &NewRun) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Terminal statuses (PRD data model): once a run reaches one of these, it
+/// stops making progress and `finished_at` is stamped.
+const TERMINAL_STATUSES: &[&str] = &["completed", "failed", "stopped", "limit-reached"];
+
+fn now_millis() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
 /// Advance a run's persisted status (`runs.status`). The caller validates the
-/// transition via `RunState` before calling.
+/// transition via `RunState` before calling. When `status` is terminal
+/// (completed/failed/stopped/limit-reached), also stamps `finished_at` to now;
+/// otherwise `finished_at` is left untouched.
 pub fn update_run_status(conn: &Connection, run_id: &str, status: &str) -> rusqlite::Result<()> {
-    conn.execute(
-        "UPDATE runs SET status = ?2 WHERE id = ?1",
-        params![run_id, status],
-    )?;
+    if TERMINAL_STATUSES.contains(&status) {
+        conn.execute(
+            "UPDATE runs SET status = ?2, finished_at = ?3 WHERE id = ?1",
+            params![run_id, status, now_millis()],
+        )?;
+    } else {
+        conn.execute(
+            "UPDATE runs SET status = ?2 WHERE id = ?1",
+            params![run_id, status],
+        )?;
+    }
     Ok(())
 }
 
@@ -363,6 +384,50 @@ mod tests {
 
         // Idempotent: a second startup finds nothing to recover.
         assert!(fail_interrupted_runs(&conn).unwrap().is_empty());
+    }
+
+    fn finished_at(conn: &Connection, run_id: &str) -> Option<i64> {
+        conn.query_row(
+            "SELECT finished_at FROM runs WHERE id = ?1",
+            [run_id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn terminal_status_stamps_finished_at() {
+        let conn = crate::open(":memory:").unwrap();
+        let pid = seed(&conn);
+        for (id, status) in [
+            ("r1", "completed"),
+            ("r2", "failed"),
+            ("r3", "stopped"),
+            ("r4", "limit-reached"),
+        ] {
+            insert_run(&conn, &new_run(id, &pid, "task a", "running")).unwrap();
+            assert!(finished_at(&conn, id).is_none());
+            update_run_status(&conn, id, status).unwrap();
+            assert!(finished_at(&conn, id).is_some(), "{status} should stamp finished_at");
+        }
+    }
+
+    #[test]
+    fn non_terminal_status_leaves_finished_at_untouched() {
+        let conn = crate::open(":memory:").unwrap();
+        let pid = seed(&conn);
+        insert_run(&conn, &new_run("r1", &pid, "task a", "queued")).unwrap();
+
+        update_run_status(&conn, "r1", "running").unwrap();
+        assert!(finished_at(&conn, "r1").is_none());
+
+        update_run_status(&conn, "r1", "completed").unwrap();
+        let first = finished_at(&conn, "r1").unwrap();
+
+        // A further non-terminal transition (shouldn't normally happen, but
+        // guards the "leave untouched" behavior) doesn't clear or bump it.
+        update_run_status(&conn, "r1", "running").unwrap();
+        assert_eq!(finished_at(&conn, "r1"), Some(first));
     }
 
     #[test]
