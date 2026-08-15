@@ -32,6 +32,8 @@ pub enum WorktreeError {
     Io(std::io::Error),
     /// `git` ran but exited non-zero; carries the (trimmed) stderr.
     Git(String),
+    /// `reap` was asked to touch a path outside the app's worktrees root.
+    OutsideRoot(PathBuf),
 }
 
 impl std::fmt::Display for WorktreeError {
@@ -39,6 +41,9 @@ impl std::fmt::Display for WorktreeError {
         match self {
             WorktreeError::Io(e) => write!(f, "git worktree: {e}"),
             WorktreeError::Git(msg) => write!(f, "git worktree failed: {msg}"),
+            WorktreeError::OutsideRoot(p) => {
+                write!(f, "refusing to reap path outside worktrees root: {}", p.display())
+            }
         }
     }
 }
@@ -105,6 +110,32 @@ pub fn remove(repo: &Path, path: &Path) -> Result<()> {
         repo,
         &["worktree", "remove", "--force", &path.to_string_lossy()],
     )?;
+    Ok(())
+}
+
+/// Force-remove a worktree at `path`, tolerating cases `remove` can't handle
+/// (e.g. a checkout git no longer recognizes as administered, or one it
+/// otherwise refuses to touch): falls back to deleting the directory directly
+/// and then `git worktree prune` to clear the stale administrative entry.
+/// Refuses to touch anything outside `worktrees_root` — a safety guard since
+/// callers may pass through a path derived from run/task state.
+pub fn reap(repo: &Path, worktrees_root: &Path, path: &Path) -> Result<()> {
+    let root = std::fs::canonicalize(worktrees_root).unwrap_or_else(|_| worktrees_root.to_path_buf());
+    let target = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    if !target.starts_with(&root) {
+        return Err(WorktreeError::OutsideRoot(path.to_path_buf()));
+    }
+
+    if remove(repo, path).is_ok() {
+        return Ok(());
+    }
+
+    if let Err(e) = std::fs::remove_dir_all(path) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            return Err(WorktreeError::Io(e));
+        }
+    }
+    git(repo, &["worktree", "prune"])?;
     Ok(())
 }
 
@@ -214,6 +245,44 @@ mod tests {
             String::from_utf8_lossy(&branches.stdout).contains("agent/run-2"),
             "agent branch kept after worktree removal"
         );
+    }
+
+    #[test]
+    fn reap_removes_clean_worktree_via_git() {
+        let repo = repo_with_commit();
+        let root = tempfile::tempdir().unwrap();
+        let wt = add(repo.path(), root.path(), "run-reap-1").unwrap();
+
+        reap(repo.path(), root.path(), &wt.path).unwrap();
+        assert!(!wt.path.exists(), "worktree dir removed");
+        assert!(list(repo.path()).unwrap().is_empty(), "no worktree left");
+    }
+
+    #[test]
+    fn reap_falls_back_to_fs_remove_when_git_refuses() {
+        let repo = repo_with_commit();
+        let root = tempfile::tempdir().unwrap();
+        // A directory under the worktrees root that git never administered, so
+        // `git worktree remove` fails and reap must fall back to a raw fs delete.
+        let fake = root.path().join("not-a-worktree");
+        std::fs::create_dir_all(&fake).unwrap();
+        std::fs::write(fake.join("junk.txt"), "junk\n").unwrap();
+
+        reap(repo.path(), root.path(), &fake).unwrap();
+        assert!(!fake.exists(), "unregistered dir removed via fs fallback");
+    }
+
+    #[test]
+    fn reap_refuses_path_outside_worktrees_root() {
+        let repo = repo_with_commit();
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let victim = outside.path().join("innocent");
+        std::fs::create_dir_all(&victim).unwrap();
+
+        let err = reap(repo.path(), root.path(), &victim).unwrap_err();
+        assert!(matches!(err, WorktreeError::OutsideRoot(_)));
+        assert!(victim.exists(), "path outside root left untouched");
     }
 
     #[test]
