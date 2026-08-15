@@ -122,7 +122,7 @@ fn list_projects(state: State<'_, AppState>) -> Result<Vec<Project>, String> {
 }
 
 /// The global app settings (default agent, default iteration count, concurrency
-/// cap). Unset fields fall back to code defaults.
+/// cap, worktree retention). Unset fields fall back to code defaults.
 #[tauri::command]
 fn get_settings(state: State<'_, AppState>) -> Result<loopfleet_store::Settings, String> {
     let conn = state.db.lock().unwrap();
@@ -1101,48 +1101,60 @@ fn worktree_in_use(worktree_path: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// How long a finished run's worktree survives before the sweep reaps it, for
-/// runs that were never explicitly accepted. Accepted runs are swept
-/// regardless of age — their worktree served its purpose once merged.
-const WORKTREE_RETENTION: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 60 * 60);
-
 /// Reap every finished run's on-disk footprint once it's no longer worth
 /// keeping around, plus any worktree directory with no matching run row at
 /// all (e.g. left behind by a run whose row was later deleted).
 ///
 /// A terminal run is swept once it's `accepted` (its diff already landed, so
-/// there's no reason to keep the checkout) or once it's older than
-/// [`WORKTREE_RETENTION`], measured from `finished_at` — falling back to the
-/// worktree directory's mtime when `finished_at` is NULL (e.g. a row from
-/// before that column existed). Runs still active or with a pending resume
-/// are skipped by `reap_run`'s own guards; sweep just ignores the error.
-/// Wired to run once at startup after `cleanup_orphans` and then hourly.
+/// there's no reason to keep the checkout) or once it's older than the
+/// user's `worktree_retention_hours` setting (default 48h), measured from
+/// `finished_at` — falling back to the worktree directory's mtime when
+/// `finished_at` is NULL (e.g. a row from before that column existed). `0`
+/// means reap immediately (any age qualifies); `-1` means never age out (only
+/// `accepted` runs and orphan directories are swept). Runs still active or
+/// with a pending resume are skipped by `reap_run`'s own guards; sweep just
+/// ignores the error. Wired to run once at startup after `cleanup_orphans`
+/// and then hourly.
 async fn sweep_worktrees(db: &Arc<Mutex<Connection>>, git: &GitActor, data_dir: &std::path::Path) {
     let worktrees_root = data_dir.join("worktrees");
     let now = std::time::SystemTime::now();
 
-    let candidates = {
+    let (candidates, retention_hours) = {
         let conn = db.lock().unwrap();
-        loopfleet_store::list_sweep_candidates(&conn).unwrap_or_default()
+        let candidates = loopfleet_store::list_sweep_candidates(&conn).unwrap_or_default();
+        let retention_hours = loopfleet_store::load_settings(&conn)
+            .map(|s| s.worktree_retention_hours)
+            .unwrap_or(48);
+        (candidates, retention_hours)
     };
 
     for candidate in candidates {
         let eligible = candidate.accepted
-            || match candidate.finished_at {
-                Some(finished_at_millis) => {
-                    let finished_at = std::time::UNIX_EPOCH
-                        + std::time::Duration::from_millis(finished_at_millis.max(0) as u64);
-                    now.duration_since(finished_at).unwrap_or_default() >= WORKTREE_RETENTION
+            || match retention_hours {
+                -1 => false,
+                hours => {
+                    let retention =
+                        std::time::Duration::from_secs((hours.max(0) as u64) * 60 * 60);
+                    match candidate.finished_at {
+                        Some(finished_at_millis) => {
+                            let finished_at = std::time::UNIX_EPOCH
+                                + std::time::Duration::from_millis(
+                                    finished_at_millis.max(0) as u64
+                                );
+                            now.duration_since(finished_at).unwrap_or_default() >= retention
+                        }
+                        None => candidate
+                            .worktree_path
+                            .as_ref()
+                            .and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
+                            .map(|mtime| now.duration_since(mtime).unwrap_or_default() >= retention)
+                            // No worktree on disk and no finished_at to fall back on:
+                            // nothing to measure age against, so sweep it (its
+                            // footprint is already gone anyway, just needs
+                            // `reaped_at` stamped).
+                            .unwrap_or(true),
+                    }
                 }
-                None => candidate
-                    .worktree_path
-                    .as_ref()
-                    .and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
-                    .map(|mtime| now.duration_since(mtime).unwrap_or_default() >= WORKTREE_RETENTION)
-                    // No worktree on disk and no finished_at to fall back on:
-                    // nothing to measure age against, so sweep it (its footprint
-                    // is already gone anyway, just needs `reaped_at` stamped).
-                    .unwrap_or(true),
             };
 
         if eligible {

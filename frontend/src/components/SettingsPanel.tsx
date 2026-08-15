@@ -1,4 +1,5 @@
-// Global app settings: default agent, default iteration count, concurrency cap.
+// Global app settings: default agent, default iteration count, concurrency
+// cap, worktree retention.
 // Loaded on mount, saved through the unchanged `get_settings`/`save_settings`
 // commands. The launch control (a later M7 task) reads these defaults.
 
@@ -15,6 +16,7 @@ export function SettingsPanel() {
     default_agent: "claude",
     default_iterations: 1,
     concurrency_cap: 3,
+    worktree_retention_hours: 48,
   });
   // `loaded` gates the form until the persisted settings arrive, so a user
   // can't edit the placeholder defaults and have their edits overwritten when
@@ -48,6 +50,10 @@ export function SettingsPanel() {
       default_agent: settings.default_agent,
       default_iterations: Math.max(1, settings.default_iterations || 1),
       concurrency_cap: Math.max(0, settings.concurrency_cap || 0),
+      worktree_retention_hours:
+        settings.worktree_retention_hours === -1
+          ? -1
+          : Math.max(0, settings.worktree_retention_hours || 0),
     };
     setSaving(true);
     setMsg(null);
@@ -125,6 +131,53 @@ export function SettingsPanel() {
               })
             }
           />
+        </label>
+        <label className="field">
+          <span>Worktree retention</span>
+          <select
+            value={
+              settings.worktree_retention_hours === -1
+                ? "never"
+                : settings.worktree_retention_hours === 0
+                ? "immediately"
+                : "after"
+            }
+            disabled={!loaded}
+            onChange={(e) => {
+              const mode = e.target.value;
+              if (mode === "never") {
+                setSettings({ ...settings, worktree_retention_hours: -1 });
+              } else if (mode === "immediately") {
+                setSettings({ ...settings, worktree_retention_hours: 0 });
+              } else {
+                setSettings({
+                  ...settings,
+                  worktree_retention_hours:
+                    settings.worktree_retention_hours > 0
+                      ? settings.worktree_retention_hours
+                      : 48,
+                });
+              }
+            }}
+          >
+            <option value="immediately">Immediately (reap as soon as finished)</option>
+            <option value="after">After a number of hours</option>
+            <option value="never">Never (keep until accepted)</option>
+          </select>
+          {settings.worktree_retention_hours > 0 && (
+            <input
+              type="number"
+              min={1}
+              value={settings.worktree_retention_hours}
+              disabled={!loaded}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  worktree_retention_hours: Number(e.target.value),
+                })
+              }
+            />
+          )}
         </label>
       </div>
       <div className="panel__actions">

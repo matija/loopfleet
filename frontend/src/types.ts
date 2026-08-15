@@ -25,6 +25,10 @@ export type Settings = {
   default_iterations: number;
   /// Max simultaneously active runs; `0` means no cap.
   concurrency_cap: number;
+  /// Hours a finished run's worktree survives before the sweep reaps it.
+  /// `0` means immediately, `-1` means never (accepted runs are always
+  /// swept regardless).
+  worktree_retention_hours: number;
 };
 
 // --- adapters: discovery.rs ---
