@@ -84,6 +84,17 @@ pub fn delete_pending_resume(conn: &Connection, run_id: &str) -> rusqlite::Resul
     Ok(())
 }
 
+/// Whether `run_id` has an outstanding scheduled resume. Reaping a run's
+/// worktree would pull the ground out from under that resume, so callers must
+/// check this before deleting anything.
+pub fn has_pending_resume(conn: &Connection, run_id: &str) -> rusqlite::Result<bool> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pending_resumes WHERE run_id = ?1)",
+        [run_id],
+        |r| r.get::<_, bool>(0),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
