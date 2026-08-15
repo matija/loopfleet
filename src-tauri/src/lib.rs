@@ -1033,6 +1033,12 @@ fn stop_run(run_id: String, state: State<'_, AppState>) -> Result<(), String> {
 /// runs with a row in `pending_resumes` (a scheduled resume needs the
 /// worktree to still be there when it fires). Idempotent: a worktree/profile/
 /// progress dir already gone is not an error.
+///
+/// Also refuses (without erroring) a worktree that's some live process's
+/// current working directory — e.g. a user with a shell or editor open in
+/// it — since deleting out from under that process would break it. Detected
+/// via `lsof` just before the delete; the run is left for the next sweep
+/// pass rather than reaped now.
 async fn reap_run(
     db: &Arc<Mutex<Connection>>,
     git: &GitActor,
@@ -1054,6 +1060,12 @@ async fn reap_run(
     };
 
     if let Some(worktree_path) = worktree_path {
+        if worktree_in_use(&worktree_path) {
+            eprintln!(
+                "reap_run: deferring run {run_id}, worktree {worktree_path} is a live process's cwd"
+            );
+            return Ok(());
+        }
         let worktrees_root = data_dir.join("worktrees");
         git.reap(repo_path, worktrees_root, PathBuf::from(worktree_path))
             .await
@@ -1072,6 +1084,21 @@ async fn reap_run(
 
     let conn = db.lock().unwrap();
     loopfleet_store::mark_run_reaped(&conn, run_id).map_err(|e| e.to_string())
+}
+
+/// Whether some live process currently has `worktree_path` as its working
+/// directory (or otherwise has it open), per `lsof`. Used to avoid deleting a
+/// worktree out from under, e.g., a shell or editor a user left open in it.
+///
+/// Fails open: if `lsof` is missing or errors, we can't tell either way, so
+/// treat the worktree as not in use rather than pile up runs that never get
+/// reaped because of an environment quirk.
+fn worktree_in_use(worktree_path: &str) -> bool {
+    std::process::Command::new("lsof")
+        .arg(worktree_path)
+        .output()
+        .map(|output| output.status.success() && !output.stdout.is_empty())
+        .unwrap_or(false)
 }
 
 /// How long a finished run's worktree survives before the sweep reaps it, for
