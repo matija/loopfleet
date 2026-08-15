@@ -47,6 +47,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0004_run_model",
         include_str!("migrations/0004_run_model.sql"),
     ),
+    (
+        "0004_run_finished_at",
+        include_str!("migrations/0004_run_finished_at.sql"),
+    ),
 ];
 
 /// Open a SQLite database at `path`, enable foreign keys, and apply all pending
