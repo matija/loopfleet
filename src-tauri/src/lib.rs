@@ -316,6 +316,7 @@ file. Change only that file.\n\n--- current {rel} ---\n{original}",
         cwd: worktree.path.clone(),
         prompt,
         wrapper,
+        model: None,
     };
 
     // Drive the single pass to completion, watching for an explicit failure. On
@@ -428,6 +429,7 @@ async fn launch_run(
     project_id: String,
     task_anchor: String,
     agent: String,
+    model: Option<String>,
     max_iterations: u32,
     app: AppHandle,
     state: State<'_, AppState>,
@@ -438,6 +440,7 @@ async fn launch_run(
         project_id,
         task_anchor,
         agent,
+        model,
         max_iterations,
         app,
         state.db.clone(),
@@ -461,6 +464,7 @@ fn spawn_run(
     project_id: String,
     task_anchor: String,
     agent: String,
+    model: Option<String>,
     max_iterations: u32,
     app: AppHandle,
     db: Arc<Mutex<Connection>>,
@@ -553,7 +557,7 @@ fn spawn_run(
 
     // Keep the launch inputs for a possible rate-limit re-run (`task_anchor` and
     // `agent` are moved into the run row just below).
-    let rerun = (project_id, task_anchor.clone(), agent.clone(), max_iterations);
+    let rerun = (project_id, task_anchor.clone(), agent.clone(), model.clone(), max_iterations);
 
     {
         let conn = db.lock().unwrap();
@@ -564,6 +568,7 @@ fn spawn_run(
                 plan_id,
                 task_anchor,
                 agent,
+                model: model.clone(),
                 worktree_path: worktree.path.to_string_lossy().into_owned(),
                 branch: worktree.branch.clone(),
                 sb_profile: profile_path.to_string_lossy().into_owned(),
@@ -584,6 +589,7 @@ fn spawn_run(
         task_text,
         max_iterations,
         wrapper,
+        model: model.clone(),
     };
 
     // Register a cancel channel so the live-run Stop button can signal this run.
@@ -714,7 +720,7 @@ fn spawn_run(
             let buffer = resume_buffer(next_attempt);
             if let Some(delay) = delay_until(outcome.reset_at.as_deref(), OffsetDateTime::now_utc(), buffer) {
                 let (app, db, git, data_dir, stops, unacknowledged, scheduled_resumes) = sched;
-                let (project_id, task_anchor, agent, max_iterations) = rerun;
+                let (project_id, task_anchor, agent, model, max_iterations) = rerun;
                 let resume_run_id = cfg.run_id.clone();
                 let resume_at = OffsetDateTime::now_utc() + delay;
                 let resume_at_millis = (resume_at.unix_timestamp_nanos() / 1_000_000) as i64;
@@ -725,6 +731,7 @@ fn spawn_run(
                             run_id: resume_run_id.clone(),
                             task_anchor: task_anchor.clone(),
                             agent: agent.clone(),
+                            model: model.clone(),
                             pass_count: max_iterations,
                             resume_at: resume_at_millis,
                             attempt: next_attempt,
@@ -745,7 +752,7 @@ fn spawn_run(
                 let handle = tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(delay).await;
                     let _ = spawn_run(
-                        project_id, task_anchor, agent, max_iterations,
+                        project_id, task_anchor, agent, model, max_iterations,
                         app, db, git, data_dir, stops, unacknowledged, resumes_for_task.clone(),
                         next_attempt,
                     )
@@ -830,6 +837,7 @@ fn rearm_pending_resumes(app: &AppHandle) {
         let resume_run_id = resume.run_id.clone();
         let task_anchor = resume.task_anchor.clone();
         let agent = resume.agent.clone();
+        let model = resume.model.clone();
         let max_iterations = resume.pass_count;
         let attempt = resume.attempt;
 
@@ -838,7 +846,7 @@ fn rearm_pending_resumes(app: &AppHandle) {
                 tokio::time::sleep(delay).await;
             }
             let _ = spawn_run(
-                project_id, task_anchor, agent, max_iterations,
+                project_id, task_anchor, agent, model, max_iterations,
                 app, db, git, data_dir, stops, unacknowledged, resumes_for_task.clone(),
                 attempt,
             )

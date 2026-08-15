@@ -8,6 +8,8 @@ const DEFAULT_PASSES = 1;
 
 export type LaunchPrefs = {
   agent: string;
+  /// Model override to launch with, or "" for the agent's own default.
+  model: string;
   passes: number;
 };
 
@@ -23,22 +25,23 @@ export function readLaunchPrefs(
   projectId: string,
   installedAgents: string[],
 ): LaunchPrefs {
+  const fallback = { agent: DEFAULT_AGENT, model: "", passes: DEFAULT_PASSES };
   let raw: string | null = null;
   try {
     raw = localStorage.getItem(storageKey(projectId));
   } catch {
-    return { agent: DEFAULT_AGENT, passes: DEFAULT_PASSES };
+    return fallback;
   }
-  if (!raw) return { agent: DEFAULT_AGENT, passes: DEFAULT_PASSES };
+  if (!raw) return fallback;
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return { agent: DEFAULT_AGENT, passes: DEFAULT_PASSES };
+    return fallback;
   }
   if (typeof parsed !== "object" || parsed === null) {
-    return { agent: DEFAULT_AGENT, passes: DEFAULT_PASSES };
+    return fallback;
   }
 
   const stored = parsed as Record<string, unknown>;
@@ -46,6 +49,7 @@ export function readLaunchPrefs(
     typeof stored.agent === "string" && installedAgents.includes(stored.agent)
       ? stored.agent
       : DEFAULT_AGENT;
+  const model = typeof stored.model === "string" ? stored.model : "";
   const passes =
     typeof stored.passes === "number" &&
     Number.isFinite(stored.passes) &&
@@ -53,7 +57,7 @@ export function readLaunchPrefs(
       ? Math.floor(stored.passes)
       : DEFAULT_PASSES;
 
-  return { agent, passes };
+  return { agent, model, passes };
 }
 
 /// Persists `prefs` as the launch preference for `projectId`.

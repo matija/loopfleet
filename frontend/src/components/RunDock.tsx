@@ -45,6 +45,8 @@ export type ActiveRun = {
   projectName: string;
   taskText: string;
   agent: string;
+  /// Model override the run was launched with, "" for the agent's own default.
+  model?: string;
   /// The project + task this run is bound to — carried so a finished run can be
   /// re-launched (e.g. retrying a rate-limited run). Optional so runs seeded from
   /// sources without the identity still render; retry is gated on both being set.

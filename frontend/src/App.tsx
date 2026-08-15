@@ -381,6 +381,7 @@ export default function App() {
           projectName,
           taskText: run.taskText,
           agent: run.agent,
+          model: run.model,
           maxIterations: run.maxIterations,
           startedAt: Date.now(),
           status: "running",
@@ -407,6 +408,7 @@ export default function App() {
           projectId: run.projectId,
           taskAnchor: run.taskAnchor,
           agent: run.agent,
+          model: run.model,
           maxIterations,
         });
         setRuns((prev) => [
@@ -415,6 +417,7 @@ export default function App() {
             projectName: run.projectName,
             taskText: run.taskText,
             agent: run.agent,
+            model: run.model,
             maxIterations,
             startedAt: Date.now(),
             status: "running",

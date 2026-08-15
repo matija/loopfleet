@@ -76,6 +76,7 @@ mod tests {
             cwd: PathBuf::from("/tmp/worktree"),
             prompt: "do the task".into(),
             wrapper: Vec::new(),
+            model: None,
         }
     }
 

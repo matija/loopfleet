@@ -41,11 +41,15 @@ pub struct ClaudeAdapter;
 #[async_trait]
 impl AgentAdapter for ClaudeAdapter {
     async fn start_run(&self, spec: &RunSpec) -> Result<RunHandle, AdapterError> {
-        let mut child = crate::base_command(&spec.wrapper, "claude")
-            .arg("-p")
+        let mut cmd = crate::base_command(&spec.wrapper, "claude");
+        cmd.arg("-p")
             .arg(&spec.prompt)
             .args(["--output-format", "stream-json", "--verbose"])
-            .arg("--dangerously-skip-permissions")
+            .arg("--dangerously-skip-permissions");
+        if let Some(model) = &spec.model {
+            cmd.arg("--model").arg(model);
+        }
+        let mut child = cmd
             .current_dir(&spec.cwd)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -594,6 +598,7 @@ mod tests {
             cwd: dir.path().to_path_buf(),
             prompt: "Read README.md and then say the single word done.".into(),
             wrapper: Vec::new(),
+            model: None,
         };
         let mut handle = ClaudeAdapter.start_run(&spec).await.unwrap();
 

@@ -111,6 +111,7 @@ async fn runs_n_loops_on_a_task_with_claude() {
             .into(),
         max_iterations: 3,
         wrapper,
+        model: None,
     };
 
     let (_cancel_tx, mut cancel_rx) = tokio::sync::watch::channel(false);

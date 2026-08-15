@@ -15,6 +15,9 @@ pub struct NewRun {
     pub plan_id: String,
     pub task_anchor: String,
     pub agent: String,
+    /// Model override for this run (e.g. Claude's "opus"/"sonnet", or a pinned
+    /// version string). `None` means the agent's own default.
+    pub model: Option<String>,
     pub worktree_path: String,
     pub branch: String,
     pub sb_profile: String,
@@ -27,14 +30,15 @@ pub struct NewRun {
 pub fn insert_run(conn: &Connection, run: &NewRun) -> rusqlite::Result<()> {
     conn.execute(
         "INSERT INTO runs
-           (id, plan_id, task_anchor, agent, worktree_path, branch,
+           (id, plan_id, task_anchor, agent, model, worktree_path, branch,
             sb_profile, progress_path, max_iterations, status)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             run.id,
             run.plan_id,
             run.task_anchor,
             run.agent,
+            run.model,
             run.worktree_path,
             run.branch,
             run.sb_profile,
@@ -145,6 +149,8 @@ pub struct RunDetail {
     pub id: String,
     pub task_anchor: String,
     pub agent: String,
+    /// The model override this run was launched with, if any.
+    pub model: Option<String>,
     pub status: String,
     pub max_iterations: u32,
     /// The parent repository where this run's shadow refs live.
@@ -154,7 +160,7 @@ pub struct RunDetail {
 /// Load one run's detail (with its parent repo path), or `None` if absent.
 pub fn load_run(conn: &Connection, run_id: &str) -> rusqlite::Result<Option<RunDetail>> {
     conn.query_row(
-        "SELECT r.id, r.task_anchor, r.agent, r.status, r.max_iterations, pr.repo_path
+        "SELECT r.id, r.task_anchor, r.agent, r.model, r.status, r.max_iterations, pr.repo_path
          FROM runs r
          JOIN plans pl ON r.plan_id = pl.id
          JOIN projects pr ON pl.project_id = pr.id
@@ -165,9 +171,10 @@ pub fn load_run(conn: &Connection, run_id: &str) -> rusqlite::Result<Option<RunD
                 id: r.get(0)?,
                 task_anchor: r.get(1)?,
                 agent: r.get(2)?,
-                status: r.get(3)?,
-                max_iterations: r.get(4)?,
-                repo_path: r.get(5)?,
+                model: r.get(3)?,
+                status: r.get(4)?,
+                max_iterations: r.get(5)?,
+                repo_path: r.get(6)?,
             })
         },
     )
@@ -251,6 +258,7 @@ mod tests {
             plan_id: pid.into(),
             task_anchor: anchor.into(),
             agent: "claude".into(),
+            model: None,
             worktree_path: "/wt".into(),
             branch: format!("agent/{id}"),
             sb_profile: "/prof.sb".into(),

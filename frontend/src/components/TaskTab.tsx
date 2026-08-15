@@ -94,12 +94,13 @@ export function TaskTab({
           installed={installed}
           agentsLoading={agentsLoading}
           onLaunched={onLaunched}
-          onLaunch={(runId, agent, maxIterations) =>
+          onLaunch={(runId, agent, model, maxIterations) =>
             onLaunch({
               runId,
               taskText: task.text,
               taskAnchor: task.anchor,
               agent,
+              model,
               maxIterations,
             })
           }

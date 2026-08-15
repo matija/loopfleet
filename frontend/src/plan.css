@@ -393,6 +393,37 @@
   color: var(--c-text-faint);
 }
 
+/* Model override (Claude only): a free-text box with preset suggestions via
+ * `<datalist>` — matches the agent/count controls' box chrome. */
+.launch__model {
+  display: inline-flex;
+  align-items: stretch;
+  height: var(--control-h);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--c-surface);
+}
+
+.launch__model-input {
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--c-text);
+  background: transparent;
+  border: 0;
+  width: 100%;
+  padding: 0 var(--space-2);
+}
+
+.launch__model-input::placeholder {
+  color: var(--c-text-faint);
+}
+
+.launch__model-input:disabled {
+  color: var(--c-text-faint);
+  cursor: default;
+}
+
 .launch__count {
   display: inline-flex;
   align-items: stretch;

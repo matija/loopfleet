@@ -11,6 +11,9 @@ pub struct NewPendingResume {
     pub run_id: String,
     pub task_anchor: String,
     pub agent: String,
+    /// The model override the original run was launched with, if any; carried
+    /// forward so the resumed pass keeps it.
+    pub model: Option<String>,
     pub pass_count: u32,
     /// When the resume should fire, unix millis.
     pub resume_at: i64,
@@ -24,12 +27,13 @@ pub struct NewPendingResume {
 pub fn insert_pending_resume(conn: &Connection, resume: &NewPendingResume) -> rusqlite::Result<()> {
     conn.execute(
         "INSERT INTO pending_resumes
-           (run_id, task_anchor, agent, pass_count, resume_at, attempt)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+           (run_id, task_anchor, agent, model, pass_count, resume_at, attempt)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             resume.run_id,
             resume.task_anchor,
             resume.agent,
+            resume.model,
             resume.pass_count,
             resume.resume_at,
             resume.attempt,
@@ -44,6 +48,7 @@ pub struct PendingResume {
     pub run_id: String,
     pub task_anchor: String,
     pub agent: String,
+    pub model: Option<String>,
     pub pass_count: u32,
     pub resume_at: i64,
     pub attempt: u32,
@@ -53,7 +58,7 @@ pub struct PendingResume {
 /// to reschedule anything a crash interrupted, and by the scheduler loop.
 pub fn list_pending_resumes(conn: &Connection) -> rusqlite::Result<Vec<PendingResume>> {
     let mut stmt = conn.prepare(
-        "SELECT run_id, task_anchor, agent, pass_count, resume_at, attempt
+        "SELECT run_id, task_anchor, agent, model, pass_count, resume_at, attempt
          FROM pending_resumes ORDER BY resume_at",
     )?;
     let rows = stmt
@@ -62,9 +67,10 @@ pub fn list_pending_resumes(conn: &Connection) -> rusqlite::Result<Vec<PendingRe
                 run_id: r.get(0)?,
                 task_anchor: r.get(1)?,
                 agent: r.get(2)?,
-                pass_count: r.get(3)?,
-                resume_at: r.get(4)?,
-                attempt: r.get(5)?,
+                model: r.get(3)?,
+                pass_count: r.get(4)?,
+                resume_at: r.get(5)?,
+                attempt: r.get(6)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -100,6 +106,7 @@ mod tests {
                 plan_id: pid,
                 task_anchor: "task a".into(),
                 agent: "claude".into(),
+                model: None,
                 worktree_path: "/wt".into(),
                 branch: "agent/r1".into(),
                 sb_profile: "/prof.sb".into(),
@@ -116,6 +123,7 @@ mod tests {
             run_id: run_id.into(),
             task_anchor: "task a".into(),
             agent: "claude".into(),
+            model: None,
             pass_count: 3,
             resume_at: 1_700_000_000_000,
             attempt,

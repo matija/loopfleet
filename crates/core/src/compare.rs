@@ -123,6 +123,7 @@ mod tests {
             plan_id: pid.into(),
             task_anchor: anchor.into(),
             agent: "claude".into(),
+            model: None,
             worktree_path: "/wt".into(),
             branch: format!("agent/{id}"),
             sb_profile: "/p.sb".into(),

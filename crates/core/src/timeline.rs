@@ -189,6 +189,7 @@ mod tests {
                 plan_id: pid,
                 task_anchor: "task a".into(),
                 agent: "claude".into(),
+                model: None,
                 worktree_path: "/wt".into(),
                 branch: "agent/r1".into(),
                 sb_profile: "/p.sb".into(),

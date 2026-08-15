@@ -94,9 +94,12 @@ export function launchRun(args: {
   projectId: string;
   taskAnchor: string;
   agent: string;
+  /// Model override for this run (e.g. Claude's "opus"/"sonnet", or a pinned
+  /// version string). `undefined`/omitted uses the agent CLI's own default.
+  model?: string | null;
   maxIterations: number;
 }): Promise<string> {
-  return invoke("launch_run", args);
+  return invoke("launch_run", { ...args, model: args.model ?? null });
 }
 
 /// Request a stop of an active run (stops at the next pass boundary).

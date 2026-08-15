@@ -585,6 +585,7 @@ mod tests {
             cwd: dir.path().to_path_buf(),
             prompt: "Read README.md and then say the single word done.".into(),
             wrapper: Vec::new(),
+            model: None,
         };
         let mut handle = CursorAdapter.start_run(&spec).await.unwrap();
 

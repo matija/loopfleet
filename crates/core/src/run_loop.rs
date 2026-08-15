@@ -67,6 +67,8 @@ pub struct LoopConfig {
     /// layer fills it with the Seatbelt invocation (`sandbox-exec -f <profile>`,
     /// via [`confine_prefix`](loopfleet_sandbox)); empty runs the agent directly.
     pub wrapper: Vec<OsString>,
+    /// Model override passed through to every pass's [`RunSpec::model`].
+    pub model: Option<String>,
 }
 
 /// One completed pass's app-owned snapshot. The caller persists these as
@@ -133,6 +135,7 @@ pub async fn run_loop(
             cwd: cfg.worktree.clone(),
             prompt: build_prompt(cfg, &prior),
             wrapper: cfg.wrapper.clone(),
+            model: cfg.model.clone(),
         };
 
         let mut handle = match adapter.start_run(&spec).await {
@@ -439,6 +442,7 @@ mod tests {
             task_text: "Implement the widget".into(),
             max_iterations,
             wrapper: Vec::new(),
+            model: None,
         };
         (cfg, repo, root, progress_dir)
     }

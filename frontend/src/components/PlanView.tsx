@@ -64,8 +64,14 @@ export type LaunchedRun = {
   taskText: string;
   taskAnchor: string;
   agent: string;
+  model: string;
   maxIterations: number;
 };
+
+/// Claude Code model presets offered in the launch menu (`claude --model`).
+/// Free text is still accepted for a pinned/older version (e.g.
+/// "claude-opus-4-1-20250805") — this list is just the common shortcuts.
+const CLAUDE_MODEL_PRESETS = ["opus", "sonnet", "haiku"];
 
 /// What opening the compare view needs: the plan + task and its display text.
 export type CompareTarget = {
@@ -268,6 +274,7 @@ function PlanCard({
 type RowLastRun = {
   runId: string;
   agent: string;
+  model: string;
   maxIterations: number;
   startedAt: number;
   status: RunStatus;
@@ -375,10 +382,11 @@ function TaskRow({
         installed={installed}
         agentsLoading={agentsLoading}
         onLaunched={onLaunched}
-        onLaunch={(runId, agent, maxIterations) => {
+        onLaunch={(runId, agent, model, maxIterations) => {
           setLastRun({
             runId,
             agent,
+            model,
             maxIterations,
             startedAt: Date.now(),
             status: "running",
@@ -388,6 +396,7 @@ function TaskRow({
             taskText: task.text,
             taskAnchor: task.anchor,
             agent,
+            model,
             maxIterations,
           });
         }}
@@ -415,6 +424,13 @@ function TaskRow({
           value={lastRun?.agent ?? "—"}
           label="Agent"
         />
+        {lastRun?.model && (
+          <MetaRow
+            icon={<AgentIcon size={14} />}
+            value={lastRun.model}
+            label="Model"
+          />
+        )}
         <MetaRow
           icon={<BoxIcon size={14} />}
           value={
@@ -465,7 +481,12 @@ export function LaunchControl({
   installed: string[];
   agentsLoading?: boolean;
   onLaunched: () => void;
-  onLaunch: (runId: string, agent: string, maxIterations: number) => void;
+  onLaunch: (
+    runId: string,
+    agent: string,
+    model: string,
+    maxIterations: number,
+  ) => void;
   /// When set, the whole control (split button, its menu, and the result
   /// message) portals there instead of rendering inline — the toolbar's
   /// action slot, wired by TaskTab.
@@ -474,6 +495,9 @@ export function LaunchControl({
   // Empty sentinels mean "not chosen yet"; adopted once from launchPrefs
   // after the installed-agents list resolves, then left to the user.
   const [agent, setAgent] = useState<string>("");
+  // Free text (with preset suggestions for Claude) — "" means the agent CLI's
+  // own default model.
+  const [model, setModel] = useState<string>("");
   const [passes, setPasses] = useState<number | "">("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [launching, setLaunching] = useState(false);
@@ -492,14 +516,22 @@ export function LaunchControl({
     initialized.current = true;
     const prefs = readLaunchPrefs(projectId, installed);
     setAgent(prefs.agent);
+    setModel(prefs.model);
     setPasses(prefs.passes);
   }, [agentsLoading, installed, projectId]);
 
   // Persist the user's choices as soon as they diverge from the loaded prefs.
   useEffect(() => {
     if (!initialized.current || agent === "" || passes === "") return;
-    writeLaunchPrefs(projectId, { agent, passes });
-  }, [projectId, agent, passes]);
+    writeLaunchPrefs(projectId, { agent, model, passes });
+  }, [projectId, agent, model, passes]);
+
+  // A model override only makes sense for the agent that supports one
+  // (Claude Code's `--model`); switching to another agent drops it so a
+  // stray leftover value never gets sent where it can't be honored.
+  useEffect(() => {
+    if (agent !== "claude" && model !== "") setModel("");
+  }, [agent, model]);
 
   const noAgents = installed.length === 0;
   const passCount = passes || 1;
@@ -518,9 +550,10 @@ export function LaunchControl({
         projectId,
         taskAnchor,
         agent,
+        model: model.trim() || null,
         maxIterations,
       });
-      onLaunch(runId, agent, maxIterations);
+      onLaunch(runId, agent, model.trim(), maxIterations);
       onLaunched();
       setJustLaunched(true);
       setTimeout(() => setJustLaunched(false), 1500);
@@ -584,6 +617,24 @@ export function LaunchControl({
                 </button>
               ))}
         </div>
+        {agent === "claude" && (
+          <div className="launch__model" role="group" aria-label="Model">
+            <input
+              type="text"
+              list="launch-model-presets"
+              className="launch__model-input"
+              placeholder="Default model"
+              value={model}
+              disabled={noAgents}
+              onChange={(e) => setModel(e.target.value)}
+            />
+            <datalist id="launch-model-presets">
+              {CLAUDE_MODEL_PRESETS.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+          </div>
+        )}
         <div className="launch__count" role="group" aria-label="Maximum passes">
           <button
             type="button"

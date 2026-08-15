@@ -31,30 +31,34 @@ describe("readLaunchPrefs", () => {
   it("defaults to claude/1 when nothing has been stored", () => {
     expect(readLaunchPrefs(PROJECT_ID, INSTALLED)).toEqual({
       agent: "claude",
+      model: "",
       passes: 1,
     });
   });
 
   it("returns a previously written, still-installed preference", () => {
-    writeLaunchPrefs(PROJECT_ID, { agent: "codex", passes: 3 });
+    writeLaunchPrefs(PROJECT_ID, { agent: "codex", model: "opus", passes: 3 });
     expect(readLaunchPrefs(PROJECT_ID, INSTALLED)).toEqual({
       agent: "codex",
+      model: "opus",
       passes: 3,
     });
   });
 
   it("is scoped per project", () => {
-    writeLaunchPrefs("proj-1", { agent: "codex", passes: 3 });
+    writeLaunchPrefs("proj-1", { agent: "codex", model: "opus", passes: 3 });
     expect(readLaunchPrefs("proj-2", INSTALLED)).toEqual({
       agent: "claude",
+      model: "",
       passes: 1,
     });
   });
 
   it("falls back to the default agent when the stored agent is no longer installed", () => {
-    writeLaunchPrefs(PROJECT_ID, { agent: "gemini", passes: 2 });
+    writeLaunchPrefs(PROJECT_ID, { agent: "gemini", model: "", passes: 2 });
     expect(readLaunchPrefs(PROJECT_ID, INSTALLED)).toEqual({
       agent: "claude",
+      model: "",
       passes: 2,
     });
   });
@@ -63,6 +67,7 @@ describe("readLaunchPrefs", () => {
     localStorage.setItem(`loopfleet.launch.${PROJECT_ID}`, "{not valid json");
     expect(readLaunchPrefs(PROJECT_ID, INSTALLED)).toEqual({
       agent: "claude",
+      model: "",
       passes: 1,
     });
   });
@@ -71,17 +76,19 @@ describe("readLaunchPrefs", () => {
     localStorage.setItem(`loopfleet.launch.${PROJECT_ID}`, "42");
     expect(readLaunchPrefs(PROJECT_ID, INSTALLED)).toEqual({
       agent: "claude",
+      model: "",
       passes: 1,
     });
   });
 
-  it("tolerates a null-valued agent/passes fields", () => {
+  it("tolerates a null-valued agent/model/passes fields", () => {
     localStorage.setItem(
       `loopfleet.launch.${PROJECT_ID}`,
-      JSON.stringify({ agent: null, passes: null }),
+      JSON.stringify({ agent: null, model: null, passes: null }),
     );
     expect(readLaunchPrefs(PROJECT_ID, INSTALLED)).toEqual({
       agent: "claude",
+      model: "",
       passes: 1,
     });
   });
@@ -93,6 +100,7 @@ describe("readLaunchPrefs", () => {
     );
     expect(readLaunchPrefs(PROJECT_ID, INSTALLED)).toEqual({
       agent: "codex",
+      model: "",
       passes: 1,
     });
 
@@ -102,6 +110,7 @@ describe("readLaunchPrefs", () => {
     );
     expect(readLaunchPrefs(PROJECT_ID, INSTALLED)).toEqual({
       agent: "codex",
+      model: "",
       passes: 1,
     });
   });
@@ -113,14 +122,16 @@ describe("readLaunchPrefs", () => {
     );
     expect(readLaunchPrefs(PROJECT_ID, INSTALLED)).toEqual({
       agent: "codex",
+      model: "",
       passes: 2,
     });
   });
 
   it("ignores an empty installed list, always falling back to the default agent", () => {
-    writeLaunchPrefs(PROJECT_ID, { agent: "claude", passes: 4 });
+    writeLaunchPrefs(PROJECT_ID, { agent: "claude", model: "", passes: 4 });
     expect(readLaunchPrefs(PROJECT_ID, [])).toEqual({
       agent: "claude",
+      model: "",
       passes: 4,
     });
   });
@@ -128,9 +139,10 @@ describe("readLaunchPrefs", () => {
 
 describe("writeLaunchPrefs", () => {
   it("round-trips through readLaunchPrefs", () => {
-    writeLaunchPrefs(PROJECT_ID, { agent: "codex", passes: 5 });
+    writeLaunchPrefs(PROJECT_ID, { agent: "codex", model: "sonnet", passes: 5 });
     expect(readLaunchPrefs(PROJECT_ID, INSTALLED)).toEqual({
       agent: "codex",
+      model: "sonnet",
       passes: 5,
     });
   });

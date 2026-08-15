@@ -42,6 +42,11 @@ pub struct RunSpec {
     /// opaque — it never learns the backend is Seatbelt, keeping the `Sandbox`
     /// details from leaking into adapters (PRD: Sandbox).
     pub wrapper: Vec<OsString>,
+    /// Model override to run this agent with (e.g. Claude's "opus", "sonnet",
+    /// or a pinned version string like "claude-opus-4-1-20250805"). `None`
+    /// means the agent CLI's own default. Adapters that have no notion of
+    /// model selection ignore this.
+    pub model: Option<String>,
 }
 
 /// Seed context for an interactive plan-editing session (M5). Present so the
