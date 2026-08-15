@@ -140,6 +140,13 @@ export function RunTimeline({
         </div>
       )}
 
+      {timeline && !isActiveRun(status) && timeline.worktree_path === null && (
+        <p className="run-view__reclaimed">
+          Worktree cleaned — its files were reclaimed to free disk space. The
+          diff and report below are unaffected.
+        </p>
+      )}
+
       {error ? (
         <div className="run-view__stream run-view__stream--full">
           <p className="panel__error">{error}</p>
