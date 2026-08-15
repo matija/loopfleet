@@ -13,6 +13,7 @@ import type {
   RunSummary,
   RunTimeline,
   Settings,
+  SweepResult,
   UseRunResult,
 } from "./types";
 
@@ -111,6 +112,13 @@ export function stopRun(runId: string): Promise<void> {
 /// run's id.
 export function cancelScheduledResume(runId: string): Promise<void> {
   return invoke("cancel_scheduled_resume", { runId });
+}
+
+/// Run a worktree sweep pass immediately (same eligibility rules as the
+/// hourly background sweep) and report how much it reclaimed, for the
+/// settings panel's "Clean up now" control.
+export function sweepWorktreesNow(): Promise<SweepResult> {
+  return invoke("sweep_worktrees_now");
 }
 
 /// Clear the OS-level dock badge/attention signal — the command counterpart to

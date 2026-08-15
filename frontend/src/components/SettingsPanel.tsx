@@ -4,12 +4,26 @@
 // commands. The launch control (a later M7 task) reads these defaults.
 
 import { useEffect, useState } from "react";
-import { getSettings, saveSettings } from "../commands";
+import { getSettings, saveSettings, sweepWorktreesNow } from "../commands";
 import type { Settings } from "../types";
 
 // The v1 agent keys (matches the adapters' discovery set). A small stable list;
 // no need to derive it from `agent_status` here.
 const AGENTS = ["claude", "pi", "cursor"];
+
+// Human-readable byte count for the sweep toast (binary units, matches how
+// most OS file browsers report disk usage).
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(1)} ${units[unit]}`;
+}
 
 export function SettingsPanel() {
   const [settings, setSettings] = useState<Settings>({
@@ -26,6 +40,10 @@ export function SettingsPanel() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [sweeping, setSweeping] = useState(false);
+  const [sweepMsg, setSweepMsg] = useState<{ text: string; ok: boolean } | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +83,25 @@ export function SettingsPanel() {
       setMsg({ text: String(e), ok: false });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function cleanUpNow() {
+    setSweeping(true);
+    setSweepMsg(null);
+    try {
+      const result = await sweepWorktreesNow();
+      setSweepMsg({
+        text:
+          result.removed === 0
+            ? "Nothing to clean up"
+            : `Removed ${result.removed} worktree${result.removed === 1 ? "" : "s"}, reclaimed ${formatBytes(result.bytes_reclaimed)}`,
+        ok: true,
+      });
+    } catch (e) {
+      setSweepMsg({ text: String(e), ok: false });
+    } finally {
+      setSweeping(false);
     }
   }
 
@@ -187,6 +224,20 @@ export function SettingsPanel() {
         {msg && (
           <span className={`msg ${msg.ok ? "msg--ok" : "msg--err"}`}>
             {msg.text}
+          </span>
+        )}
+      </div>
+      <div className="panel__actions">
+        <button
+          className="btn"
+          onClick={cleanUpNow}
+          disabled={sweeping || !loaded}
+        >
+          {sweeping ? "Cleaning up…" : "Clean up now"}
+        </button>
+        {sweepMsg && (
+          <span className={`msg ${sweepMsg.ok ? "msg--ok" : "msg--err"}`}>
+            {sweepMsg.text}
           </span>
         )}
       </div>

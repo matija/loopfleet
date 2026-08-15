@@ -184,6 +184,15 @@ export type UseRunResult = {
   up_to_date: boolean;
 };
 
+// --- src-tauri: sweep_worktrees_now ---
+
+/// The result of an on-demand worktree sweep, returned by
+/// `sweep_worktrees_now`. `src-tauri::SweepResult`.
+export type SweepResult = {
+  removed: number;
+  bytes_reclaimed: number;
+};
+
 // --- src-tauri: plan_edit ---
 
 /// A proposed AI edit to a plan document, returned by `plan_edit`. The default

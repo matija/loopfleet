@@ -1115,9 +1115,17 @@ fn worktree_in_use(worktree_path: &str) -> bool {
 /// with a pending resume are skipped by `reap_run`'s own guards; sweep just
 /// ignores the error. Wired to run once at startup after `cleanup_orphans`
 /// and then hourly.
-async fn sweep_worktrees(db: &Arc<Mutex<Connection>>, git: &GitActor, data_dir: &std::path::Path) {
+async fn sweep_worktrees(
+    db: &Arc<Mutex<Connection>>,
+    git: &GitActor,
+    data_dir: &std::path::Path,
+) -> SweepResult {
     let worktrees_root = data_dir.join("worktrees");
     let now = std::time::SystemTime::now();
+    let mut result = SweepResult {
+        removed: 0,
+        bytes_reclaimed: 0,
+    };
 
     let (candidates, retention_hours) = {
         let conn = db.lock().unwrap();
@@ -1158,8 +1166,20 @@ async fn sweep_worktrees(db: &Arc<Mutex<Connection>>, git: &GitActor, data_dir: 
             };
 
         if eligible {
-            if let Err(e) = reap_run(db, git, data_dir, &candidate.id).await {
-                eprintln!("sweep_worktrees: failed to reap run {}: {e}", candidate.id);
+            let worktree_path = candidate.worktree_path.as_ref().map(std::path::Path::new);
+            let bytes_before = worktree_path.map(dir_size).unwrap_or(0);
+            match reap_run(db, git, data_dir, &candidate.id).await {
+                // `reap_run` also returns `Ok(())` without removing anything when
+                // the worktree is some live process's cwd (deferred to next
+                // sweep) — only count it once the directory is actually gone.
+                Ok(()) if worktree_path.is_none_or(|p| !p.exists()) => {
+                    result.removed += 1;
+                    result.bytes_reclaimed += bytes_before;
+                }
+                Ok(()) => {}
+                Err(e) => {
+                    eprintln!("sweep_worktrees: failed to reap run {}: {e}", candidate.id);
+                }
             }
         }
     }
@@ -1173,7 +1193,7 @@ async fn sweep_worktrees(db: &Arc<Mutex<Connection>>, git: &GitActor, data_dir: 
     };
 
     let Ok(entries) = std::fs::read_dir(&worktrees_root) else {
-        return;
+        return result;
     };
     for entry in entries.flatten() {
         if !entry.path().is_dir() {
@@ -1183,13 +1203,67 @@ async fn sweep_worktrees(db: &Arc<Mutex<Connection>>, git: &GitActor, data_dir: 
         if known_run_ids.contains(&name) {
             continue;
         }
-        if let Err(e) = std::fs::remove_dir_all(entry.path()) {
-            eprintln!(
-                "sweep_worktrees: failed to remove orphan worktree dir {}: {e}",
-                entry.path().display()
-            );
+        let bytes_before = dir_size(&entry.path());
+        match std::fs::remove_dir_all(entry.path()) {
+            Ok(()) => {
+                result.removed += 1;
+                result.bytes_reclaimed += bytes_before;
+            }
+            Err(e) => {
+                eprintln!(
+                    "sweep_worktrees: failed to remove orphan worktree dir {}: {e}",
+                    entry.path().display()
+                );
+            }
         }
     }
+    result
+}
+
+/// Total on-disk size of everything under `path` (recursing into
+/// subdirectories), in bytes. Best-effort: unreadable entries are skipped
+/// rather than failing the whole measurement, since this only feeds an
+/// informational byte count (sweep bytes-reclaimed) rather than anything
+/// correctness-critical.
+fn dir_size(path: &std::path::Path) -> u64 {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return 0;
+    };
+    if metadata.is_symlink() {
+        return 0;
+    }
+    if metadata.is_file() {
+        return metadata.len();
+    }
+    if !metadata.is_dir() {
+        return 0;
+    }
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| dir_size(&entry.path()))
+        .sum()
+}
+
+/// The result of a worktree sweep pass: how many stale worktrees/runs were
+/// removed and how many bytes their on-disk footprint reclaimed. Returned by
+/// `sweep_worktrees_now` for the UI to toast.
+#[derive(Clone, serde::Serialize)]
+struct SweepResult {
+    removed: u32,
+    bytes_reclaimed: u64,
+}
+
+/// Run a worktree sweep pass immediately, outside the hourly schedule, for the
+/// settings panel's "Clean up now" control. Same eligibility rules as the
+/// background sweep (accepted runs, aged-out runs per
+/// `worktree_retention_hours`, and orphan worktree directories) — this just
+/// triggers a pass on demand and hands the UI something to toast.
+#[tauri::command]
+async fn sweep_worktrees_now(state: State<'_, AppState>) -> Result<SweepResult, String> {
+    Ok(sweep_worktrees(&state.db, &state.git, &state.data_dir).await)
 }
 
 /// Abort a pending rate-limit re-run before it fires, keyed by the original
@@ -1559,6 +1633,7 @@ pub fn run() {
             plan_runs,
             run_timeline,
             stop_run,
+            sweep_worktrees_now,
             cancel_scheduled_resume,
             acknowledge_runs,
             compare_task,
