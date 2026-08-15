@@ -23,14 +23,14 @@ pub use plans::{load_task, plan_file_path, plan_id, upsert_plan, upsert_task, Ta
 mod runs;
 pub use runs::{
     count_active_runs, fail_interrupted_runs, insert_iteration, insert_run, list_runs_for_plan,
-    load_iterations, load_run, project_id_for_run, set_run_accepted, update_run_status,
-    IterationRow, NewRun, RunDetail, RunSummary,
+    load_iterations, load_run, mark_run_reaped, project_id_for_run, set_run_accepted,
+    update_run_status, IterationRow, NewRun, RunDetail, RunSummary,
 };
 
 mod pending_resumes;
 pub use pending_resumes::{
-    delete_pending_resume, insert_pending_resume, list_pending_resumes, NewPendingResume,
-    PendingResume,
+    delete_pending_resume, has_pending_resume, insert_pending_resume, list_pending_resumes,
+    NewPendingResume, PendingResume,
 };
 
 /// Ordered list of migrations. Each entry is `(name, sql)`; names double as the
@@ -50,6 +50,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
     (
         "0004_run_finished_at",
         include_str!("migrations/0004_run_finished_at.sql"),
+    ),
+    (
+        "0005_run_reaped_at",
+        include_str!("migrations/0005_run_reaped_at.sql"),
     ),
 ];
 

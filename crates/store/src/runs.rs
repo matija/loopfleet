@@ -176,12 +176,16 @@ pub struct RunDetail {
     pub max_iterations: u32,
     /// The parent repository where this run's shadow refs live.
     pub repo_path: String,
+    /// The run's worktree checkout path, if it still has one (M3 reap deletes
+    /// this without clearing the column, so callers check the filesystem too).
+    pub worktree_path: Option<String>,
 }
 
 /// Load one run's detail (with its parent repo path), or `None` if absent.
 pub fn load_run(conn: &Connection, run_id: &str) -> rusqlite::Result<Option<RunDetail>> {
     conn.query_row(
-        "SELECT r.id, r.task_anchor, r.agent, r.model, r.status, r.max_iterations, pr.repo_path
+        "SELECT r.id, r.task_anchor, r.agent, r.model, r.status, r.max_iterations, pr.repo_path,
+                r.worktree_path
          FROM runs r
          JOIN plans pl ON r.plan_id = pl.id
          JOIN projects pr ON pl.project_id = pr.id
@@ -196,6 +200,7 @@ pub fn load_run(conn: &Connection, run_id: &str) -> rusqlite::Result<Option<RunD
                 status: r.get(4)?,
                 max_iterations: r.get(5)?,
                 repo_path: r.get(6)?,
+                worktree_path: r.get(7)?,
             })
         },
     )
@@ -204,6 +209,16 @@ pub fn load_run(conn: &Connection, run_id: &str) -> rusqlite::Result<Option<RunD
         rusqlite::Error::QueryReturnedNoRows => Ok(None),
         other => Err(other),
     })
+}
+
+/// Record that a terminal run's on-disk footprint (worktree, sandbox profile,
+/// progress dir) has been reaped, stamping `reaped_at` to now. Idempotent.
+pub fn mark_run_reaped(conn: &Connection, run_id: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE runs SET reaped_at = ?2 WHERE id = ?1",
+        params![run_id, now_millis()],
+    )?;
+    Ok(())
 }
 
 /// The project a run belongs to (joined through plan → project), or `None` if

@@ -61,6 +61,19 @@ impl GitActor {
         self.exec(move || worktree::remove(&repo, &path)).await
     }
 
+    /// Force-remove a run's worktree (`worktree::reap`) through the actor,
+    /// tolerating a checkout git no longer administers. Used to clean up a
+    /// finished run's on-disk footprint.
+    pub async fn reap(
+        &self,
+        repo: PathBuf,
+        worktrees_root: PathBuf,
+        path: PathBuf,
+    ) -> Result<(), WorktreeError> {
+        self.exec(move || worktree::reap(&repo, &worktrees_root, &path))
+            .await
+    }
+
     /// Prune stale worktree metadata (`worktree::cleanup_orphans`) through the
     /// actor. Startup-time.
     pub async fn cleanup_orphans(&self, repo: PathBuf) -> Result<usize, WorktreeError> {

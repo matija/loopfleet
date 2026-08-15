@@ -1024,6 +1024,56 @@ fn stop_run(run_id: String, state: State<'_, AppState>) -> Result<(), String> {
     }
 }
 
+/// Delete a finished run's on-disk footprint: its worktree (via the gitx
+/// `reap`, through the serialized `GitActor`), its sandbox profile
+/// (`profiles/<run_id>.sb`), and its progress directory
+/// (`progress/<run_id>/`); then stamps `runs.reaped_at`.
+///
+/// Refuses runs still `queued`/`running` (they're using their worktree) and
+/// runs with a row in `pending_resumes` (a scheduled resume needs the
+/// worktree to still be there when it fires). Idempotent: a worktree/profile/
+/// progress dir already gone is not an error.
+async fn reap_run(
+    db: &Arc<Mutex<Connection>>,
+    git: &GitActor,
+    data_dir: &std::path::Path,
+    run_id: &str,
+) -> Result<(), String> {
+    let (repo_path, worktree_path) = {
+        let conn = db.lock().unwrap();
+        let detail = loopfleet_store::load_run(&conn, run_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("run not found: {run_id}"))?;
+        if matches!(detail.status.as_str(), "queued" | "running") {
+            return Err(format!("cannot reap an active run: {run_id}"));
+        }
+        if loopfleet_store::has_pending_resume(&conn, run_id).map_err(|e| e.to_string())? {
+            return Err(format!("cannot reap a run with a pending resume: {run_id}"));
+        }
+        (PathBuf::from(detail.repo_path), detail.worktree_path)
+    };
+
+    if let Some(worktree_path) = worktree_path {
+        let worktrees_root = data_dir.join("worktrees");
+        git.reap(repo_path, worktrees_root, PathBuf::from(worktree_path))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    let profile_path = data_dir.join("profiles").join(format!("{run_id}.sb"));
+    if profile_path.exists() {
+        std::fs::remove_file(&profile_path).map_err(|e| e.to_string())?;
+    }
+
+    let progress_dir = data_dir.join("progress").join(run_id);
+    if progress_dir.exists() {
+        std::fs::remove_dir_all(&progress_dir).map_err(|e| e.to_string())?;
+    }
+
+    let conn = db.lock().unwrap();
+    loopfleet_store::mark_run_reaped(&conn, run_id).map_err(|e| e.to_string())
+}
+
 /// Abort a pending rate-limit re-run before it fires, keyed by the original
 /// run's id. Emits `scheduled_resume_cancelled` so the UI can drop the
 /// "resuming at…" indicator.
