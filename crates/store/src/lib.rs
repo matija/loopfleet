@@ -22,9 +22,10 @@ pub use plans::{load_task, plan_file_path, plan_id, upsert_plan, upsert_task, Ta
 
 mod runs;
 pub use runs::{
-    count_active_runs, fail_interrupted_runs, insert_iteration, insert_run, list_runs_for_plan,
-    load_iterations, load_run, mark_run_reaped, project_id_for_run, set_run_accepted,
-    update_run_status, IterationRow, NewRun, RunDetail, RunSummary,
+    all_run_ids, count_active_runs, fail_interrupted_runs, insert_iteration, insert_run,
+    list_runs_for_plan, list_sweep_candidates, load_iterations, load_run, mark_run_reaped,
+    project_id_for_run, set_run_accepted, update_run_status, IterationRow, NewRun, RunDetail,
+    RunSummary, SweepCandidate,
 };
 
 mod pending_resumes;

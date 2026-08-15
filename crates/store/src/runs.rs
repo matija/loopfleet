@@ -221,6 +221,46 @@ pub fn mark_run_reaped(conn: &Connection, run_id: &str) -> rusqlite::Result<()> 
     Ok(())
 }
 
+/// A terminal, not-yet-reaped run as seen by the worktree sweep: enough to
+/// decide eligibility (`accepted`, `finished_at`, falling back to the
+/// worktree directory's mtime when NULL) without a second round trip.
+#[derive(Debug, Clone)]
+pub struct SweepCandidate {
+    pub id: String,
+    pub accepted: bool,
+    pub finished_at: Option<i64>,
+    pub worktree_path: Option<String>,
+}
+
+/// Every terminal run that hasn't been reaped yet, for `sweep_worktrees` to
+/// filter by retention. Reaped runs are excluded since reaping is idempotent
+/// but pointless to repeat.
+pub fn list_sweep_candidates(conn: &Connection) -> rusqlite::Result<Vec<SweepCandidate>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, accepted, finished_at, worktree_path
+         FROM runs
+         WHERE status IN ('completed', 'failed', 'stopped', 'limit-reached')
+           AND reaped_at IS NULL",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok(SweepCandidate {
+            id: r.get(0)?,
+            accepted: r.get::<_, i64>(1)? != 0,
+            finished_at: r.get(2)?,
+            worktree_path: r.get(3)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// Every run id on record, for `sweep_worktrees` to tell an orphan worktree
+/// directory (no matching run row at all) apart from a known run's checkout.
+pub fn all_run_ids(conn: &Connection) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT id FROM runs")?;
+    let rows = stmt.query_map([], |r| r.get(0))?;
+    rows.collect()
+}
+
 /// The project a run belongs to (joined through plan → project), or `None` if
 /// the run doesn't exist. Used to re-arm a persisted pending resume at startup,
 /// which only carries the run id, not the project id `launch_run` needs.

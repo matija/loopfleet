@@ -1074,6 +1074,85 @@ async fn reap_run(
     loopfleet_store::mark_run_reaped(&conn, run_id).map_err(|e| e.to_string())
 }
 
+/// How long a finished run's worktree survives before the sweep reaps it, for
+/// runs that were never explicitly accepted. Accepted runs are swept
+/// regardless of age — their worktree served its purpose once merged.
+const WORKTREE_RETENTION: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 60 * 60);
+
+/// Reap every finished run's on-disk footprint once it's no longer worth
+/// keeping around, plus any worktree directory with no matching run row at
+/// all (e.g. left behind by a run whose row was later deleted).
+///
+/// A terminal run is swept once it's `accepted` (its diff already landed, so
+/// there's no reason to keep the checkout) or once it's older than
+/// [`WORKTREE_RETENTION`], measured from `finished_at` — falling back to the
+/// worktree directory's mtime when `finished_at` is NULL (e.g. a row from
+/// before that column existed). Runs still active or with a pending resume
+/// are skipped by `reap_run`'s own guards; sweep just ignores the error.
+/// Wired to run once at startup after `cleanup_orphans` and then hourly.
+async fn sweep_worktrees(db: &Arc<Mutex<Connection>>, git: &GitActor, data_dir: &std::path::Path) {
+    let worktrees_root = data_dir.join("worktrees");
+    let now = std::time::SystemTime::now();
+
+    let candidates = {
+        let conn = db.lock().unwrap();
+        loopfleet_store::list_sweep_candidates(&conn).unwrap_or_default()
+    };
+
+    for candidate in candidates {
+        let eligible = candidate.accepted
+            || match candidate.finished_at {
+                Some(finished_at_millis) => {
+                    let finished_at = std::time::UNIX_EPOCH
+                        + std::time::Duration::from_millis(finished_at_millis.max(0) as u64);
+                    now.duration_since(finished_at).unwrap_or_default() >= WORKTREE_RETENTION
+                }
+                None => candidate
+                    .worktree_path
+                    .as_ref()
+                    .and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
+                    .map(|mtime| now.duration_since(mtime).unwrap_or_default() >= WORKTREE_RETENTION)
+                    // No worktree on disk and no finished_at to fall back on:
+                    // nothing to measure age against, so sweep it (its footprint
+                    // is already gone anyway, just needs `reaped_at` stamped).
+                    .unwrap_or(true),
+            };
+
+        if eligible {
+            if let Err(e) = reap_run(db, git, data_dir, &candidate.id).await {
+                eprintln!("sweep_worktrees: failed to reap run {}: {e}", candidate.id);
+            }
+        }
+    }
+
+    let known_run_ids: std::collections::HashSet<String> = {
+        let conn = db.lock().unwrap();
+        loopfleet_store::all_run_ids(&conn)
+            .unwrap_or_default()
+            .into_iter()
+            .collect()
+    };
+
+    let Ok(entries) = std::fs::read_dir(&worktrees_root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if known_run_ids.contains(&name) {
+            continue;
+        }
+        if let Err(e) = std::fs::remove_dir_all(entry.path()) {
+            eprintln!(
+                "sweep_worktrees: failed to remove orphan worktree dir {}: {e}",
+                entry.path().display()
+            );
+        }
+    }
+}
+
 /// Abort a pending rate-limit re-run before it fires, keyed by the original
 /// run's id. Emits `scheduled_resume_cancelled` so the UI can drop the
 /// "resuming at…" indicator.
@@ -1371,15 +1450,31 @@ pub fn run() {
                 .unwrap_or_default();
 
             let git = GitActor::spawn();
-            let prune_git = git.clone();
+            let db = Arc::new(Mutex::new(conn));
+
+            // After orphaned worktree *metadata* is pruned per-repo, sweep
+            // finished runs' on-disk footprint (worktree/profile/progress dir)
+            // and any worktree directory with no run row at all. Then keep
+            // sweeping hourly for the life of the app.
+            let sweep_git = git.clone();
+            let sweep_db = db.clone();
+            let sweep_dir = dir.clone();
             tauri::async_runtime::spawn(async move {
                 for repo in repos {
-                    let _ = prune_git.cleanup_orphans(PathBuf::from(repo)).await;
+                    let _ = sweep_git.cleanup_orphans(PathBuf::from(repo)).await;
+                }
+                sweep_worktrees(&sweep_db, &sweep_git, &sweep_dir).await;
+
+                let mut ticker = tokio::time::interval(std::time::Duration::from_secs(60 * 60));
+                ticker.tick().await; // first tick fires immediately; already swept above
+                loop {
+                    ticker.tick().await;
+                    sweep_worktrees(&sweep_db, &sweep_git, &sweep_dir).await;
                 }
             });
 
             app.manage(AppState {
-                db: Arc::new(Mutex::new(conn)),
+                db,
                 git,
                 data_dir: dir,
                 stops: Arc::new(Mutex::new(HashMap::new())),
