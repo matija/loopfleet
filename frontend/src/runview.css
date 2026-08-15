@@ -122,6 +122,17 @@
   color: var(--c-text-muted);
 }
 
+/* Quiet note replacing any open-in-editor/reveal affordance once a finished
+ * run's worktree has been swept — the diff and report still work, so this is
+ * informational, not a warning. */
+.run-view__reclaimed {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
+  padding: var(--space-1) var(--space-1);
+}
+
 .run-view__retry {
   flex: 0 0 auto;
   border: 1px solid var(--c-border);

@@ -148,6 +148,9 @@ export type RunTimeline = {
   status: RunStatus;
   task_anchor: string;
   max_iterations: number;
+  /// The run's isolated worktree, or `null` once the sweep has reclaimed it
+  /// (the diff and report remain available regardless).
+  worktree_path: string | null;
   iterations: IterationView[];
 };
 

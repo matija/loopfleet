@@ -19,6 +19,11 @@ pub struct RunTimeline {
     pub status: String,
     pub task_anchor: String,
     pub max_iterations: u32,
+    /// The run's isolated worktree, or `None` once the sweep has reclaimed it.
+    /// The UI should show a quiet "worktree cleaned" note in place of any
+    /// open/reveal affordance when this is `None` — the diff and report are
+    /// still available from the persisted timeline.
+    pub worktree_path: Option<String>,
     pub iterations: Vec<IterationView>,
 }
 
@@ -126,12 +131,21 @@ pub fn run_timeline(conn: &Connection, run_id: &str) -> Result<RunTimeline, Time
         });
     }
 
+    // The `runs.worktree_path` column is never cleared when the sweep reaps a
+    // worktree (see `RunDetail::worktree_path`), so its presence alone doesn't
+    // mean the directory still exists — check the filesystem to report what the
+    // UI should actually trust.
+    let worktree_path = run
+        .worktree_path
+        .filter(|p| std::path::Path::new(p).is_dir());
+
     Ok(RunTimeline {
         run_id: run.id,
         agent: run.agent,
         status: run.status,
         task_anchor: run.task_anchor,
         max_iterations: run.max_iterations,
+        worktree_path,
         iterations: views,
     })
 }
@@ -174,6 +188,12 @@ mod tests {
     /// Seed a project (repo_path = a non-git temp dir so diffs resolve to `None`),
     /// a plan, one task, and a run bound to it.
     fn seed(conn: &Connection, repo_path: &str) {
+        seed_with_worktree(conn, repo_path, "/wt");
+    }
+
+    /// Like [`seed`], with the run's `worktree_path` column set explicitly —
+    /// so tests can point it at a directory that does (or doesn't) exist.
+    fn seed_with_worktree(conn: &Connection, repo_path: &str, worktree_path: &str) {
         conn.execute(
             "INSERT INTO projects (id, repo_path, plan_convention) VALUES ('p', ?1, 'prd')",
             [repo_path],
@@ -190,7 +210,7 @@ mod tests {
                 task_anchor: "task a".into(),
                 agent: "claude".into(),
                 model: None,
-                worktree_path: "/wt".into(),
+                worktree_path: worktree_path.into(),
                 branch: "agent/r1".into(),
                 sb_profile: "/p.sb".into(),
                 progress_path: "/prog.md".into(),
@@ -259,5 +279,37 @@ mod tests {
             run_timeline(&conn, "ghost"),
             Err(TimelineError::NotFound(_))
         ));
+    }
+
+    #[test]
+    fn worktree_path_is_reported_when_the_directory_still_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let worktree = tempfile::tempdir().unwrap();
+        seed_with_worktree(
+            &conn,
+            &dir.path().to_string_lossy(),
+            &worktree.path().to_string_lossy(),
+        );
+
+        let tl = run_timeline(&conn, "r1").unwrap();
+        assert_eq!(
+            tl.worktree_path.as_deref(),
+            Some(worktree.path().to_string_lossy().as_ref())
+        );
+    }
+
+    /// The `worktree_path` column persists even after the sweep reaps the
+    /// directory it names (`RunDetail::worktree_path`) — the timeline must
+    /// treat a missing directory as reclaimed rather than trust the stale
+    /// column value.
+    #[test]
+    fn worktree_path_is_none_once_the_directory_is_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        seed_with_worktree(&conn, &dir.path().to_string_lossy(), "/no/such/worktree");
+
+        let tl = run_timeline(&conn, "r1").unwrap();
+        assert_eq!(tl.worktree_path, None);
     }
 }
