@@ -169,15 +169,20 @@
 
   /* --- color: accent + semantic --- */
   --c-accent: #6275f2;
-  --c-accent-quiet: #23294d;
+  --c-accent-quiet: #272b3e;
   /* Accent as *text* on the recessed accent-quiet fill: the base accent only
-   * hits 3.57:1 there (below AA), so status pills and the primary-action chips
+   * hits 3.56:1 there (below AA), so status pills and the primary-action chips
    * use this lighter step (≈6.1:1) instead. */
   --c-accent-text: #98a5ff;
   /* The accent chip (Run, Merge): a recessed indigo fill with a tinted border
-   * that deepens one step on hover, rather than a loud solid block. */
+   * that deepens one step on hover, rather than a loud solid block. Both fill
+   * steps are the original indigo with 40% of its chroma taken out and the
+   * lightness rebalanced to hold the fill's relative luminance exactly
+   * (#23294d -> #272b3e, #2b336a -> #323653), so the chip reads as a greyer
+   * recess while every text-on-fill ratio below moves by at most 0.02. The
+   * border and the text steps keep their full-saturation indigo. */
   --c-accent-border: rgba(98, 117, 242, 0.32);
-  --c-accent-quiet-hover: #2b336a;
+  --c-accent-quiet-hover: #323653;
   --c-accent-border-hover: rgba(98, 117, 242, 0.5);
   --c-accent-text-hover: #c6cdff;
   /* Text/glyphs on a *solid* accent fill, where the accent is the background. */
@@ -191,7 +196,18 @@
    * sized to an icon rather than a wash under text; -loud is the emphatic step
    * for banners and filled controls. The danger -loud step is the 0.14 mix
    * pre-flattened against --c-bg: it backs the toast, which floats over
-   * arbitrary content and must not let it show through. */
+   * arbitrary content and must not let it show through.
+   *
+   * The three fill steps (-wash, -quiet, -tint) mix a *softened* cut of each
+   * hue rather than the glyph color itself: 40% of the chroma removed, then
+   * lightness rebalanced so the mix base keeps the glyph color's relative
+   * luminance (ok #3fb950 -> rgb(112, 177, 121), warn #d29922 ->
+   * rgb(191, 159, 93), danger #fb6d66 -> rgb(219, 129, 125)). Holding
+   * luminance means each flattened fill lands at the same lightness it did
+   * before, so the text drawn over a wash keeps its measured contrast; only
+   * the color cast quiets down. The -loud steps and the glyph colors below
+   * are deliberately *not* softened — they are the semantic signal, and their
+   * measured ratios are what keep it legible. */
   /* Measured WCAG 2.1 contrast for the glyph/text step of each hue (the
    * -wash and -quiet fills sit underneath body text, so they're not text
    * colors and aren't checked here). All three clear AA's 4.5:1 body-text
@@ -209,25 +225,25 @@
    *   --c-danger  vs --c-danger-loud #332021: 5.46:1  (toast text-on-fill case)
    *
    * The one hue pair that does fail AA text contrast is --c-accent
-   * (#6275f2) directly on --c-accent-quiet (#23294d): 3.57:1, below the
+   * (#6275f2) directly on --c-accent-quiet (#272b3e): 3.56:1, below the
    * 4.5:1 floor (it still clears the 3:1 floor for large text/UI graphics).
    * That's why status pills and chips read with --c-accent-text (≈6.1:1 on
    * the same fill, see above) instead of the base accent whenever the
    * accent is used as text rather than a border/icon.
    */
   --c-ok: #3fb950;
-  --c-ok-wash: rgba(63, 185, 80, 0.08);
-  --c-ok-quiet: rgba(63, 185, 80, 0.14);
-  --c-ok-tint: rgba(63, 185, 80, 0.16);
+  --c-ok-wash: rgba(112, 177, 121, 0.08);
+  --c-ok-quiet: rgba(112, 177, 121, 0.14);
+  --c-ok-tint: rgba(112, 177, 121, 0.16);
   --c-warn: #d29922;
-  --c-warn-wash: rgba(210, 153, 34, 0.08);
-  --c-warn-quiet: rgba(210, 153, 34, 0.14);
-  --c-warn-tint: rgba(210, 153, 34, 0.16);
+  --c-warn-wash: rgba(191, 159, 93, 0.08);
+  --c-warn-quiet: rgba(191, 159, 93, 0.14);
+  --c-warn-tint: rgba(191, 159, 93, 0.16);
   --c-warn-loud: rgba(210, 153, 34, 0.2);
   --c-danger: #fb6d66;
-  --c-danger-wash: rgba(251, 109, 102, 0.08);
-  --c-danger-quiet: rgba(251, 109, 102, 0.15);
-  --c-danger-tint: rgba(251, 109, 102, 0.17);
+  --c-danger-wash: rgba(219, 129, 125, 0.08);
+  --c-danger-quiet: rgba(219, 129, 125, 0.15);
+  --c-danger-tint: rgba(219, 129, 125, 0.17);
   --c-danger-loud: #332021;
 
   /* Scrim behind modal overlays (the palette). */
@@ -301,12 +317,16 @@
    * as its own text step on the recessed fill (5.62:1, see below), so
    * --c-accent-text repeats it rather than lightening; the hover pair still
    * steps up so the chip brightens under the pointer. --c-accent-quiet is
-   * iris at 0.14 flattened against --c-bg, its hover the same mix at 0.22. */
+   * iris at 0.14 flattened against --c-bg, its hover the same mix at 0.22 —
+   * both then softened the same way dark's chip is, 40% of the chroma out
+   * with lightness rebalanced to hold the fill's relative luminance
+   * (#3a344f -> #393645, #463e5d -> #454052), which leaves the ratios below
+   * unmoved to within 0.01. */
   --c-accent: #c4a7e7;
-  --c-accent-quiet: #3a344f;
+  --c-accent-quiet: #393645;
   --c-accent-text: #c4a7e7;
   --c-accent-border: rgba(196, 167, 231, 0.32);
-  --c-accent-quiet-hover: #463e5d;
+  --c-accent-quiet-hover: #454052;
   --c-accent-border-hover: rgba(196, 167, 231, 0.5);
   --c-accent-text-hover: #dbc9f1;
   /* Ink on a *solid* iris fill: iris is a light hue, so the field color goes
@@ -321,6 +341,13 @@
    * and rose draws its glyph. gold is a single step light enough to do both.
    * --c-danger-loud is love at 0.14 pre-flattened against --c-bg, since it
    * backs the toast, which floats over arbitrary content.
+   *
+   * As in dark, the -wash/-quiet/-tint fills mix a softened cut of the deep
+   * step rather than the palette color raw: 40% of the chroma out, lightness
+   * rebalanced to hold relative luminance (pine #3e8fb0 -> rgb(90, 141, 162),
+   * gold #f6c177 -> rgb(225, 198, 160), love #eb6f92 -> rgb(207, 128, 151)).
+   * --c-warn-loud still mixes gold at full saturation, and the glyph steps
+   * below are untouched, so the measured ratios hold.
    *
    * Measured WCAG 2.1 contrast for the glyph/text step of each hue (the
    * -wash/-quiet/-tint fills sit under or behind content and aren't text
@@ -337,25 +364,25 @@
    *   --c-danger  vs --c-danger-loud #3f2c43: 5.79:1  (toast text-on-fill case)
    *   --c-accent  vs --c-bg #232136:          7.47:1
    *   --c-accent  vs --c-surface-3 #393552:   5.56:1
-   *   --c-accent  vs --c-accent-quiet:        5.62:1
+   *   --c-accent  vs --c-accent-quiet:        5.61:1
    *   --c-accent  vs --c-accent-quiet-hover:  4.76:1  (tightest accent case)
    *
    * pine (#3e8fb0) never carries body text: at 4.29:1 on --c-bg it is under
    * the 4.5:1 floor but clears the 3:1 floor for borders and UI graphics,
    * which is all the ok ramp asks of it. */
   --c-ok: #9ccfd8;
-  --c-ok-wash: rgba(62, 143, 176, 0.08);
-  --c-ok-quiet: rgba(62, 143, 176, 0.14);
-  --c-ok-tint: rgba(62, 143, 176, 0.16);
+  --c-ok-wash: rgba(90, 141, 162, 0.08);
+  --c-ok-quiet: rgba(90, 141, 162, 0.14);
+  --c-ok-tint: rgba(90, 141, 162, 0.16);
   --c-warn: #f6c177;
-  --c-warn-wash: rgba(246, 193, 119, 0.08);
-  --c-warn-quiet: rgba(246, 193, 119, 0.14);
-  --c-warn-tint: rgba(246, 193, 119, 0.16);
+  --c-warn-wash: rgba(225, 198, 160, 0.08);
+  --c-warn-quiet: rgba(225, 198, 160, 0.14);
+  --c-warn-tint: rgba(225, 198, 160, 0.16);
   --c-warn-loud: rgba(246, 193, 119, 0.2);
   --c-danger: #ea9a97;
-  --c-danger-wash: rgba(235, 111, 146, 0.08);
-  --c-danger-quiet: rgba(235, 111, 146, 0.15);
-  --c-danger-tint: rgba(235, 111, 146, 0.17);
+  --c-danger-wash: rgba(207, 128, 151, 0.08);
+  --c-danger-quiet: rgba(207, 128, 151, 0.15);
+  --c-danger-tint: rgba(207, 128, 151, 0.17);
   --c-danger-loud: #3f2c43;
 
   /* Scrim behind modal overlays (the palette), tinted to Rosé Pine's darkest
