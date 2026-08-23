@@ -10,9 +10,16 @@ import {
   cancelScheduledResume,
   launchRun,
   listProjects,
+  planOverview,
   stopRun,
 } from "./commands";
 import { normalizeDisplayText } from "./displayText";
+import {
+  marksNoTasks,
+  planHealth,
+  planHealthTitle,
+  type PlanHealth,
+} from "./planHealth";
 import { onRunStatus, onScheduledResume, onScheduledResumeCancelled } from "./events";
 import type { Project } from "./types";
 import { isActiveRun } from "./status";
@@ -124,6 +131,10 @@ export default function App() {
   // Bumped to force the plan overview to refetch after a run is accepted (its
   // derived TaskStatus changes).
   const [planNonce, setPlanNonce] = useState(0);
+  // Per-project plan health, keyed by project id, for the sidebar's "no tasks"
+  // marker. Only projects whose overview loaded appear here — a missing entry
+  // means "not known yet", which shows no marker rather than a wrong one.
+  const [health, setHealth] = useState<Record<string, PlanHealth>>({});
   // ⌘K command palette — global keyboard-first navigator across projects,
   // tasks, runs, and quick actions. Toggled by Cmd/Ctrl-K anywhere.
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -168,6 +179,27 @@ export default function App() {
         setProjectsLoaded(true);
       });
   }, []);
+
+  // Classify every project's plans so a repo with no plan file — or a plan
+  // with no tasks — is visible in the list without clicking into it. Each
+  // overview is fetched independently and failures are simply left unclassified
+  // (the plan tree reports the error once the project is opened), so one bad
+  // repo can't blank the markers for the rest. Refetches on `planNonce` so
+  // authoring a first task clears the marker along with the tree.
+  useEffect(() => {
+    let cancelled = false;
+    for (const p of projects) {
+      planOverview(p.id)
+        .then((plans) => {
+          if (cancelled) return;
+          setHealth((cur) => ({ ...cur, [p.id]: planHealth(plans) }));
+        })
+        .catch(() => {});
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [projects, planNonce]);
 
   // The run currently shown in the main pane, read live from event handlers
   // (below) without re-subscribing. A run finishing while it is the open view is
@@ -615,6 +647,18 @@ export default function App() {
                     <span className="project-item__name">
                       {repoName(p.repo_path)}
                     </span>
+                    {(() => {
+                      const h = health[p.id];
+                      if (!h || !marksNoTasks(h)) return null;
+                      return (
+                        <span
+                          className="project-item__flag"
+                          title={planHealthTitle(h) ?? undefined}
+                        >
+                          no tasks
+                        </span>
+                      );
+                    })()}
                     <span className="project-item__meta">
                       {parentPath(p.repo_path)}
                     </span>

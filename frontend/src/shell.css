@@ -312,6 +312,21 @@
   text-overflow: ellipsis;
 }
 
+/* "no tasks" marker: a project whose plans hold nothing runnable (no plan
+ * file, or plans with no tasks — planHealth tells them apart in the title).
+ * Deliberately quiet: faint text on the surface fill, no accent or warn hue,
+ * since it flags an authoring gap rather than a failure. */
+.project-item__flag {
+  flex: none;
+  font-size: var(--text-2xs);
+  color: var(--c-text-faint);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  white-space: nowrap;
+}
+
 .project-item__meta {
   flex: none;
   max-width: 40%;
