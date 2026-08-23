@@ -334,9 +334,16 @@ function TaskRow({
     // a pointer.
     <li className="task-row" tabIndex={0} ref={rowRef} {...handlers}>
       <div className="task-row__main">
+        {/* The glyph alone carries the status at rest — the word repeats what
+          * the icon and its hue already say. The visible label is revealed on
+          * row hover/focus (plan.css); the screen-reader copy is always there
+          * so the status never depends on a pointer. */}
         <span className={`task-status task-status--${task.status}`}>
           <StatusIcon size={16} className="task-status__icon" />
-          <span className="task-status__label">{STATUS_LABEL[task.status]}</span>
+          <span className="task-status__sr">{STATUS_LABEL[task.status]}</span>
+          <span className="task-status__label" aria-hidden="true">
+            {STATUS_LABEL[task.status]}
+          </span>
         </span>
         <span className="task-row__text">
           {taskSummary(task.text)}
