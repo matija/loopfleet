@@ -219,3 +219,16 @@
   background: var(--c-warn-loud);
   color: var(--c-text);
 }
+
+/* Merge ("use this run") is the one affirmative chip action, so it hovers
+   accent rather than the destructive default. While the merge is in flight the
+   button is disabled and dimmed — the chip's only pending signal. */
+.run-chip__action--merge:hover {
+  background: var(--c-accent);
+  color: var(--c-text);
+}
+
+.run-chip__action--merge[aria-busy="true"] {
+  opacity: 0.5;
+  background: transparent;
+}
