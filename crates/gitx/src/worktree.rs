@@ -273,6 +273,24 @@ mod tests {
     }
 
     #[test]
+    fn reap_prunes_stale_entry_for_broken_worktree() {
+        let repo = repo_with_commit();
+        let root = tempfile::tempdir().unwrap();
+        let wt = add(repo.path(), root.path(), "run-reap-2").unwrap();
+
+        // Break the checkout's link back to the repo: git no longer recognizes
+        // it as a working tree and `worktree remove` refuses, but the
+        // administrative entry is still registered.
+        std::fs::remove_file(wt.path.join(".git")).unwrap();
+        assert!(remove(repo.path(), &wt.path).is_err(), "git refuses");
+        assert_eq!(list(repo.path()).unwrap().len(), 1, "stale entry present");
+
+        reap(repo.path(), root.path(), &wt.path).unwrap();
+        assert!(!wt.path.exists(), "dir removed via fs fallback");
+        assert!(list(repo.path()).unwrap().is_empty(), "stale entry pruned");
+    }
+
+    #[test]
     fn reap_refuses_path_outside_worktrees_root() {
         let repo = repo_with_commit();
         let root = tempfile::tempdir().unwrap();
