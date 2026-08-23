@@ -2,6 +2,11 @@
 // cap, worktree retention.
 // Loaded on mount, saved through the unchanged `get_settings`/`save_settings`
 // commands. The launch control (a later M7 task) reads these defaults.
+//
+// Theme is the one field here that is *not* backend state: it's a per-device
+// display preference App owns and persists to localStorage, so it applies on
+// pick rather than on Save. It lives in this panel anyway because this is
+// where a user looks for app-wide preferences.
 
 import { useEffect, useState } from "react";
 import { getSettings, saveSettings, sweepWorktreesNow } from "../commands";
@@ -12,6 +17,7 @@ import {
   retentionValue,
   type RetentionMode,
 } from "../retention";
+import { isThemeId, THEMES, type ThemeId } from "../themes";
 
 // The v1 agent keys (matches the adapters' discovery set). A small stable list;
 // no need to derive it from `agent_status` here.
@@ -31,7 +37,13 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(1)} ${units[unit]}`;
 }
 
-export function SettingsPanel() {
+export function SettingsPanel({
+  themeId,
+  onThemeChange,
+}: {
+  themeId: ThemeId;
+  onThemeChange: (id: ThemeId) => void;
+}) {
   const [settings, setSettings] = useState<Settings>({
     default_agent: "claude",
     default_iterations: 1,
@@ -220,6 +232,30 @@ export function SettingsPanel() {
             <em>after a number of hours</em> keeps it that long so you can still
             open the diff; <em>never</em> keeps it indefinitely. Accepted runs
             are always swept — their diff has already landed.
+          </span>
+        </label>
+      </div>
+      <div className="form-grid">
+        <label className="field">
+          <span>Theme</span>
+          <select
+            value={themeId}
+            onChange={(e) => {
+              // The <option> values are exactly THEMES ids; the guard is only
+              // to keep the cast honest.
+              if (isThemeId(e.target.value)) onThemeChange(e.target.value);
+            }}
+          >
+            {THEMES.map((theme) => (
+              <option key={theme.id} value={theme.id}>
+                {theme.label}
+              </option>
+            ))}
+          </select>
+          <span className="field__hint">
+            Applies immediately and is remembered on this device only — it
+            isn’t part of the settings above, so “Save settings” doesn’t
+            affect it.
           </span>
         </label>
       </div>

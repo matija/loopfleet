@@ -1,12 +1,43 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyTheme,
   DEFAULT_THEME_ID,
   isThemeId,
+  readStoredThemeId,
   resolveThemeId,
+  storeThemeId,
   themeById,
   THEMES,
+  THEME_STORAGE_KEY,
 } from "./themes";
+
+// No jsdom here either, so localStorage needs the same in-memory stand-in the
+// other storage tests use. `throwOnAccess` simulates the private-mode /
+// storage-disabled case, where touching localStorage throws.
+class MemoryStorage {
+  private store = new Map<string, string>();
+  throwOnAccess = false;
+  getItem(key: string): string | null {
+    if (this.throwOnAccess) throw new Error("storage disabled");
+    return this.store.has(key) ? this.store.get(key)! : null;
+  }
+  setItem(key: string, value: string): void {
+    if (this.throwOnAccess) throw new Error("storage disabled");
+    this.store.set(key, value);
+  }
+  clear(): void {
+    this.store.clear();
+  }
+}
+
+const storage = new MemoryStorage();
+(globalThis as unknown as { localStorage: MemoryStorage }).localStorage =
+  storage;
+
+beforeEach(() => {
+  storage.clear();
+  storage.throwOnAccess = false;
+});
 
 // The vitest environment here is plain node (no jsdom), so there's no document
 // to theme. applyTheme only needs setAttribute, so a minimal stand-in element
@@ -131,5 +162,39 @@ describe("applyTheme", () => {
   it("is a no-op outside a DOM instead of throwing", () => {
     expect(() => applyTheme("dark")).not.toThrow();
     expect(applyTheme("dark")).toBe("dark");
+  });
+});
+
+describe("readStoredThemeId", () => {
+  it("returns the stored id", () => {
+    localStorage.setItem(THEME_STORAGE_KEY, "rose-pine-moon");
+    expect(readStoredThemeId()).toBe("rose-pine-moon");
+  });
+
+  it("falls back to the default when nothing is stored", () => {
+    expect(readStoredThemeId()).toBe(DEFAULT_THEME_ID);
+  });
+
+  it("falls back to the default for a theme that no longer exists", () => {
+    localStorage.setItem(THEME_STORAGE_KEY, "solarized");
+    expect(readStoredThemeId()).toBe(DEFAULT_THEME_ID);
+  });
+
+  it("falls back to the default when localStorage throws", () => {
+    storage.throwOnAccess = true;
+    expect(readStoredThemeId()).toBe(DEFAULT_THEME_ID);
+  });
+});
+
+describe("storeThemeId", () => {
+  it("round-trips through readStoredThemeId", () => {
+    storeThemeId("rose-pine-moon");
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("rose-pine-moon");
+    expect(readStoredThemeId()).toBe("rose-pine-moon");
+  });
+
+  it("swallows a storage failure", () => {
+    storage.throwOnAccess = true;
+    expect(() => storeThemeId("dark")).not.toThrow();
   });
 });

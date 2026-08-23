@@ -60,3 +60,30 @@ export function applyTheme(
   root?.setAttribute("data-theme", id);
   return id;
 }
+
+/// Where the picked theme is persisted. The inline bootstrap script in
+/// index.html reads this same key before the bundle loads — keep the two in
+/// sync (that script is the only other place allowed to know it).
+export const THEME_STORAGE_KEY = "loopfleet.theme";
+
+/// Reads the persisted theme id, degrading to the default when nothing is
+/// stored, the value names an unknown theme, or localStorage is unavailable
+/// (private mode, disabled storage).
+export function readStoredThemeId(): ThemeId {
+  try {
+    return resolveThemeId(localStorage.getItem(THEME_STORAGE_KEY));
+  } catch {
+    return DEFAULT_THEME_ID;
+  }
+}
+
+/// Persists the picked theme. A storage failure is swallowed: the theme still
+/// applies for this session, it just doesn't survive a reload.
+export function storeThemeId(id: ThemeId): void {
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, id);
+  } catch {
+    // localStorage unavailable (private mode, quota) — the pick just doesn't
+    // persist across reloads.
+  }
+}

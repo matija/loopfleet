@@ -4,6 +4,32 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>loopfleet</title>
+    <!-- Theme bootstrap. Runs before the bundle so the first paint is already
+       * in the stored palette — applying the theme from React instead would
+       * flash the default dark palette for a frame on every launch.
+       *
+       * Deliberately duplicates three things from src/themes.ts: the storage
+       * key, the id list, and the default. It can't import them (a module
+       * script would defer past first paint), so the two must be kept in sync
+       * — scripts/check-theme-bootstrap.mjs asserts this. An unknown
+       * or missing value falls through to the default, which tokens.css also
+       * applies via bare :root, so a thrown localStorage (private mode) still
+       * paints correctly. -->
+    <script>
+      (function () {
+        var THEMES = ["dark", "rose-pine-moon"];
+        var stored;
+        try {
+          stored = localStorage.getItem("loopfleet.theme");
+        } catch (e) {
+          stored = null;
+        }
+        document.documentElement.setAttribute(
+          "data-theme",
+          THEMES.indexOf(stored) === -1 ? "dark" : stored,
+        );
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
