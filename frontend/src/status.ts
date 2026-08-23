@@ -47,3 +47,30 @@ export const RUN_STATUS_ICON: Record<RunStatus, (props: IconProps) => JSX.Elemen
 export function isActiveRun(status: RunStatus): boolean {
   return status === "queued" || status === "running";
 }
+
+/// The subset of a dock entry that decides whether "use this run" applies.
+/// Structural on purpose: `RunDock`'s `ActiveRun` satisfies it, and so does any
+/// other surface's run shape, without status.ts depending on a component.
+export type MergeCandidate = {
+  status: RunStatus;
+  /// `undefined` until the run's detail has loaded — treated as "not known yet",
+  /// which is not a green light.
+  accepted?: boolean;
+  mergeable?: boolean;
+  pendingResume?: { resumeAt: number };
+};
+
+/// Whether the dock may offer a merge for this run: the run is finished, ended
+/// in `completed` (a failed/stopped/rate-limited run has nothing we'd offer to
+/// land), hasn't already been accepted, produced a snapshot to merge, and has no
+/// automatic re-run pending — a scheduled resume means the run isn't done
+/// changing, so merging it now would land a half-finished attempt.
+export function canMergeFromDock(run: MergeCandidate): boolean {
+  return (
+    !isActiveRun(run.status) &&
+    run.status === "completed" &&
+    run.accepted !== true &&
+    run.mergeable === true &&
+    run.pendingResume === undefined
+  );
+}
