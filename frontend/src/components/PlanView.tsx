@@ -22,7 +22,7 @@ import { isActiveRun, RUN_STATUS_LABEL } from "../status";
 import { SplitButton } from "./Button";
 import { formatDuration } from "./DataGrid";
 import { Elapsed } from "./Elapsed";
-import { NoPlanEmptyState } from "./EmptyState";
+import { NoPlanEmptyState, NoTasksEmptyState } from "./EmptyState";
 import { ExportButton } from "./ExportButton";
 import {
   AgentIcon,
@@ -211,10 +211,7 @@ function PlanCard({
       )}
 
       {plan.tasks.length === 0 ? (
-        <p className="plan-card__empty">
-          No tasks in this plan yet — add checklist items to this plan file to
-          launch runs against them.
-        </p>
+        <NoTasksEmptyState />
       ) : (
         <>
           {open.length > 0 && (

@@ -5,7 +5,7 @@
 
 import type { ReactNode } from "react";
 
-import { DocPlusIcon } from "./Icon";
+import { ChecklistIcon, DocPlusIcon } from "./Icon";
 
 export function EmptyState({
   icon,
@@ -39,6 +39,23 @@ export function NoPlanEmptyState() {
         repo root, or a <code>plans/</code> folder of <code>.md</code> files.
       </p>
       <p>Each checklist item becomes a task you can launch an agent on.</p>
+    </EmptyState>
+  );
+}
+
+// The "no tasks" empty state: the plan file parsed fine, it just has nothing
+// runnable in it. The example line is deliberately literal — the parser only
+// picks up `- [ ]` checklist items, and a plan written as prose or as `*`
+// bullets is the likeliest reason a real plan lands here.
+export function NoTasksEmptyState() {
+  return (
+    <EmptyState icon={<ChecklistIcon size={26} />} title="No tasks in this plan">
+      <p>
+        Loopfleet runs against <code>- [ ]</code> checklist items — other lines
+        in the file are context, not tasks.
+      </p>
+      <pre className="empty-state__example">- [ ] Add a health check endpoint</pre>
+      <p>Add a line like that to this plan file to launch a run against it.</p>
     </EmptyState>
   );
 }
