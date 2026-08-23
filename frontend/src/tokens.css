@@ -10,7 +10,7 @@
  * such block and nothing else; a block that omits a token inherits nothing, so
  * each theme must define the full palette.
  *
- * dark is the default and v1's only theme — a supervisor/cockpit tool that
+ * dark is the default theme — a supervisor/cockpit tool that
  * lives beside terminals reads best dark — so it also applies with no
  * data-theme attribute set at all. Its :root arm carries lower specificity
  * than any [data-theme] arm, so a future theme block wins regardless of
@@ -218,6 +218,134 @@
   --c-shadow-card: rgba(255, 255, 255, 0.03);
   --c-shadow-chip-hi: rgba(255, 255, 255, 0.04);
   --c-shadow-chip-pressed: rgba(0, 0, 0, 0.3);
+}
+
+/* --- theme: rose-pine-moon ---
+ * Rosé Pine Moon, mapped onto the same token set as dark: the twelve palette
+ * roles (base/surface/overlay/muted/subtle/text + love/gold/rose/pine/foam/
+ * iris) fill the surface, text, accent and semantic slots. The structural
+ * rules carry over unchanged — base and surface are the one field, the
+ * lighter steps are state rather than elevation, and geometry stays in
+ * :root — so this block re-tints the app and nothing else.
+ *
+ * Two of the palette's own steps can't serve as body text here: subtle
+ * (#908caa) measures 3.61:1 and muted (#6e6a86) 2.25:1 against
+ * --c-surface-3, both under AA's 4.5:1. The dimmer text steps are therefore
+ * subtle lightened along its own hue (values and ratios in the table below),
+ * and canonical muted keeps its de-emphasis job as the hairline ink, where
+ * the 3:1 UI-graphics floor applies instead. */
+
+:root[data-theme="rose-pine-moon"] {
+  /* --- color: surfaces ---
+   * base is the single field (chrome and main share it); surface and overlay
+   * are the state steps for hover fills, inputs, and the selected row. */
+  --c-bg: #232136;
+  --c-surface: #232136;
+  --c-surface-2: #2a273f;
+  --c-surface-3: #393552;
+  --c-surface-hover: rgba(224, 222, 244, 0.04);
+  /* Hairlines drawn in muted, the palette's de-emphasis step, at partial
+   * alpha so a divider reads the same weight over base and over a raised
+   * fill. */
+  --c-border: rgba(110, 106, 134, 0.45);
+  --c-border-strong: rgba(110, 106, 134, 0.8);
+
+  /* --- color: text ---
+   * Measured WCAG 2.1 contrast against every canvas the text sits on
+   * (--c-bg/--c-surface, --c-surface-2, --c-surface-3, and the blended
+   * --c-surface-hover fill, which flattens to #2b293e). All three steps
+   * clear AA's 4.5:1 body-text floor everywhere, --c-text-faint with the
+   * least headroom:
+   *   --c-text        vs --c-bg #232136:        11.86:1
+   *   --c-text        vs --c-surface-2 #2a273f: 10.90:1
+   *   --c-text        vs --c-surface-3 #393552:  8.82:1
+   *   --c-text-muted  vs --c-bg #232136:         7.54:1
+   *   --c-text-muted  vs --c-surface-2 #2a273f:  6.93:1
+   *   --c-text-muted  vs --c-surface-3 #393552:  5.61:1
+   *   --c-text-faint  vs --c-bg #232136:         6.61:1
+   *   --c-text-faint  vs --c-surface-2 #2a273f:  6.08:1
+   *   --c-text-faint  vs --c-surface-3 #393552:  4.92:1  (tightest margin)
+   *   --c-text-faint  vs --c-surface-hover:      5.96:1
+   */
+  --c-text: #e0def4;
+  --c-text-muted: #b4b2c6;
+  --c-text-faint: #a9a6bd;
+
+  /* --- color: accent + semantic ---
+   * iris is the accent. Unlike dark's indigo, iris is light enough to serve
+   * as its own text step on the recessed fill (5.62:1, see below), so
+   * --c-accent-text repeats it rather than lightening; the hover pair still
+   * steps up so the chip brightens under the pointer. --c-accent-quiet is
+   * iris at 0.14 flattened against --c-bg, its hover the same mix at 0.22. */
+  --c-accent: #c4a7e7;
+  --c-accent-quiet: #3a344f;
+  --c-accent-text: #c4a7e7;
+  --c-accent-border: rgba(196, 167, 231, 0.32);
+  --c-accent-quiet-hover: #463e5d;
+  --c-accent-border-hover: rgba(196, 167, 231, 0.5);
+  --c-accent-text-hover: #dbc9f1;
+  /* Ink on a *solid* iris fill: iris is a light hue, so the field color goes
+   * on top rather than white (7.47:1). */
+  --c-on-accent: #232136;
+
+  /* The semantic ramps keep dark's vocabulary — -wash under a whole row,
+   * -quiet at border strength, -tint as the disc behind a glyph, -loud for
+   * banners and filled controls. Rosé Pine gives two steps per warm/cool
+   * family, so the pattern here is deep step fills, light step inks: pine
+   * backs the ok ramp and foam draws its glyph, love backs the danger ramp
+   * and rose draws its glyph. gold is a single step light enough to do both.
+   * --c-danger-loud is love at 0.14 pre-flattened against --c-bg, since it
+   * backs the toast, which floats over arbitrary content.
+   *
+   * Measured WCAG 2.1 contrast for the glyph/text step of each hue (the
+   * -wash/-quiet/-tint fills sit under or behind content and aren't text
+   * colors, so they're not checked here). All three clear AA's 4.5:1:
+   *   --c-ok      vs --c-bg #232136:          9.19:1
+   *   --c-ok      vs --c-surface-2 #2a273f:   8.44:1
+   *   --c-ok      vs --c-surface-3 #393552:   6.83:1
+   *   --c-warn    vs --c-bg #232136:          9.55:1
+   *   --c-warn    vs --c-surface-2 #2a273f:   8.77:1
+   *   --c-warn    vs --c-surface-3 #393552:   7.10:1
+   *   --c-danger  vs --c-bg #232136:          7.13:1
+   *   --c-danger  vs --c-surface-2 #2a273f:   6.55:1
+   *   --c-danger  vs --c-surface-3 #393552:   5.30:1
+   *   --c-danger  vs --c-danger-loud #3f2c43: 5.79:1  (toast text-on-fill case)
+   *   --c-accent  vs --c-bg #232136:          7.47:1
+   *   --c-accent  vs --c-surface-3 #393552:   5.56:1
+   *   --c-accent  vs --c-accent-quiet:        5.62:1
+   *   --c-accent  vs --c-accent-quiet-hover:  4.76:1  (tightest accent case)
+   *
+   * pine (#3e8fb0) never carries body text: at 4.29:1 on --c-bg it is under
+   * the 4.5:1 floor but clears the 3:1 floor for borders and UI graphics,
+   * which is all the ok ramp asks of it. */
+  --c-ok: #9ccfd8;
+  --c-ok-wash: rgba(62, 143, 176, 0.08);
+  --c-ok-quiet: rgba(62, 143, 176, 0.14);
+  --c-ok-tint: rgba(62, 143, 176, 0.16);
+  --c-warn: #f6c177;
+  --c-warn-wash: rgba(246, 193, 119, 0.08);
+  --c-warn-quiet: rgba(246, 193, 119, 0.14);
+  --c-warn-tint: rgba(246, 193, 119, 0.16);
+  --c-warn-loud: rgba(246, 193, 119, 0.2);
+  --c-danger: #ea9a97;
+  --c-danger-wash: rgba(235, 111, 146, 0.08);
+  --c-danger-quiet: rgba(235, 111, 146, 0.15);
+  --c-danger-tint: rgba(235, 111, 146, 0.17);
+  --c-danger-loud: #3f2c43;
+
+  /* Scrim behind modal overlays (the palette), tinted to Rosé Pine's darkest
+   * base rather than pure black so the field stays in-family. */
+  --c-scrim: rgba(25, 23, 36, 0.6);
+
+  /* --- color: shadow ---
+   * Ink only; the offsets and blur live in :root. Same tint as the scrim,
+   * with the two highlights drawn in text rather than white. */
+  --c-shadow-1: rgba(25, 23, 36, 0.5);
+  --c-shadow-2a: rgba(25, 23, 36, 0.65);
+  --c-shadow-2b: rgba(25, 23, 36, 0.45);
+  --c-shadow-card: rgba(224, 222, 244, 0.03);
+  --c-shadow-chip-hi: rgba(224, 222, 244, 0.05);
+  --c-shadow-chip-pressed: rgba(25, 23, 36, 0.35);
 }
 
 /* --- base / reset --- */
