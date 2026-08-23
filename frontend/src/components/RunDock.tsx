@@ -66,6 +66,14 @@ export type ActiveRun = {
   /// re-run for it (`scheduled_resume`), carrying the epoch ms it fires at.
   /// Cleared when the resume fires or is cancelled — App.tsx owns the timer.
   pendingResume?: { resumeAt: number };
+  /// Whether the run has been accepted ("use this run" merged it into a
+  /// branch). Read from the run's detail once it reaches a terminal status —
+  /// `undefined` while the run is still active or its detail hasn't loaded.
+  accepted?: boolean;
+  /// Whether the run produced something to merge: at least one iteration has a
+  /// shadow ref. Read alongside `accepted` from the run's detail — `undefined`
+  /// until then, so "not known yet" stays distinct from "nothing to merge".
+  mergeable?: boolean;
   /// Set on a `limit-reached` run when the backend's automatic resume chain hit
   /// its attempt cap: no further re-run is coming, so the chip reads "retries
   /// exhausted" instead of a resume time. Mutually exclusive with

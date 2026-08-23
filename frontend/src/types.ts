@@ -148,6 +148,9 @@ export type RunTimeline = {
   status: RunStatus;
   task_anchor: string;
   max_iterations: number;
+  /// Whether the run was accepted ("use this run"). Separate from `status`: a
+  /// completed run may or may not have been merged into a branch.
+  accepted: boolean;
   /// The run's isolated worktree, or `null` once the sweep has reclaimed it
   /// (the diff and report remain available regardless).
   worktree_path: string | null;

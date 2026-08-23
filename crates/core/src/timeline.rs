@@ -19,6 +19,9 @@ pub struct RunTimeline {
     pub status: String,
     pub task_anchor: String,
     pub max_iterations: u32,
+    /// Whether the run was accepted ("use this run"). Separate from `status`:
+    /// a completed run may or may not have been merged into a branch.
+    pub accepted: bool,
     /// The run's isolated worktree, or `None` once the sweep has reclaimed it.
     /// The UI should show a quiet "worktree cleaned" note in place of any
     /// open/reveal affordance when this is `None` — the diff and report are
@@ -139,6 +142,7 @@ pub fn run_timeline(conn: &Connection, run_id: &str) -> Result<RunTimeline, Time
         status: run.status,
         task_anchor: run.task_anchor,
         max_iterations: run.max_iterations,
+        accepted: run.accepted,
         worktree_path,
         iterations: views,
     })
