@@ -6,6 +6,12 @@
 import { useEffect, useState } from "react";
 import { getSettings, saveSettings, sweepWorktreesNow } from "../commands";
 import type { Settings } from "../types";
+import {
+  DEFAULT_RETENTION_HOURS,
+  retentionModeOf,
+  retentionValue,
+  type RetentionMode,
+} from "../retention";
 
 // The v1 agent keys (matches the adapters' discovery set). A small stable list;
 // no need to derive it from `agent_status` here.
@@ -30,7 +36,7 @@ export function SettingsPanel() {
     default_agent: "claude",
     default_iterations: 1,
     concurrency_cap: 3,
-    worktree_retention_hours: 48,
+    worktree_retention_hours: DEFAULT_RETENTION_HOURS,
   });
   // `loaded` gates the form until the persisted settings arrive, so a user
   // can't edit the placeholder defaults and have their edits overwritten when
@@ -38,6 +44,15 @@ export function SettingsPanel() {
   // previous silent swallow (which left the user editing stale defaults).
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Retention is edited as a mode plus a free-text hour count rather than
+  // straight off `settings.worktree_retention_hours`: clearing the input
+  // yields `Number("") === 0`, which would silently flip the mode to
+  // "immediately" and unmount the input the user is still typing in. The two
+  // are folded back into the single stored number on save.
+  const [retentionMode, setRetentionMode] = useState<RetentionMode>("after");
+  const [retentionHours, setRetentionHours] = useState(
+    String(DEFAULT_RETENTION_HOURS),
+  );
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [sweeping, setSweeping] = useState(false);
@@ -51,6 +66,10 @@ export function SettingsPanel() {
       .then((s) => {
         if (cancelled) return;
         setSettings(s);
+        setRetentionMode(retentionModeOf(s.worktree_retention_hours));
+        if (s.worktree_retention_hours > 0) {
+          setRetentionHours(String(s.worktree_retention_hours));
+        }
         setLoaded(true);
       })
       .catch((e) => {
@@ -68,16 +87,18 @@ export function SettingsPanel() {
       default_agent: settings.default_agent,
       default_iterations: Math.max(1, settings.default_iterations || 1),
       concurrency_cap: Math.max(0, settings.concurrency_cap || 0),
-      worktree_retention_hours:
-        settings.worktree_retention_hours === -1
-          ? -1
-          : Math.max(0, settings.worktree_retention_hours || 0),
+      worktree_retention_hours: retentionValue(retentionMode, retentionHours),
     };
     setSaving(true);
     setMsg(null);
     try {
       await saveSettings(next);
       setSettings(next);
+      // Reflect what actually got persisted, so a draft the fallback rejected
+      // ("", "abc") doesn't keep showing next to the saved value.
+      if (next.worktree_retention_hours > 0) {
+        setRetentionHours(String(next.worktree_retention_hours));
+      }
       setMsg({ text: "Saved", ok: true });
     } catch (e) {
       setMsg({ text: String(e), ok: false });
@@ -172,49 +193,34 @@ export function SettingsPanel() {
         <label className="field">
           <span>Worktree retention</span>
           <select
-            value={
-              settings.worktree_retention_hours === -1
-                ? "never"
-                : settings.worktree_retention_hours === 0
-                ? "immediately"
-                : "after"
-            }
+            value={retentionMode}
             disabled={!loaded}
-            onChange={(e) => {
-              const mode = e.target.value;
-              if (mode === "never") {
-                setSettings({ ...settings, worktree_retention_hours: -1 });
-              } else if (mode === "immediately") {
-                setSettings({ ...settings, worktree_retention_hours: 0 });
-              } else {
-                setSettings({
-                  ...settings,
-                  worktree_retention_hours:
-                    settings.worktree_retention_hours > 0
-                      ? settings.worktree_retention_hours
-                      : 48,
-                });
-              }
-            }}
+            onChange={(e) => setRetentionMode(e.target.value as RetentionMode)}
           >
-            <option value="immediately">Immediately (reap as soon as finished)</option>
+            <option value="immediately">Immediately</option>
             <option value="after">After a number of hours</option>
-            <option value="never">Never (keep until accepted)</option>
+            <option value="never">Never</option>
           </select>
-          {settings.worktree_retention_hours > 0 && (
+          {retentionMode === "after" && (
             <input
               type="number"
               min={1}
-              value={settings.worktree_retention_hours}
+              aria-label="Retention hours"
+              value={retentionHours}
               disabled={!loaded}
-              onChange={(e) =>
-                setSettings({
-                  ...settings,
-                  worktree_retention_hours: Number(e.target.value),
-                })
-              }
+              onChange={(e) => setRetentionHours(e.target.value)}
             />
           )}
+          {/* All three modes spelled out, not just the selected one, so the
+            * trade-off (disk vs. being able to revisit a finished run) is
+            * legible without cycling the dropdown. */}
+          <span className="field__hint">
+            When a finished run’s worktree is deleted, measured from when it
+            finished. <em>Immediately</em> reclaims disk as soon as a run ends;{" "}
+            <em>after a number of hours</em> keeps it that long so you can still
+            open the diff; <em>never</em> keeps it indefinitely. Accepted runs
+            are always swept — their diff has already landed.
+          </span>
         </label>
       </div>
       <div className="panel__actions">

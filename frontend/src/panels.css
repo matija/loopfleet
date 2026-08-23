@@ -162,6 +162,16 @@
   font-style: normal;
 }
 
+/* Multi-line explanation under a control (worktree retention's three modes).
+ * A block span rather than a <p>: it lives inside a <label>, whose content
+ * model is phrasing only. */
+.field__hint {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--c-text-faint);
+  line-height: var(--leading-normal);
+}
+
 .field select,
 .field input,
 .overrides__ta {
