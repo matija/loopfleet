@@ -103,8 +103,11 @@
   min-height: var(--row-h);
   box-sizing: border-box;
   /* Horizontal padding pulled back out with negative margins so the hover fill
-   * bleeds past the text column without shifting where the text starts. */
-  padding: var(--space-2);
+   * bleeds past the text column without shifting where the text starts. The
+   * vertical padding is tighter than the horizontal: the badge, text, and
+   * launch cluster each already reserve a --control-h band, so a full
+   * --space-2 above and below only stretched the list. */
+  padding: var(--space-1) var(--space-2);
   margin-inline: calc(-1 * var(--space-2));
   border-radius: var(--radius-sm);
   background: transparent;
@@ -137,11 +140,13 @@
  * if the pointer wanders off the row — WKWebView doesn't move focus to clicked
  * buttons, so :focus-within alone can't hold it open. */
 .task-row .launch,
-.task-row .task-row__compare-cue {
+.task-row .task-row__compare-cue,
+.task-row .task-status__label {
   visibility: hidden;
 }
 
 .task-row:is(:hover, :focus-within, :has(.launch--engaged)) .launch,
+.task-row:is(:hover, :focus-within, :has(.launch--engaged)) .task-status__label,
 .task-row:is(:hover, :focus-within, :has(.launch--engaged))
   .task-row__compare-cue {
   visibility: visible;
@@ -223,7 +228,9 @@
   /* Fixed-width status column: wide enough for the longest label ("Needs
    * review") so the cell occupies the same width on every row and the task
    * text after it starts at a stable x — the DataGrid's aligned-columns
-   * discipline applied to the plan/task grid. */
+   * discipline applied to the plan/task grid. The width is held even at rest,
+   * where only the glyph shows, so revealing the label on hover doesn't shift
+   * the text column. */
   box-sizing: border-box;
   min-width: 104px;
   /* Align within the shared control-height first-line band so it lines up
@@ -238,6 +245,21 @@
 
 .task-status__icon {
   flex: none;
+}
+
+/* The always-present accessible copy of the status word. `visibility: hidden`
+ * on the visible label (above) also drops it from the a11y tree, so this span
+ * — clipped, never hidden — is what a screen reader reads on every row. */
+.task-status__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Needs-review rows: the amber glyph is the per-row signal — no row wash. */
