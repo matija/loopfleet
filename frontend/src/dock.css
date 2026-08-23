@@ -232,3 +232,19 @@
   opacity: 0.5;
   background: transparent;
 }
+
+/* Merged marker: an accepted run has already landed, so the chip's affirmative
+   slot turns into a static, ok-hued check instead of the merge button — same
+   width and divider as an action so the chip's shape doesn't shift when a merge
+   settles, but no hover and nothing to press, which is what keeps a landed run
+   from being merged twice from here. */
+.run-chip__merged {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h-lg);
+  border-left: 1px solid var(--c-border);
+  background: var(--c-ok-wash);
+  color: var(--c-ok);
+}
