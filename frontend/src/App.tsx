@@ -57,6 +57,12 @@ import {
   type PaletteOpenTask,
 } from "./components/CommandPalette";
 import { useSidebarCollapsed } from "./sidebarCollapse";
+import {
+  applyTheme,
+  readStoredThemeId,
+  storeThemeId,
+  type ThemeId,
+} from "./themes";
 
 const SIDEBAR_HIDDEN_KEY = "loopfleet.sidebar.hidden";
 const DOCK_COLLAPSED_KEY = "loopfleet.dock.collapsed";
@@ -117,6 +123,11 @@ export default function App() {
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>({ kind: "overview" });
+  // The picked palette. Seeded from localStorage rather than the default so a
+  // reload doesn't briefly re-render in dark before the stored value lands —
+  // the inline script in index.html has already set data-theme to this same
+  // value, so the first React paint agrees with the first browser paint.
+  const [themeId, setThemeId] = useState<ThemeId>(readStoredThemeId);
   // Live "filter tables…"-style narrowing of the connections list.
   const [projectFilter, setProjectFilter] = useState("");
   // The sidebar search row shows a "Search" label until clicked/focused, then
@@ -354,6 +365,14 @@ export default function App() {
       // doesn't persist across reloads.
     }
   }, [dockCollapsed]);
+
+  // Applies the theme and persists the pick. Runs on mount too, which is what
+  // makes the app self-correcting: if index.html's bootstrap was skipped or
+  // wrote a stale id, `applyTheme` resolves and rewrites data-theme here.
+  useEffect(() => {
+    applyTheme(themeId);
+    storeThemeId(themeId);
+  }, [themeId]);
 
   const toggleSidebarHidden = useCallback(() => setSidebarHidden((h) => !h), []);
   const toggleDockCollapsed = useCallback(() => setDockCollapsed((c) => !c), []);
@@ -782,7 +801,7 @@ export default function App() {
             toolbarActions={toolbarActionsEl}
           />
         ) : (
-          <Overview />
+          <Overview themeId={themeId} onThemeChange={setThemeId} />
         )}
       </div>
       <CommandPalette
@@ -808,7 +827,13 @@ type OverviewSection = "agents" | "defaults" | "sandbox";
 // clicking the open card's tile again collapses it. The panels themselves
 // (agent chips, settings form, sandbox rules) are unchanged; the cards only
 // gate when they mount.
-function Overview() {
+function Overview({
+  themeId,
+  onThemeChange,
+}: {
+  themeId: ThemeId;
+  onThemeChange: (id: ThemeId) => void;
+}) {
   const [expanded, setExpanded] = useState<OverviewSection | null>(null);
 
   const toggle = (section: OverviewSection) =>
@@ -826,7 +851,7 @@ function Overview() {
         <SurfaceCard
           icon={<SettingsIcon />}
           title="Run defaults"
-          description="Default agent, iteration count, concurrency cap"
+          description="Default agent, iteration count, concurrency cap, theme"
           onClick={() => toggle("defaults")}
         />
         <SurfaceCard
@@ -839,7 +864,7 @@ function Overview() {
       {expanded === "agents" ? (
         <AgentStatusPanel />
       ) : expanded === "defaults" ? (
-        <SettingsPanel />
+        <SettingsPanel themeId={themeId} onThemeChange={onThemeChange} />
       ) : expanded === "sandbox" ? (
         <SandboxBoundaryPanel />
       ) : null}
