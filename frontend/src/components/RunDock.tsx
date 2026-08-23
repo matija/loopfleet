@@ -189,6 +189,17 @@ export function worktreeBranch(runId: string): string {
   return `agent/${runId}`;
 }
 
+/// Whether the chip should wear the merged marker instead of the merge action:
+/// the run is finished and its detail says it was already accepted. Kept
+/// distinct from `!canMergeFromDock` — that is also false for runs with nothing
+/// to merge or a detail that hasn't loaded, neither of which has landed.
+export function isMergedRun(run: {
+  status: RunStatus;
+  accepted?: boolean;
+}): boolean {
+  return !isActiveRun(run.status) && run.accepted === true;
+}
+
 function RunChip({
   run: r,
   selected,
@@ -223,6 +234,7 @@ function RunChip({
   const chipTitle = [
     taskText,
     `${r.agent} · ${r.projectName}`,
+    isMergedRun(r) ? "merged" : undefined,
     r.unseen ? "finished, not yet seen" : undefined,
   ]
     .filter(Boolean)
@@ -328,6 +340,16 @@ function RunChip({
           tone={active ? undefined : finishedRunTone(r.status)}
         />
       </Popover>
+      {isMergedRun(r) ? (
+        <span
+          className="run-chip__merged"
+          role="img"
+          aria-label="Merged"
+          title="Already merged into your branch"
+        >
+          <CheckIcon size={14} />
+        </span>
+      ) : null}
       {canMergeFromDock(r) && (
         <button
           className="run-chip__action run-chip__action--merge"
