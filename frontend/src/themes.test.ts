@@ -1,0 +1,135 @@
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  applyTheme,
+  DEFAULT_THEME_ID,
+  isThemeId,
+  resolveThemeId,
+  themeById,
+  THEMES,
+} from "./themes";
+
+// The vitest environment here is plain node (no jsdom), so there's no document
+// to theme. applyTheme only needs setAttribute, so a minimal stand-in element
+// is enough — and one is installed as globalThis.document.documentElement to
+// exercise the default-argument path too.
+class FakeElement {
+  attrs = new Map<string, string>();
+  setAttribute(name: string, value: string): void {
+    this.attrs.set(name, value);
+  }
+}
+
+function withDocument(root: FakeElement, run: () => void): void {
+  const g = globalThis as { document?: unknown };
+  const had = "document" in g;
+  const previous = g.document;
+  g.document = { documentElement: root };
+  try {
+    run();
+  } finally {
+    if (had) g.document = previous;
+    else delete g.document;
+  }
+}
+
+afterEach(() => {
+  delete (globalThis as { document?: unknown }).document;
+});
+
+describe("THEMES", () => {
+  it("lists every theme as an { id, label } pair", () => {
+    expect(THEMES).toEqual([
+      { id: "dark", label: "Dark" },
+      { id: "rose-pine-moon", label: "Rosé Pine Moon" },
+    ]);
+  });
+
+  it("has unique ids and non-empty labels", () => {
+    const ids = THEMES.map((theme) => theme.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const theme of THEMES) {
+      expect(theme.label.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("includes the default theme", () => {
+    expect(THEMES.map((theme) => theme.id)).toContain(DEFAULT_THEME_ID);
+  });
+});
+
+describe("isThemeId", () => {
+  it("accepts registered ids", () => {
+    expect(isThemeId("dark")).toBe(true);
+    expect(isThemeId("rose-pine-moon")).toBe(true);
+  });
+
+  it("rejects anything else", () => {
+    for (const value of ["", "light", "DARK", null, undefined, 3, {}, ["dark"]]) {
+      expect(isThemeId(value)).toBe(false);
+    }
+  });
+});
+
+describe("resolveThemeId", () => {
+  it("passes a known id through", () => {
+    expect(resolveThemeId("rose-pine-moon")).toBe("rose-pine-moon");
+  });
+
+  it("falls back to the default for a missing preference", () => {
+    expect(resolveThemeId(null)).toBe(DEFAULT_THEME_ID);
+    expect(resolveThemeId(undefined)).toBe(DEFAULT_THEME_ID);
+  });
+
+  it("falls back to the default for an id no longer in the registry", () => {
+    expect(resolveThemeId("solarized")).toBe(DEFAULT_THEME_ID);
+  });
+
+  it("falls back to the default for non-string values", () => {
+    expect(resolveThemeId({ id: "dark" })).toBe(DEFAULT_THEME_ID);
+    expect(resolveThemeId(7)).toBe(DEFAULT_THEME_ID);
+  });
+});
+
+describe("themeById", () => {
+  it("returns the registry entry", () => {
+    expect(themeById("rose-pine-moon").label).toBe("Rosé Pine Moon");
+  });
+});
+
+describe("applyTheme", () => {
+  it("sets data-theme on the given root and returns the applied id", () => {
+    const root = new FakeElement();
+    expect(applyTheme("rose-pine-moon", root as unknown as Element)).toBe(
+      "rose-pine-moon",
+    );
+    expect(root.attrs.get("data-theme")).toBe("rose-pine-moon");
+  });
+
+  it("writes the default id when the stored value is invalid", () => {
+    const root = new FakeElement();
+    expect(applyTheme("solarized", root as unknown as Element)).toBe(
+      DEFAULT_THEME_ID,
+    );
+    expect(root.attrs.get("data-theme")).toBe(DEFAULT_THEME_ID);
+  });
+
+  it("overwrites a previously applied theme", () => {
+    const root = new FakeElement();
+    applyTheme("rose-pine-moon", root as unknown as Element);
+    applyTheme("dark", root as unknown as Element);
+    expect(root.attrs.get("data-theme")).toBe("dark");
+  });
+
+  it("defaults to the document root", () => {
+    const root = new FakeElement();
+    withDocument(root, () => {
+      expect(applyTheme("rose-pine-moon")).toBe("rose-pine-moon");
+    });
+    expect(root.attrs.get("data-theme")).toBe("rose-pine-moon");
+  });
+
+  it("is a no-op outside a DOM instead of throwing", () => {
+    expect(() => applyTheme("dark")).not.toThrow();
+    expect(applyTheme("dark")).toBe("dark");
+  });
+});
