@@ -318,7 +318,10 @@
  * since it flags an authoring gap rather than a failure. */
 .project-item__flag {
   flex: none;
-  font-size: var(--text-2xs);
+  /* --text-xs, not --text-2xs: this reads as a word ("no tasks"), so it takes
+   * the 11px text floor rather than the sub-floor keycap step, which is
+   * reserved for glyph-like ⌘K hints (see tokens.css). */
+  font-size: var(--text-xs);
   color: var(--c-text-faint);
   background: var(--c-surface-2);
   border: 1px solid var(--c-border);
