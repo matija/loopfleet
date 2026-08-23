@@ -202,6 +202,16 @@ function RunChip({
   const active = isActiveRun(r.status);
   const taskText = taskSummary(r.taskText);
   const StatusIcon = RUN_STATUS_ICON[r.status];
+  // The chip itself carries only the task text, so agent and project — the
+  // identity the old two-line chip spelled out — ride the tooltip instead (and
+  // the hover card below, for pointer users who linger).
+  const chipTitle = [
+    taskText,
+    `${r.agent} · ${r.projectName}`,
+    r.unseen ? "finished, not yet seen" : undefined,
+  ]
+    .filter(Boolean)
+    .join(" — ");
   const anchorRef = useRef<HTMLButtonElement>(null);
   // `onClose` deliberately no-ops rather than reusing `useHoverOpen`'s
   // close(): Popover returns focus to its anchor whenever it closes, which
@@ -218,7 +228,7 @@ function RunChip({
         className="run-chip__open"
         aria-current={selected}
         onClick={() => onOpen(r.runId)}
-        title={r.unseen ? `${taskText} — finished, not yet seen` : taskText}
+        title={chipTitle}
         {...handlers}
       >
         {r.unseen && (
@@ -236,7 +246,7 @@ function RunChip({
         <span className="run-chip__task">{taskText}</span>
         {r.pendingResume ? (
           <span className="run-chip__meta run-chip__meta--warn">
-            Rate-limited · resuming at{" "}
+            Resumes{" "}
             {new Date(r.pendingResume.resumeAt).toLocaleTimeString([], {
               hour: "numeric",
               minute: "2-digit",
@@ -246,12 +256,11 @@ function RunChip({
           <span className="run-chip__meta run-chip__meta--warn">
             {RETRIES_EXHAUSTED_LABEL}
           </span>
-        ) : (
+        ) : active ? (
           <span className="run-chip__meta">
-            {r.agent} · {r.projectName}
-            {active && <> · <Elapsed startedAt={r.startedAt} /></>}
+            <Elapsed startedAt={r.startedAt} />
           </span>
-        )}
+        ) : null}
       </button>
       <Popover
         open={open}
@@ -371,7 +380,7 @@ export function RunDock({
       <div className="run-dock__head">
         <span className="run-dock__title">Runs</span>
         <span className="run-dock__count">
-          {activeCount} active{runs.length > activeCount ? ` · ${runs.length - activeCount} finished` : ""}
+          {activeCount} active{runs.length > activeCount ? ` · ${runs.length - activeCount} done` : ""}
           {unseenCount > 0 ? ` · ${unseenCount} new` : ""}
         </span>
       </div>
