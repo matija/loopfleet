@@ -50,14 +50,6 @@
   align-self: center;
 }
 
-/* Shown under a plan header whose PRD parsed but carries no task list yet. */
-.plan-card__empty {
-  margin: var(--space-3) 0 0;
-  color: var(--c-text-muted);
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
-}
-
 /* --- review queue banner --- */
 /* One summary row above the list, carrying the same strengthened amber that
  * `.status-pill` uses for its own review/warn states (full --c-warn border
