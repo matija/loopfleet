@@ -13,6 +13,7 @@ import {
   planOverview,
   runTimeline,
   stopRun,
+  useRun,
 } from "./commands";
 import { normalizeDisplayText } from "./displayText";
 import {
@@ -236,6 +237,26 @@ export default function App() {
       })
       .catch(() => {});
   }, []);
+
+  // The dock's merge action: "use this run" against the current branch, no
+  // target-branch detour. On success the chip's `accepted` flag flips (which
+  // also retires the action, per `canMergeFromDock`) and the plan overview
+  // refetches, since accepting a run changes what the plan shows. A failure is
+  // an app-level command error, so it goes to the toast lane.
+  const mergeRunFromDock = useCallback(
+    async (runId: string) => {
+      try {
+        await useRun(runId, null);
+        setRuns((prev) =>
+          prev.map((r) => (r.runId === runId ? { ...r, accepted: true } : r)),
+        );
+        setPlanNonce((n) => n + 1);
+      } catch (e) {
+        pushError(String(e));
+      }
+    },
+    [pushError],
+  );
 
   // Terminal-state updates for any run flow through the dock's registry. A run
   // reaching a terminal status while it is not the open view is flagged
@@ -591,6 +612,7 @@ export default function App() {
           onCancelResume={(id) => {
             cancelScheduledResume(id).catch((e) => pushError(String(e)));
           }}
+          onMerge={mergeRunFromDock}
         />
       }
       sidebar={

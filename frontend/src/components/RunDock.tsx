@@ -23,6 +23,7 @@ import {
   RETRIES_EXHAUSTED_LABEL,
   RUN_STATUS_ICON,
   RUN_STATUS_LABEL,
+  canMergeFromDock,
   isActiveRun,
 } from "../status";
 import { formatDuration } from "./DataGrid";
@@ -30,6 +31,7 @@ import { Elapsed } from "./Elapsed";
 import {
   AgentIcon,
   BoxIcon,
+  CheckIcon,
   ClockIcon,
   FolderIcon,
   GitBranchIcon,
@@ -195,6 +197,7 @@ function RunChip({
   onStop,
   onDismiss,
   onCancelResume,
+  onMerge,
 }: {
   run: ActiveRun;
   selected: boolean;
@@ -206,6 +209,10 @@ function RunChip({
   onStop: (runId: string) => void;
   onDismiss: (runId: string) => void;
   onCancelResume: (runId: string) => void;
+  /// Merge this run into the current branch ("use this run" with no target
+  /// branch). Resolves once the attempt settles either way — App owns marking
+  /// the run accepted and reporting a failure, the chip only shows busy.
+  onMerge: (runId: string) => Promise<void>;
 }) {
   const active = isActiveRun(r.status);
   const taskText = taskSummary(r.taskText);
@@ -226,6 +233,18 @@ function RunChip({
   // would steal focus back to this chip on every ordinary mouseleave. Leave
   // and Escape are already handled by the hover handlers below.
   const { open, handlers } = useHoverOpen();
+  // Local to the chip: a merge in flight. The outcome (accepted, or a toast)
+  // arrives back as a prop, so only the pending state lives here.
+  const [merging, setMerging] = useState(false);
+
+  async function merge() {
+    setMerging(true);
+    try {
+      await onMerge(r.runId);
+    } finally {
+      setMerging(false);
+    }
+  }
 
   return (
     <li
@@ -309,6 +328,20 @@ function RunChip({
           tone={active ? undefined : finishedRunTone(r.status)}
         />
       </Popover>
+      {canMergeFromDock(r) && (
+        <button
+          className="run-chip__action run-chip__action--merge"
+          onClick={merge}
+          disabled={merging}
+          aria-busy={merging}
+          title={
+            merging ? "Merging…" : "Merge this run into your current branch"
+          }
+          aria-label={merging ? "Merging run" : "Use this run"}
+        >
+          <CheckIcon size={14} />
+        </button>
+      )}
       {active ? (
         <button
           className="run-chip__action"
@@ -348,6 +381,7 @@ export function RunDock({
   onStop,
   onDismiss,
   onCancelResume,
+  onMerge,
   collapsed,
 }: {
   runs: ActiveRun[];
@@ -356,6 +390,10 @@ export function RunDock({
   onStop: (runId: string) => void;
   onDismiss: (runId: string) => void;
   onCancelResume: (runId: string) => void;
+  /// Merge a finished run into the current branch — offered on chips where
+  /// `canMergeFromDock` holds, so landing a good run needs no detour through
+  /// the run view. Resolves when the attempt settles, success or failure.
+  onMerge: (runId: string) => Promise<void>;
   /// Collapsed to just the head strip via the toolbar's panel-bottom toggle.
   /// App.tsx owns the persisted state; the dock just renders it.
   collapsed?: boolean;
@@ -404,6 +442,7 @@ export function RunDock({
               onStop={onStop}
               onDismiss={onDismiss}
               onCancelResume={onCancelResume}
+              onMerge={onMerge}
             />
           ))}
         </ul>
