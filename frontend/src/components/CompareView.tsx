@@ -13,9 +13,9 @@ import { useCallback, useEffect, useState } from "react";
 import { compareTask } from "../commands";
 import { normalizeDisplayText } from "../displayText";
 import type { CompareView as Compare, RunCompare } from "../types";
-import { Diff } from "./RunTimeline";
+import { Diff, WorktreeReclaimed } from "./RunTimeline";
 import { UseRun } from "./UseRun";
-import { RUN_STATUS_LABEL } from "../status";
+import { isActiveRun, RUN_STATUS_LABEL } from "../status";
 
 export function CompareView({
   planId,
@@ -122,6 +122,10 @@ function RunColumn({
         <span className="compare__run-agent">{run.agent}</span>
         {run.accepted && <span className="compare__accepted">✓ accepted</span>}
       </header>
+
+      {!isActiveRun(run.status) && run.worktree_path === null && (
+        <WorktreeReclaimed className="compare__reclaimed" />
+      )}
 
       {run.final_ref ? (
         <Diff diff={run.diff} />
