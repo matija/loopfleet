@@ -1,9 +1,104 @@
 /* Design tokens for the loopfleet app shell (PRD M7: "design tokens — color,
  * type scale, spacing, radii"). Everything downstream references these vars;
- * no view hardcodes a raw color, size, or radius. Single dark theme in v1 — a
- * supervisor/cockpit tool that lives beside terminals reads best dark. */
+ * no view hardcodes a raw color, size, or radius.
+ *
+ * The file is split along the one axis that varies: color. Type, spacing,
+ * radii, layout, shadow *geometry*, and motion are theme-invariant and live in
+ * the single :root block below — a theme retints the app, it doesn't re-lay it
+ * out. Every color token lives in a per-theme block selected by
+ * [data-theme="<id>"] on the document root. Adding a theme means adding one
+ * such block and nothing else; a block that omits a token inherits nothing, so
+ * each theme must define the full palette.
+ *
+ * dark is the default and v1's only theme — a supervisor/cockpit tool that
+ * lives beside terminals reads best dark — so it also applies with no
+ * data-theme attribute set at all. Its :root arm carries lower specificity
+ * than any [data-theme] arm, so a future theme block wins regardless of
+ * source order. */
 
 :root {
+  /* --- type scale (1.25 ratio off 13px base) ---
+   * Inter Variable (self-hosted via @fontsource) is the UI face; system
+   * fonts remain as the fallback stack. */
+  --font-sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont,
+    "SF Pro Text", system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+
+  /* --text-2xs is below the 1.25 ratio, reserved for keycaps (⌘K hints) where a
+   * micro label reads as a glyph, not body text. */
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+
+  --leading-tight: 1.3;
+  --leading-normal: 1.5;
+
+  /* Tracking scale: tight pulls in headings and large text so they don't read
+   * loose at size; normal nudges body copy a hair tighter than the browser
+   * default; wide is reserved for uppercase micro-labels, where letterforms
+   * need the extra air to stay legible at text-xs/text-sm. */
+  --tracking-tight: -0.02em;
+  --tracking-normal: -0.006em;
+  --tracking-wide: 0.06em;
+
+  /* --- spacing (4px base) --- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 48px;
+
+  /* --- radii (softer, Esploro-style rounding) --- */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* --- layout --- */
+  --sidebar-w: 268px;
+  --titlebar-h: 38px;
+  /* Shared height for compact control strips (steppers, tab bars) so they share
+   * one baseline instead of drifting a pixel apart. */
+  --control-h: 30px;
+  /* Taller variant for toolbar-class controls (primary action bars). */
+  --control-h-lg: 32px;
+  /* Shared height for navigation and list rows. */
+  --row-h: 32px;
+
+  /* --- motion ---
+   * Restrained by design: two short durations and one standard ease. A cockpit
+   * tool shouldn't feel animated, just un-jarring — hovers settle, surfaces that
+   * appear (toasts, the palette, run chips) ease in rather than pop. Everything
+   * that references these is neutralized by the prefers-reduced-motion guard at
+   * the foot of this file. --motion-fast is for state/hover, --motion-base for
+   * entrances that travel a short distance. */
+  --motion-fast: 0.12s;
+  --motion-base: 0.18s;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+
+  /* --- shadows ---
+   * Geometry only; the ink comes from the per-theme --c-shadow-* tokens. */
+  --shadow-1: 0 4px 16px var(--c-shadow-1);
+  /* Deeper lift for surfaces that float above overlays themselves (e.g. a
+   * menu opened from within a palette). */
+  --shadow-2: 0 8px 32px var(--c-shadow-2a), 0 2px 8px var(--c-shadow-2b);
+  /* Faint top highlight for raised cards, distinct from the chip's. */
+  --shadow-card: inset 0 1px 0 var(--c-shadow-card);
+  /* Chip depth: a one-pixel top highlight at rest, swapped for an inner
+   * shadow while held, so the primary action reads as a physical press. */
+  --shadow-chip-hi: inset 0 1px 0 var(--c-shadow-chip-hi);
+  --shadow-chip-pressed: inset 0 1px 2px var(--c-shadow-chip-pressed);
+}
+
+/* --- theme: dark (default) --- */
+
+:root,
+:root[data-theme="dark"] {
   /* --- color: surfaces ---
    * One black field, not a stack of grey panels. --c-bg and --c-surface are the
    * same near-black: chrome (titlebar, sidebar, main) reads as a single sheet,
@@ -113,79 +208,16 @@
   /* Scrim behind modal overlays (the palette). */
   --c-scrim: rgba(0, 0, 0, 0.5);
 
-  /* --- type scale (1.25 ratio off 13px base) ---
-   * Inter Variable (self-hosted via @fontsource) is the UI face; system
-   * fonts remain as the fallback stack. */
-  --font-sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont,
-    "SF Pro Text", system-ui, sans-serif;
-  --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
-
-  /* --text-2xs is below the 1.25 ratio, reserved for keycaps (⌘K hints) where a
-   * micro label reads as a glyph, not body text. */
-  --text-2xs: 10px;
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-base: 13px;
-  --text-md: 15px;
-  --text-lg: 18px;
-  --text-xl: 22px;
-
-  --leading-tight: 1.3;
-  --leading-normal: 1.5;
-
-  /* Tracking scale: tight pulls in headings and large text so they don't read
-   * loose at size; normal nudges body copy a hair tighter than the browser
-   * default; wide is reserved for uppercase micro-labels, where letterforms
-   * need the extra air to stay legible at text-xs/text-sm. */
-  --tracking-tight: -0.02em;
-  --tracking-normal: -0.006em;
-  --tracking-wide: 0.06em;
-
-  /* --- spacing (4px base) --- */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
-  --space-8: 48px;
-
-  /* --- radii (softer, Esploro-style rounding) --- */
-  --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-
-  /* --- layout --- */
-  --sidebar-w: 268px;
-  --titlebar-h: 38px;
-  /* Shared height for compact control strips (steppers, tab bars) so they share
-   * one baseline instead of drifting a pixel apart. */
-  --control-h: 30px;
-  /* Taller variant for toolbar-class controls (primary action bars). */
-  --control-h-lg: 32px;
-  /* Shared height for navigation and list rows. */
-  --row-h: 32px;
-  --shadow-1: 0 4px 16px rgba(0, 0, 0, 0.45);
-  /* Deeper lift for surfaces that float above overlays themselves (e.g. a
-   * menu opened from within a palette). */
-  --shadow-2: 0 8px 32px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
-  /* Faint top highlight for raised cards, distinct from the chip's. */
-  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  /* Chip depth: a one-pixel top highlight at rest, swapped for an inner
-   * shadow while held, so the primary action reads as a physical press. */
-  --shadow-chip-hi: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  --shadow-chip-pressed: inset 0 1px 2px rgba(0, 0, 0, 0.3);
-
-  /* --- motion ---
-   * Restrained by design: two short durations and one standard ease. A cockpit
-   * tool shouldn't feel animated, just un-jarring — hovers settle, surfaces that
-   * appear (toasts, the palette, run chips) ease in rather than pop. Everything
-   * that references these is neutralized by the prefers-reduced-motion guard at
-   * the foot of this file. --motion-fast is for state/hover, --motion-base for
-   * entrances that travel a short distance. */
-  --motion-fast: 0.12s;
-  --motion-base: 0.18s;
-  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  /* --- color: shadow ---
+   * The geometry of every shadow (offsets, blur, inset) lives in the
+   * theme-invariant :root block; only the ink is per-theme, so a light theme
+   * re-tints the same lift instead of redefining it. */
+  --c-shadow-1: rgba(0, 0, 0, 0.45);
+  --c-shadow-2a: rgba(0, 0, 0, 0.6);
+  --c-shadow-2b: rgba(0, 0, 0, 0.4);
+  --c-shadow-card: rgba(255, 255, 255, 0.03);
+  --c-shadow-chip-hi: rgba(255, 255, 255, 0.04);
+  --c-shadow-chip-pressed: rgba(0, 0, 0, 0.3);
 }
 
 /* --- base / reset --- */
