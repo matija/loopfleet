@@ -179,13 +179,16 @@ pub struct RunDetail {
     /// The run's worktree checkout path, if it still has one (M3 reap deletes
     /// this without clearing the column, so callers check the filesystem too).
     pub worktree_path: Option<String>,
+    /// Whether this run was accepted ("use this run") — a flag separate from
+    /// `status`, so a completed run may or may not have been merged.
+    pub accepted: bool,
 }
 
 /// Load one run's detail (with its parent repo path), or `None` if absent.
 pub fn load_run(conn: &Connection, run_id: &str) -> rusqlite::Result<Option<RunDetail>> {
     conn.query_row(
         "SELECT r.id, r.task_anchor, r.agent, r.model, r.status, r.max_iterations, pr.repo_path,
-                r.worktree_path
+                r.worktree_path, r.accepted
          FROM runs r
          JOIN plans pl ON r.plan_id = pl.id
          JOIN projects pr ON pl.project_id = pr.id
@@ -201,6 +204,7 @@ pub fn load_run(conn: &Connection, run_id: &str) -> rusqlite::Result<Option<RunD
                 max_iterations: r.get(5)?,
                 repo_path: r.get(6)?,
                 worktree_path: r.get(7)?,
+                accepted: r.get::<_, i64>(8)? != 0,
             })
         },
     )

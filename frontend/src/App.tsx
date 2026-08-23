@@ -11,6 +11,7 @@ import {
   launchRun,
   listProjects,
   planOverview,
+  runTimeline,
   stopRun,
 } from "./commands";
 import { normalizeDisplayText } from "./displayText";
@@ -217,11 +218,32 @@ export default function App() {
   // already seen, so it never gets flagged for attention.
   const openRunIdRef = useRef<string | null>(null);
 
+  // Read a run's persisted detail into its dock entry: whether it was accepted,
+  // and whether it produced anything to merge (any iteration with a shadow
+  // ref). Only meaningful once the run has ended — an active run's iterations
+  // are still being written — so this is called on terminal status only, and a
+  // failure just leaves both flags `undefined` ("not known") rather than
+  // asserting a wrong one.
+  const refreshRunOutcome = useCallback((runId: string) => {
+    runTimeline(runId)
+      .then((t) => {
+        const mergeable = t.iterations.some((it) => it.shadow_ref !== null);
+        setRuns((prev) =>
+          prev.map((r) =>
+            r.runId === runId ? { ...r, accepted: t.accepted, mergeable } : r,
+          ),
+        );
+      })
+      .catch(() => {});
+  }, []);
+
   // Terminal-state updates for any run flow through the dock's registry. A run
   // reaching a terminal status while it is not the open view is flagged
   // `unseen` — the dock's attention marker — until acknowledged (see below).
+  // Reaching a terminal status is also when the run's outcome flags become
+  // readable, so the detail fetch above is kicked off from here.
   useEffect(() => {
-    const un = onRunStatus((p) =>
+    const un = onRunStatus((p) => {
       setRuns((prev) =>
         prev.map((r) =>
           r.runId === p.run_id
@@ -234,12 +256,13 @@ export default function App() {
               }
             : r,
         ),
-      ),
-    );
+      );
+      if (!isActiveRun(p.status)) refreshRunOutcome(p.run_id);
+    });
     return () => {
       un.then((f) => f());
     };
-  }, []);
+  }, [refreshRunOutcome]);
 
   // Client-side timers that clear a run's `pendingResume` marker once its
   // resume actually fires — there is no backend "fired" event, only the
