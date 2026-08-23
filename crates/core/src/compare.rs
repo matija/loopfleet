@@ -13,7 +13,7 @@ use loopfleet_gitx::run_cumulative_diff_at;
 use loopfleet_store::Connection;
 use serde::Serialize;
 
-use crate::timeline::{to_diff_view, DiffView};
+use crate::timeline::{live_worktree_path, to_diff_view, DiffView};
 
 /// The runs competing on one task, each with its produced diff.
 #[derive(Debug, Serialize)]
@@ -34,6 +34,11 @@ pub struct RunCompare {
     /// What the run produced against its base (`None` if there is no snapshot or
     /// the shadow refs are unreadable).
     pub diff: Option<DiffView>,
+    /// The run's isolated worktree, or `None` once the sweep has reclaimed it
+    /// (same rule as `timeline::RunTimeline::worktree_path`). The UI shows a
+    /// quiet "worktree cleaned" note in place of any open/reveal affordance
+    /// when this is `None` — the diff below it is unaffected.
+    pub worktree_path: Option<String>,
 }
 
 /// Why a compare view could not be built.
@@ -83,13 +88,19 @@ pub fn compare_view(
             _ => None,
         };
 
+        let (agent, worktree_path) = match detail {
+            Some(d) => (d.agent, live_worktree_path(d.worktree_path)),
+            None => (String::new(), None),
+        };
+
         runs.push(RunCompare {
             run_id: s.id,
-            agent: detail.map(|d| d.agent).unwrap_or_default(),
+            agent,
             status: s.status,
             accepted: s.accepted,
             final_ref: final_iter.and_then(|it| it.shadow_ref.clone()),
             diff,
+            worktree_path,
         });
     }
 
@@ -162,6 +173,43 @@ mod tests {
         // A run with no iterations has no final ref.
         let r2 = view.runs.iter().find(|r| r.run_id == "r2").unwrap();
         assert!(r2.final_ref.is_none());
+    }
+
+    /// A run whose worktree is still on disk reports its path, so the compare
+    /// column can offer the usual open/reveal affordance.
+    #[test]
+    fn worktree_path_is_reported_when_the_directory_still_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let worktree = tempfile::tempdir().unwrap();
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let pid = seed(&conn, &dir.path().to_string_lossy());
+
+        let mut r = run("r1", &pid, "task a", "completed");
+        r.worktree_path = worktree.path().to_string_lossy().into_owned();
+        loopfleet_store::insert_run(&conn, &r).unwrap();
+
+        let view = compare_view(&conn, &pid, "task a").unwrap();
+        assert_eq!(
+            view.runs[0].worktree_path.as_deref(),
+            Some(worktree.path().to_string_lossy().as_ref())
+        );
+    }
+
+    /// The `worktree_path` column survives the sweep that reaps the directory
+    /// it names, so the compare view — like the timeline — must trust the
+    /// filesystem and report a reclaimed worktree as `None`.
+    #[test]
+    fn worktree_path_is_none_once_the_directory_is_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let pid = seed(&conn, &dir.path().to_string_lossy());
+
+        let mut r = run("r1", &pid, "task a", "completed");
+        r.worktree_path = "/no/such/worktree".into();
+        loopfleet_store::insert_run(&conn, &r).unwrap();
+
+        let view = compare_view(&conn, &pid, "task a").unwrap();
+        assert_eq!(view.runs[0].worktree_path, None);
     }
 
     #[test]

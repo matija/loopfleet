@@ -131,13 +131,7 @@ pub fn run_timeline(conn: &Connection, run_id: &str) -> Result<RunTimeline, Time
         });
     }
 
-    // The `runs.worktree_path` column is never cleared when the sweep reaps a
-    // worktree (see `RunDetail::worktree_path`), so its presence alone doesn't
-    // mean the directory still exists — check the filesystem to report what the
-    // UI should actually trust.
-    let worktree_path = run
-        .worktree_path
-        .filter(|p| std::path::Path::new(p).is_dir());
+    let worktree_path = live_worktree_path(run.worktree_path);
 
     Ok(RunTimeline {
         run_id: run.id,
@@ -148,6 +142,17 @@ pub fn run_timeline(conn: &Connection, run_id: &str) -> Result<RunTimeline, Time
         worktree_path,
         iterations: views,
     })
+}
+
+/// The run's worktree as the UI should trust it: `Some` only while the
+/// directory it names is still on disk.
+///
+/// The `runs.worktree_path` column is never cleared when the sweep reaps a
+/// worktree (see `RunDetail::worktree_path`), so a stored path alone doesn't
+/// mean the files are still there. Shared with the compare view, so both run
+/// detail surfaces report "reclaimed" on the same evidence.
+pub(crate) fn live_worktree_path(stored: Option<String>) -> Option<String> {
+    stored.filter(|p| std::path::Path::new(p).is_dir())
 }
 
 /// Map a gitx [`DiffResult`] into the serializable [`DiffView`] the UI consumes.

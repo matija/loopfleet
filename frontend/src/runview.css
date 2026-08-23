@@ -520,6 +520,15 @@
   color: var(--c-ok);
 }
 
+/* The reclaimed note inside a compare column: same quiet treatment as on the
+ * timeline, tightened to the column's own padding and set slightly smaller so
+ * it reads as metadata above the diff rather than a heading. */
+.compare__reclaimed {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-xs);
+}
+
 .use-run {
   margin-top: var(--space-3);
   border-top: 1px solid var(--c-border);

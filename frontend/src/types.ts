@@ -166,6 +166,9 @@ export type RunCompare = {
   final_ref: string | null;
   /// What the run produced against its base (`null` if unreadable).
   diff: DiffView | null;
+  /// The run's isolated worktree, or `null` once the sweep has reclaimed it
+  /// (the diff and report remain available regardless).
+  worktree_path: string | null;
 };
 
 /// The runs competing on one task. `core::compare::CompareView`.

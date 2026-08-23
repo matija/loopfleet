@@ -141,10 +141,7 @@ export function RunTimeline({
       )}
 
       {timeline && !isActiveRun(status) && timeline.worktree_path === null && (
-        <p className="run-view__reclaimed">
-          Worktree cleaned — its files were reclaimed to free disk space. The
-          diff and report below are unaffected.
-        </p>
+        <WorktreeReclaimed />
       )}
 
       {error ? (
@@ -242,6 +239,21 @@ export function RunTimeline({
         </>
       )}
     </section>
+  );
+}
+
+// The quiet state every run detail surface shows in place of an open-in-editor
+// / reveal affordance once the sweep has reclaimed a finished run's worktree
+// (`worktree_path === null`). Informational, not a warning, and never a dead
+// button: the persisted diff and the exported report survive the sweep, so the
+// only thing lost is the on-disk copy of the files. Shared with the compare
+// view so both surfaces say the same thing.
+export function WorktreeReclaimed({ className }: { className?: string }) {
+  return (
+    <p className={`run-view__reclaimed${className ? ` ${className}` : ""}`}>
+      Worktree cleaned — its files were reclaimed to free disk space. The diff
+      and report below are unaffected.
+    </p>
   );
 }
 
