@@ -1677,4 +1677,73 @@ mod tests {
         assert_eq!(resume_buffer(2), time::Duration::seconds(120));
         assert_eq!(resume_buffer(3), time::Duration::seconds(240));
     }
+
+    /// How long a test's stand-in process stays parked in its directory. Short,
+    /// since every test that spawns one also waits for it to exit; the checks
+    /// against it run within a few hundred milliseconds of the spawn.
+    const PARKED_LIFETIME_SECS: u64 = 3;
+
+    /// A child process parked in `dir` for `PARKED_LIFETIME_SECS` — stands in
+    /// for the shell or editor a user left open inside a worktree.
+    struct ProcessIn(std::process::Child);
+
+    impl ProcessIn {
+        fn new(dir: &std::path::Path) -> Self {
+            let child = std::process::Command::new("sleep")
+                .arg(PARKED_LIFETIME_SECS.to_string())
+                .current_dir(dir)
+                .spawn()
+                .expect("spawn sleep");
+            // Give the child a moment to actually be running before anyone
+            // asks `lsof` to find it.
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            Self(child)
+        }
+
+        /// Block until the child is gone. We let it time out on its own rather
+        /// than signal it: sending signals can be denied (e.g. under a sandbox),
+        /// and a blocking `wait` on a child we failed to kill would hang.
+        fn wait_until_gone(mut self) {
+            let deadline = std::time::Instant::now()
+                + std::time::Duration::from_secs(PARKED_LIFETIME_SECS + 10);
+            while std::time::Instant::now() < deadline {
+                match self.0.try_wait() {
+                    Ok(Some(_)) => return,
+                    _ => std::thread::sleep(std::time::Duration::from_millis(100)),
+                }
+            }
+            panic!("parked process outlived its sleep");
+        }
+    }
+
+    #[test]
+    fn an_idle_worktree_is_not_in_use() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!worktree_in_use(dir.path().to_str().unwrap()));
+    }
+
+    #[test]
+    fn a_worktree_that_is_a_live_process_cwd_is_in_use() {
+        let dir = tempfile::tempdir().unwrap();
+        let parked = ProcessIn::new(dir.path());
+        assert!(worktree_in_use(dir.path().to_str().unwrap()));
+        parked.wait_until_gone();
+    }
+
+    #[test]
+    fn a_worktree_is_free_again_once_the_process_exits() {
+        let dir = tempfile::tempdir().unwrap();
+        let parked = ProcessIn::new(dir.path());
+        assert!(worktree_in_use(dir.path().to_str().unwrap()));
+        parked.wait_until_gone();
+        assert!(!worktree_in_use(dir.path().to_str().unwrap()));
+    }
+
+    #[test]
+    fn a_worktree_already_gone_is_not_in_use() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().to_str().unwrap().to_string();
+        drop(dir);
+        assert!(!worktree_in_use(&path));
+    }
 }
