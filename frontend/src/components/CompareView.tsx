@@ -1,7 +1,7 @@
 // Compare view (PRD M7): every run bound to one task, side by side, each with
 // the diff it produced against its base (final shadow ref). The app never scores
 // or judges — it shows what each run made. "Use this run" merges the chosen run's
-// branch into the repo's current branch by default (a descriptive merge commit),
+// branch into the repo's current branch by default (one descriptive squashed commit),
 // or into a custom branch you name, and marks the run accepted. Read-only
 // otherwise.
 //

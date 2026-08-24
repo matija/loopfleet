@@ -4,20 +4,23 @@
 //! [`crate::GitActor`].
 //!
 //! The default target is the repo's **currently checked-out branch** — the run's
-//! work lands where the user is working, under a descriptive merge commit. The
-//! caller may instead name a custom target branch.
+//! work lands where the user is working, as a single squashed commit under a
+//! descriptive message. The caller may instead name a custom target branch.
 //!
 //! The run's work lives in an app-owned shadow commit (the agent never commits),
 //! so `source_rev` is that final shadow ref. Three cases:
-//!   * no custom target → merge into the current branch right in the main
+//!   * no custom target → squash-merge into the current branch right in the main
 //!     worktree (the only place the current branch can move). Guarded by a
 //!     clean working tree so uncommitted work is never clobbered. A conflicting
 //!     merge is aborted, leaving the branch unchanged.
 //!   * custom target doesn't exist → create it pointing at the run's final
 //!     commit (a pure ref creation; no working tree touched, no conflicts).
-//!   * custom target exists → a real `git merge` in a THROWAWAY worktree so the
+//!   * custom target exists → a real squash merge in a THROWAWAY worktree so the
 //!     user's own checkout is never disturbed. A conflicting merge is aborted
 //!     and the target left unchanged (conflict assistance is post-v1).
+//!
+//! Either way the target gains exactly **one** new commit with a single parent
+//! (its previous tip): the run lands squashed, not as a merge commit.
 
 use std::path::Path;
 use std::process::Command;
@@ -28,7 +31,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub struct MergeResult {
     /// The branch the run was merged into.
     pub target_branch: String,
-    /// The run's final commit (the shadow commit that was merged/pointed to).
+    /// The run's final commit (the shadow commit whose tree was squashed in, or
+    /// that a freshly created target points at).
     pub merged_commit: String,
     /// The target branch was newly created at the run's final commit.
     pub created: bool,
@@ -76,9 +80,10 @@ type Result<T> = std::result::Result<T, MergeError>;
 /// refused up front so uncommitted work is never clobbered.
 ///
 /// `Some(target)` names a custom branch: created at the run's final commit if it
-/// doesn't exist, else merged in a throwaway worktree under `scratch_root` so the
-/// user's own checkout is never touched. `commit_message` is the merge commit
-/// message (used for the real merges; the fresh-branch case has no new commit).
+/// doesn't exist, else squash-merged in a throwaway worktree under `scratch_root`
+/// so the user's own checkout is never touched. `commit_message` is the squashed
+/// commit's message (used for the real merges; the fresh-branch case has no new
+/// commit).
 pub fn merge_run(
     repo: &Path,
     source_rev: &str,
@@ -95,7 +100,7 @@ pub fn merge_run(
     }
 }
 
-/// Default path: merge into the currently checked-out branch, in the main
+/// Default path: squash-merge into the currently checked-out branch, in the main
 /// worktree. The current branch can only move where it's checked out, so the
 /// throwaway-worktree trick the named-target path uses does not apply here.
 fn merge_into_current(repo: &Path, source: &str, message: &str) -> Result<MergeResult> {
@@ -105,36 +110,19 @@ fn merge_into_current(repo: &Path, source: &str, message: &str) -> Result<MergeR
             "working tree is dirty; commit or stash before using this run".into(),
         ));
     }
-    // --no-ff so the run's landing is a named merge commit even when it could
-    // fast-forward (the run's shadow commit would otherwise bring its own
-    // synthetic message forward as HEAD).
-    let merge = Command::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args(["merge", "--no-ff", "-m", message, source])
-        .output()?;
-    let stdout = String::from_utf8_lossy(&merge.stdout).to_string();
-    if !merge.status.success() {
-        let _ = Command::new("git")
-            .arg("-C")
-            .arg(repo)
-            .args(["merge", "--abort"])
-            .output();
-        let msg = String::from_utf8_lossy(&merge.stderr).trim().to_string();
-        let msg = if msg.is_empty() { stdout.trim().to_string() } else { msg };
-        return Err(MergeError::Conflict(msg));
-    }
+    let up_to_date = squash_merge(repo, source, message)?;
     Ok(MergeResult {
         target_branch: branch,
         merged_commit: source.to_string(),
         created: false,
-        up_to_date: stdout.contains("Already up to date"),
+        up_to_date,
     })
 }
 
 /// Custom-target path: merge into a named branch. A fresh branch is created at
-/// the run's commit (no merge commit); an existing branch is merged in a
-/// throwaway worktree so the user's checkout is never disturbed.
+/// the run's commit (no new commit at all); an existing branch gets a single
+/// squashed commit, made in a throwaway worktree so the user's checkout is never
+/// disturbed.
 fn merge_into_named(
     repo: &Path,
     source: &str,
@@ -170,30 +158,69 @@ fn merge_into_named(
     // path for that).
     git(repo, &["worktree", "add", &tmp_str, target_branch])?;
 
-    let merge = Command::new("git")
-        .arg("-C")
-        .arg(&tmp)
-        .args(["merge", "--no-ff", "-m", message, source])
-        .output()?;
-    let stdout = String::from_utf8_lossy(&merge.stdout).to_string();
-
-    if !merge.status.success() {
-        // Abort the conflicting merge and tear down the throwaway worktree so the
-        // target branch is left exactly as it was.
-        let _ = Command::new("git").arg("-C").arg(&tmp).args(["merge", "--abort"]).output();
-        let msg = String::from_utf8_lossy(&merge.stderr).trim().to_string();
-        let msg = if msg.is_empty() { stdout.trim().to_string() } else { msg };
-        cleanup_worktree(repo, &tmp_str);
-        return Err(MergeError::Conflict(msg));
-    }
-
+    // Squash the run onto the target inside the throwaway worktree. Whatever the
+    // outcome, the worktree is torn down before returning.
+    let squashed = squash_merge(&tmp, source, message);
     cleanup_worktree(repo, &tmp_str);
+    let up_to_date = squashed?;
+
     Ok(MergeResult {
         target_branch: target_branch.to_string(),
         merged_commit: source.to_string(),
         created: false,
-        up_to_date: stdout.contains("Already up to date"),
+        up_to_date,
     })
+}
+
+/// Stage `source`'s tree onto the branch checked out in `dir` with
+/// `git merge --squash`, then commit it under `message`: the branch gains
+/// exactly one commit whose only parent is its previous tip (no merge commit,
+/// and `source` is not recorded as a parent).
+///
+/// Returns whether the target was already up to date — nothing was staged, so
+/// no commit was made. A conflicting merge is rolled back (the caller
+/// guarantees `dir` was clean beforehand) and reported as
+/// [`MergeError::Conflict`], leaving the branch exactly as it was.
+fn squash_merge(dir: &Path, source: &str, message: &str) -> Result<bool> {
+    let merge = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["merge", "--squash", source])
+        .output()?;
+    if !merge.status.success() {
+        // `--squash` sets no MERGE_HEAD, so `merge --abort` cannot undo it: reset
+        // the index and working tree back to the branch tip instead.
+        let _ = Command::new("git").arg("-C").arg(dir).args(["merge", "--abort"]).output();
+        let _ = Command::new("git").arg("-C").arg(dir).args(["reset", "--hard", "HEAD"]).output();
+        let msg = String::from_utf8_lossy(&merge.stderr).trim().to_string();
+        let msg = if msg.is_empty() {
+            String::from_utf8_lossy(&merge.stdout).trim().to_string()
+        } else {
+            msg
+        };
+        return Err(MergeError::Conflict(msg));
+    }
+
+    // Nothing staged → the run's tree is already contained in the target. Commit
+    // would fail on an empty change, so report it as a no-op instead.
+    if index_matches_head(dir)? {
+        return Ok(true);
+    }
+
+    // -m so the squashed commit carries the caller's message rather than the
+    // SQUASH_MSG git assembled from the run's synthetic shadow commits.
+    git(dir, &["commit", "-m", message])?;
+    Ok(false)
+}
+
+/// True if `dir` has nothing staged relative to HEAD.
+fn index_matches_head(dir: &Path) -> Result<bool> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["diff", "--cached", "--quiet"])
+        .output()?;
+    Ok(out.status.success())
 }
 
 /// The branch currently checked out in `repo`'s main worktree, or an error if
@@ -301,6 +328,35 @@ mod tests {
         String::from_utf8_lossy(&out.stdout).into_owned()
     }
 
+    /// `git -C repo <args...>`, trimmed stdout (asserts success).
+    fn git_out(repo: &Path, args: &[&str]) -> String {
+        let out = Command::new("git").arg("-C").arg(repo).args(args).output().unwrap();
+        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    /// Number of commits reachable from `rev`.
+    fn commit_count(repo: &Path, rev: &str) -> usize {
+        git_out(repo, &["rev-list", "--count", rev]).parse().unwrap()
+    }
+
+    /// The parents of `rev`, as shas.
+    fn parents(repo: &Path, rev: &str) -> Vec<String> {
+        git_out(repo, &["rev-list", "-1", "--parents", rev])
+            .split_whitespace()
+            .skip(1)
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// Assert `branch` gained exactly one commit — a squashed one, so a single
+    /// parent (`prev_tip`, the branch's old tip) — carrying `subject`.
+    fn assert_squashed_onto(repo: &Path, branch: &str, prev_tip: &str, prev_count: usize, subject: &str) {
+        assert_eq!(commit_count(repo, branch), prev_count + 1, "{branch} should gain exactly one commit");
+        assert_eq!(parents(repo, branch), vec![prev_tip.to_string()], "{branch} tip should have one parent: its old tip");
+        assert_eq!(git_out(repo, &["log", "-1", "--pretty=%s", branch]), subject);
+    }
+
     #[test]
     fn creates_target_branch_at_run_final_commit() {
         let (repo, _root, wt) = repo_with_worktree("merge-r1");
@@ -332,6 +388,8 @@ mod tests {
             Command::new("git").arg("-C").arg(repo.path()).args(args).output().unwrap()
         };
         run(&["branch", "integration", "main"]);
+        let before_tip = git_out(repo.path(), &["rev-parse", "integration"]);
+        let before_count = commit_count(repo.path(), "integration");
 
         std::fs::write(wt.path.join("feature.txt"), "feature\n").unwrap();
         let snap = snapshot(repo.path(), &wt.path, "merge-r2", 1).unwrap();
@@ -347,12 +405,42 @@ mod tests {
         .unwrap();
 
         assert!(!res.created);
+        assert!(!res.up_to_date);
         // The run's file landed on the existing branch; base file still present.
         assert_eq!(show(repo.path(), "integration", "feature.txt"), "feature\n");
         assert_eq!(show(repo.path(), "integration", "README.md"), "hi\n");
+        // ...as a single squashed commit on top of the old tip, not a merge commit.
+        assert_squashed_onto(repo.path(), "integration", &before_tip, before_count, "apply run");
         // The throwaway worktree is gone (only the main worktree remains).
         let listed = crate::worktree::list(repo.path()).unwrap();
         assert!(listed.iter().all(|w| !w.path.starts_with(scratch.path())));
+    }
+
+    /// Squashing the same run twice is a no-op the second time: the squashed
+    /// commit does not record the run as a parent, so "already merged" has to be
+    /// detected from an unchanged tree rather than from ancestry.
+    #[test]
+    fn second_squash_of_same_run_is_up_to_date() {
+        let (repo, _root, wt) = repo_with_worktree("merge-r8");
+        let run = |args: &[&str]| {
+            Command::new("git").arg("-C").arg(repo.path()).args(args).output().unwrap()
+        };
+        run(&["branch", "integration", "main"]);
+
+        std::fs::write(wt.path.join("feature.txt"), "feature\n").unwrap();
+        let snap = snapshot(repo.path(), &wt.path, "merge-r8", 1).unwrap();
+
+        let scratch = tempfile::tempdir().unwrap();
+        let merge = || {
+            merge_run(repo.path(), &snap.git_ref, Some("integration"), "apply run", scratch.path()).unwrap()
+        };
+        assert!(!merge().up_to_date);
+        let after_first = git_out(repo.path(), &["rev-parse", "integration"]);
+
+        let res = merge();
+        assert!(res.up_to_date);
+        // No second commit was made.
+        assert_eq!(git_out(repo.path(), &["rev-parse", "integration"]), after_first);
     }
 
     #[test]
@@ -369,6 +457,8 @@ mod tests {
         Command::new("git").arg("-C").arg(iwt.path()).args(["commit", "-aqm", "int"]).output().unwrap();
         run(&["worktree", "remove", "--force", &iwt.path().to_string_lossy()]);
 
+        let int_tip = git_out(repo.path(), &["rev-parse", "integration"]);
+
         // The run changes the same file differently.
         std::fs::write(wt.path.join("README.md"), "run side\n").unwrap();
         let snap = snapshot(repo.path(), &wt.path, "merge-r3", 1).unwrap();
@@ -383,8 +473,10 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, MergeError::Conflict(_)), "got {err:?}");
-        // Target unchanged: still the integration-side content, no lingering worktree.
+        // Target unchanged: still the integration-side content, tip did not move,
+        // no lingering worktree.
         assert_eq!(show(repo.path(), "integration", "README.md"), "integration side\n");
+        assert_eq!(git_out(repo.path(), &["rev-parse", "integration"]), int_tip);
         assert!(crate::worktree::list(repo.path())
             .unwrap()
             .iter()
@@ -412,6 +504,8 @@ mod tests {
     #[test]
     fn merges_into_current_branch_by_default() {
         let (repo, _root, wt) = repo_with_worktree("merge-r5");
+        let before_tip = git_out(repo.path(), &["rev-parse", "main"]);
+        let before_count = commit_count(repo.path(), "main");
         std::fs::write(wt.path.join("out.txt"), "result\n").unwrap();
         let snap = snapshot(repo.path(), &wt.path, "merge-r5", 1).unwrap();
 
@@ -424,14 +518,9 @@ mod tests {
         // The run's file is now on the checked-out branch, in the working tree.
         assert_eq!(show(repo.path(), "main", "out.txt"), "result\n");
         assert!(repo.path().join("out.txt").exists());
-        // The merge commit carries the supplied message.
-        let subject = Command::new("git")
-            .arg("-C")
-            .arg(repo.path())
-            .args(["log", "-1", "--pretty=%s"])
-            .output()
-            .unwrap();
-        assert_eq!(String::from_utf8_lossy(&subject.stdout).trim(), "Apply loopfleet run r5");
+        // Exactly one new commit, single-parented on main's old tip, carrying the
+        // supplied message — a squash, not a merge commit.
+        assert_squashed_onto(repo.path(), "main", &before_tip, before_count, "Apply loopfleet run r5");
     }
 
     /// A dirty working tree is refused — the merge must not clobber uncommitted

@@ -164,7 +164,8 @@ export function exportPlanReport(planId: string): Promise<string | null> {
 
 /// "Use this run": merge the run's final state into a target branch and mark
 /// the run accepted. `targetBranch = null` (or empty) merges into the repo's
-/// currently checked-out branch under a descriptive merge commit — the default.
+/// currently checked-out branch as one squashed commit with a descriptive
+/// message — the default.
 /// A non-empty `targetBranch` names a custom branch (created if absent).
 export function useRun(
   runId: string,

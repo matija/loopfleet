@@ -1334,7 +1334,8 @@ struct UseRunResult {
 /// "Use this run": merge the run's final state into a target branch and mark
 /// the run accepted. `target_branch = None` (or empty) merges into the repo's
 /// currently checked-out branch — the default, landing the run's work where the
-/// user is working under a descriptive merge commit. A non-empty `target_branch`
+/// user is working as a single squashed commit with a descriptive message. A
+/// non-empty `target_branch`
 /// names a custom branch (created if absent). The merge runs through the
 /// serialized git actor; the current-branch default merges in the main worktree
 /// (guarded by a clean tree), a custom target uses a throwaway worktree so the
@@ -1350,7 +1351,7 @@ async fn use_run(
         .filter(|t| !t.is_empty());
 
     // Resolve the run's parent repo, its final shadow ref, and the identity
-    // pieces that make the merge commit message descriptive.
+    // pieces that make the squashed commit message descriptive.
     let (repo_path, source_ref, agent, task_anchor) = {
         let conn = state.db.lock().unwrap();
         let detail = loopfleet_store::load_run(&conn, &run_id)
@@ -1365,7 +1366,7 @@ async fn use_run(
         (detail.repo_path, source_ref, detail.agent, detail.task_anchor)
     };
 
-    // A nice merge commit message: subject names the run and agent, body carries
+    // A nice squashed commit message: subject names the run and agent, body carries
     // the task so the history reads as what the run accomplished.
     let short = &run_id[..run_id.len().min(8)];
     let message = format!("Apply loopfleet run {short} ({agent})\n\n{task_anchor}");
