@@ -24,6 +24,7 @@ pub mod run_loop;
 pub mod supervisor;
 pub mod task_status;
 pub mod timeline;
+pub mod usage;
 pub use adapter::{AdapterError, AgentAdapter, RunHandle, RunSpec, SessionHandle, SessionSeed};
 pub use compare::{compare_view, CompareError, CompareView, RunCompare};
 pub use event::{Lane, NormalizedEvent, Usage};
@@ -44,6 +45,10 @@ pub use task_status::{derive_status, TaskRun, TaskStatus};
 pub use timeline::{
     run_timeline, DiffView, FileChangeView, IterationView, RunTimeline, TimelineError,
     TimelineEvent,
+};
+pub use usage::{
+    fold_rate_limit, is_stale, resolve_display, resolve_display_opt, RateLimitNotice, UsageDisplay,
+    UsageSnapshot, UsageSource, UsageThresholds,
 };
 
 /// Why a project could not be registered.
