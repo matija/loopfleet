@@ -21,10 +21,22 @@
 //!
 //! Either way the target gains exactly **one** new commit with a single parent
 //! (its previous tip): the run lands squashed, not as a merge commit.
+//!
+//! That commit is authored by loopfleet and committed by the repo's configured
+//! `user.name`/`user.email`, so history records both who produced the work and
+//! who chose to land it.
 
 use std::path::Path;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Identity stamped as the **author** of the squashed commit: the run's work was
+/// produced by loopfleet, so authorship records the tool, while the user (whoever
+/// pressed "use this run") is recorded as the committer — the same author/committer
+/// split git uses for applied patches. Also the committer fallback for a repo with
+/// no `user.*` configured, since `git commit` needs an identity either way.
+const AUTHOR_NAME: &str = "loopfleet";
+const AUTHOR_EMAIL: &str = "loopfleet@localhost";
 
 /// The outcome of a "use this run" merge.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -208,9 +220,51 @@ fn squash_merge(dir: &Path, source: &str, message: &str) -> Result<bool> {
     }
 
     // -m so the squashed commit carries the caller's message rather than the
-    // SQUASH_MSG git assembled from the run's synthetic shadow commits.
-    git(dir, &["commit", "-m", message])?;
+    // SQUASH_MSG git assembled from the run's synthetic shadow commits. The
+    // identity is passed through the environment rather than `--author` so both
+    // halves (author and committer) are set explicitly, including the fallback.
+    let (committer_name, committer_email) = committer_identity(dir);
+    git_env(
+        dir,
+        &["commit", "-m", message],
+        &[
+            ("GIT_AUTHOR_NAME", AUTHOR_NAME),
+            ("GIT_AUTHOR_EMAIL", AUTHOR_EMAIL),
+            ("GIT_COMMITTER_NAME", &committer_name),
+            ("GIT_COMMITTER_EMAIL", &committer_email),
+        ],
+    )?;
     Ok(false)
+}
+
+/// The identity to record as the squashed commit's **committer**: the repo's
+/// configured `user.name`/`user.email`, so the merge is attributed to whoever
+/// used the run. Falls back to [`AUTHOR_NAME`]/[`AUTHOR_EMAIL`] when git has no
+/// identity configured — `git commit` needs one, and without this the merge
+/// would fail outright on a fresh repo. Both fields must be set to use the user
+/// identity; a half-configured repo falls back wholesale rather than mixing a
+/// real name with a synthetic email.
+fn committer_identity(dir: &Path) -> (String, String) {
+    match (git_config(dir, "user.name"), git_config(dir, "user.email")) {
+        (Some(name), Some(email)) => (name, email),
+        _ => (AUTHOR_NAME.to_string(), AUTHOR_EMAIL.to_string()),
+    }
+}
+
+/// Read a single git config value from `dir`, or `None` when unset or empty.
+/// Respects the normal local/global/system config cascade.
+fn git_config(dir: &Path, key: &str) -> Option<String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["config", "--get", key])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!value.is_empty()).then_some(value)
 }
 
 /// True if `dir` has nothing staged relative to HEAD.
@@ -278,7 +332,18 @@ fn cleanup_worktree(repo: &Path, path: &str) {
 /// Run `git -C <repo> <args...>`, returning trimmed stdout or the stderr on a
 /// non-zero exit.
 fn git(repo: &Path, args: &[&str]) -> Result<String> {
-    let out = Command::new("git").arg("-C").arg(repo).args(args).output()?;
+    git_env(repo, args, &[])
+}
+
+/// [`git`] with extra environment variables set on the child (used to stamp the
+/// commit identity).
+fn git_env(repo: &Path, args: &[&str], env: &[(&str, &str)]) -> Result<String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(args)
+        .envs(env.iter().copied())
+        .output()?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
     } else {
@@ -544,6 +609,77 @@ mod tests {
             .output()
             .unwrap();
         assert!(!show_out.status.success(), "main should not carry the run's file");
+    }
+
+    /// The identity (`%an <%ae>` / `%cn <%ce>`) of `rev`'s commit.
+    fn identity(repo: &Path, rev: &str) -> (String, String) {
+        let author = git_out(repo, &["log", "-1", "--pretty=%an <%ae>", rev]);
+        let committer = git_out(repo, &["log", "-1", "--pretty=%cn <%ce>", rev]);
+        (author, committer)
+    }
+
+    /// The squashed commit is authored by loopfleet (the run produced the work)
+    /// but committed by the repo's configured identity (the user chose to use
+    /// it) — the author/committer split git uses for applied patches.
+    #[test]
+    fn squashed_commit_is_authored_by_loopfleet_and_committed_by_the_user() {
+        let (repo, _root, wt) = repo_with_worktree("merge-r11");
+        std::fs::write(wt.path.join("out.txt"), "result\n").unwrap();
+        let snap = snapshot(repo.path(), &wt.path, "merge-r11", 1).unwrap();
+
+        let scratch = tempfile::tempdir().unwrap();
+        merge_run(repo.path(), &snap.git_ref, None, "Apply loopfleet run r11", scratch.path()).unwrap();
+
+        let (author, committer) = identity(repo.path(), "main");
+        assert_eq!(author, "loopfleet <loopfleet@localhost>");
+        assert_eq!(committer, "t <t@t.test>");
+    }
+
+    /// The same holds for a merge into an existing custom target, which commits
+    /// in a throwaway worktree rather than the main one.
+    #[test]
+    fn custom_target_merge_stamps_the_same_identities() {
+        let (repo, _root, wt) = repo_with_worktree("merge-r12");
+        let run = |args: &[&str]| {
+            let out = Command::new("git").arg("-C").arg(repo.path()).args(args).output().unwrap();
+            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        };
+        run(&["branch", "integration", "main"]);
+        std::fs::write(wt.path.join("out.txt"), "result\n").unwrap();
+        let snap = snapshot(repo.path(), &wt.path, "merge-r12", 1).unwrap();
+
+        let scratch = tempfile::tempdir().unwrap();
+        merge_run(repo.path(), &snap.git_ref, Some("integration"), "Apply loopfleet run r12", scratch.path()).unwrap();
+
+        let (author, committer) = identity(repo.path(), "integration");
+        assert_eq!(author, "loopfleet <loopfleet@localhost>");
+        assert_eq!(committer, "t <t@t.test>");
+    }
+
+    /// With no usable `user.*` in the repo, the loopfleet identity stands in for
+    /// the committer too — without it `git commit` would refuse to run at all
+    /// ("Please tell me who you are"), failing the merge. Local empty values
+    /// are used so the result does not depend on the machine's global git
+    /// config, which the spawned `git` children would otherwise inherit.
+    #[test]
+    fn falls_back_to_loopfleet_committer_when_repo_has_no_identity() {
+        let (repo, _root, wt) = repo_with_worktree("merge-r13");
+        let run = |args: &[&str]| {
+            let out = Command::new("git").arg("-C").arg(repo.path()).args(args).output().unwrap();
+            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        };
+        std::fs::write(wt.path.join("out.txt"), "result\n").unwrap();
+        // Snapshot first: the shadow commit needs an identity of its own.
+        let snap = snapshot(repo.path(), &wt.path, "merge-r13", 1).unwrap();
+        run(&["config", "--local", "user.name", ""]);
+        run(&["config", "--local", "user.email", ""]);
+
+        let scratch = tempfile::tempdir().unwrap();
+        merge_run(repo.path(), &snap.git_ref, None, "Apply loopfleet run r13", scratch.path()).unwrap();
+
+        let (author, committer) = identity(repo.path(), "main");
+        assert_eq!(author, "loopfleet <loopfleet@localhost>");
+        assert_eq!(committer, "loopfleet <loopfleet@localhost>");
     }
 
     /// A detached HEAD has no current branch to merge into, so the default flow
