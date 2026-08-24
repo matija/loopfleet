@@ -332,7 +332,15 @@ function TaskRow({
     // tabIndex makes the row itself a keyboard stop so its rest-hidden actions
     // (revealed via :hover / :focus-within in plan.css) are reachable without
     // a pointer.
-    <li className="task-row" tabIndex={0} ref={rowRef} {...handlers}>
+    // Until the row has launched something there is nothing behind the
+    // metadata card but em dashes, so the hover handlers stay off the row and
+    // the Popover stays out of the tree.
+    <li
+      className="task-row"
+      tabIndex={0}
+      ref={rowRef}
+      {...(lastRun ? handlers : {})}
+    >
       <div className="task-row__main">
         {/* The glyph alone carries the status at rest — the word repeats what
           * the icon and its hue already say. The visible label is revealed on
@@ -405,68 +413,64 @@ function TaskRow({
           });
         }}
       />
-      <Popover
-        open={open}
-        onClose={() => {}}
-        anchorRef={rowRef}
-        role="dialog"
-        aria-label={`${taskSummary(task.text)} details`}
-        className="meta-popover"
-      >
-        <MetaRow
-          icon={<FolderIcon size={14} />}
-          value={repoName ?? "—"}
-          label="Repo"
-        />
-        <MetaRow
-          icon={<GitBranchIcon size={14} />}
-          value={lastRun ? worktreeBranch(lastRun.runId) : "—"}
-          label="Worktree branch"
-        />
-        <MetaRow
-          icon={<AgentIcon size={14} />}
-          value={lastRun?.agent ?? "—"}
-          label="Agent"
-        />
-        {lastRun?.model && (
+      {lastRun && (
+        <Popover
+          open={open}
+          onClose={() => {}}
+          anchorRef={rowRef}
+          role="dialog"
+          aria-label={`${taskSummary(task.text)} details`}
+          className="meta-popover"
+        >
+          <MetaRow
+            icon={<FolderIcon size={14} />}
+            value={repoName ?? "—"}
+            label="Repo"
+          />
+          <MetaRow
+            icon={<GitBranchIcon size={14} />}
+            value={worktreeBranch(lastRun.runId)}
+            label="Worktree branch"
+          />
           <MetaRow
             icon={<AgentIcon size={14} />}
-            value={lastRun.model}
-            label="Model"
+            value={lastRun.agent}
+            label="Agent"
           />
-        )}
-        <MetaRow
-          icon={<BoxIcon size={14} />}
-          value={
-            lastRun
-              ? `${lastRun.maxIterations} ${lastRun.maxIterations === 1 ? "pass" : "passes"}`
-              : "—"
-          }
-          label="Pass count"
-        />
-        <MetaRow
-          icon={<ClockIcon size={14} />}
-          value={
-            !lastRun ? (
-              "—"
-            ) : isActiveRun(lastRun.status) ? (
-              <Elapsed startedAt={lastRun.startedAt} />
-            ) : lastRun.finishedAt !== undefined ? (
-              `Finished in ${formatDuration(lastRun.finishedAt - lastRun.startedAt)}`
-            ) : (
-              RUN_STATUS_LABEL[lastRun.status]
-            )
-          }
-          label="Elapsed or finished time"
-          tone={
-            !lastRun || isActiveRun(lastRun.status)
-              ? task.status === "completed-unaccepted"
-                ? "warn"
-                : undefined
-              : finishedRunTone(lastRun.status)
-          }
-        />
-      </Popover>
+          {lastRun.model && (
+            <MetaRow
+              icon={<AgentIcon size={14} />}
+              value={lastRun.model}
+              label="Model"
+            />
+          )}
+          <MetaRow
+            icon={<BoxIcon size={14} />}
+            value={`${lastRun.maxIterations} ${lastRun.maxIterations === 1 ? "pass" : "passes"}`}
+            label="Pass count"
+          />
+          <MetaRow
+            icon={<ClockIcon size={14} />}
+            value={
+              isActiveRun(lastRun.status) ? (
+                <Elapsed startedAt={lastRun.startedAt} />
+              ) : lastRun.finishedAt !== undefined ? (
+                `Finished in ${formatDuration(lastRun.finishedAt - lastRun.startedAt)}`
+              ) : (
+                RUN_STATUS_LABEL[lastRun.status]
+              )
+            }
+            label="Elapsed or finished time"
+            tone={
+              isActiveRun(lastRun.status)
+                ? task.status === "completed-unaccepted"
+                  ? "warn"
+                  : undefined
+                : finishedRunTone(lastRun.status)
+            }
+          />
+        </Popover>
+      )}
     </li>
   );
 }
