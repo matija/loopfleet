@@ -227,8 +227,7 @@
 
 /* --- top window bar ⌘K entry point ---
  * A slim button on the right of the title bar that opens the palette, so the
- * keyboard shortcut is discoverable without a tooltip. Sits inside the drag
- * region but stops pointer events from becoming drag handles via the button. */
+ * keyboard shortcut is discoverable without a tooltip. */
 
 .titlebar__k {
   position: absolute;
@@ -244,8 +243,6 @@
   background: var(--c-surface-2);
   color: var(--c-text-faint);
   font-size: var(--text-xs);
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 .titlebar__k:hover {
