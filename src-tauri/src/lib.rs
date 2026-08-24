@@ -1326,6 +1326,9 @@ fn compare_task(
 #[derive(serde::Serialize)]
 struct UseRunResult {
     target_branch: String,
+    /// The squashed commit this merge created on the target branch — the sha the
+    /// user can find in their own history, not the app-internal shadow commit it
+    /// was squashed from. An up-to-date merge reports the target's existing tip.
     merged_commit: String,
     created: bool,
     up_to_date: bool,

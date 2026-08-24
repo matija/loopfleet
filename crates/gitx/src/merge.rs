@@ -45,7 +45,9 @@ const AUTHOR_EMAIL: &str = "loopfleet@localhost";
 pub struct MergeResult {
     /// The branch the run was merged into.
     pub target_branch: String,
-    /// The run's final commit: the shadow commit whose tree was squashed in.
+    /// The squashed commit this merge created on the target — the sha the user
+    /// can look up in their own history. When the target was already up to date
+    /// no commit was made, and this is the target's existing tip instead.
     pub merged_commit: String,
     /// The target branch did not exist and was created by this merge (at the
     /// repo's HEAD, then squash-committed onto like any other target).
@@ -123,10 +125,10 @@ fn merge_into_current(repo: &Path, source: &str, message: &str) -> Result<MergeR
             "working tree is dirty; commit or stash before using this run".into(),
         ));
     }
-    let up_to_date = squash_merge(repo, source, message)?;
+    let (up_to_date, merged_commit) = squash_merge(repo, source, message)?;
     Ok(MergeResult {
         target_branch: branch,
-        merged_commit: source.to_string(),
+        merged_commit,
         created: false,
         up_to_date,
     })
@@ -173,8 +175,8 @@ fn merge_into_named(
     // outcome, the worktree is torn down before returning.
     let squashed = squash_merge(&tmp, source, message);
     cleanup_worktree(repo, &tmp_str);
-    let up_to_date = match squashed {
-        Ok(up_to_date) => up_to_date,
+    let (up_to_date, merged_commit) = match squashed {
+        Ok(outcome) => outcome,
         Err(e) => {
             // A branch this call invented has no reason to survive a failed
             // merge: drop it so the repo is left exactly as it was found.
@@ -187,7 +189,7 @@ fn merge_into_named(
 
     Ok(MergeResult {
         target_branch: target_branch.to_string(),
-        merged_commit: source.to_string(),
+        merged_commit,
         created,
         up_to_date,
     })
@@ -199,10 +201,11 @@ fn merge_into_named(
 /// and `source` is not recorded as a parent).
 ///
 /// Returns whether the target was already up to date — nothing was staged, so
-/// no commit was made. A conflicting merge is rolled back (the caller
-/// guarantees `dir` was clean beforehand) and reported as
-/// [`MergeError::Conflict`], leaving the branch exactly as it was.
-fn squash_merge(dir: &Path, source: &str, message: &str) -> Result<bool> {
+/// no commit was made — paired with the branch's resulting tip: the new squashed
+/// commit, or the unchanged tip in the up-to-date case. A conflicting merge is
+/// rolled back (the caller guarantees `dir` was clean beforehand) and reported
+/// as [`MergeError::Conflict`], leaving the branch exactly as it was.
+fn squash_merge(dir: &Path, source: &str, message: &str) -> Result<(bool, String)> {
     let merge = Command::new("git")
         .arg("-C")
         .arg(dir)
@@ -225,7 +228,7 @@ fn squash_merge(dir: &Path, source: &str, message: &str) -> Result<bool> {
     // Nothing staged → the run's tree is already contained in the target. Commit
     // would fail on an empty change, so report it as a no-op instead.
     if index_matches_head(dir)? {
-        return Ok(true);
+        return Ok((true, head_commit(dir)?));
     }
 
     // -m so the squashed commit carries the caller's message rather than the
@@ -243,7 +246,13 @@ fn squash_merge(dir: &Path, source: &str, message: &str) -> Result<bool> {
             ("GIT_COMMITTER_EMAIL", &committer_email),
         ],
     )?;
-    Ok(false)
+    Ok((false, head_commit(dir)?))
+}
+
+/// The commit sha at HEAD in `dir` — read straight after committing so the
+/// caller can report the squashed commit it just created.
+fn head_commit(dir: &Path) -> Result<String> {
+    git(dir, &["rev-parse", "HEAD"])
 }
 
 /// The identity to record as the squashed commit's **committer**: the repo's
@@ -457,7 +466,10 @@ mod tests {
         assert!(res.created);
         assert!(!res.up_to_date);
         assert_eq!(res.target_branch, "review/x");
-        assert_eq!(res.merged_commit, snap.commit);
+        // The reported commit is the squashed one this merge created on the
+        // target, not the shadow commit it was squashed from.
+        assert_eq!(res.merged_commit, git_out(repo.path(), &["rev-parse", "review/x"]));
+        assert_ne!(res.merged_commit, snap.commit);
         // The new branch carries the run's file, on top of the base content.
         assert_eq!(show(repo.path(), "review/x", "out.txt"), "result\n");
         assert_eq!(show(repo.path(), "review/x", "README.md"), "hi\n");
@@ -560,8 +572,10 @@ mod tests {
 
         let res = merge();
         assert!(res.up_to_date);
-        // No second commit was made.
+        // No second commit was made, and with none to report the reported commit
+        // is the target's unchanged tip.
         assert_eq!(git_out(repo.path(), &["rev-parse", "integration"]), after_first);
+        assert_eq!(res.merged_commit, after_first);
     }
 
     #[test]
@@ -642,6 +656,9 @@ mod tests {
         // Exactly one new commit, single-parented on main's old tip, carrying the
         // supplied message — a squash, not a merge commit.
         assert_squashed_onto(repo.path(), "main", &before_tip, before_count, "Apply loopfleet run r5");
+        // ...and that new commit is what the result reports, not the shadow commit.
+        assert_eq!(res.merged_commit, git_out(repo.path(), &["rev-parse", "main"]));
+        assert_ne!(res.merged_commit, snap.commit);
     }
 
     /// A dirty working tree is refused — the merge must not clobber uncommitted

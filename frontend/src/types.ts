@@ -185,6 +185,8 @@ export type CompareView = {
 /// The result of "use this run". `src-tauri::UseRunResult`.
 export type UseRunResult = {
   target_branch: string;
+  /// The squashed commit created on the target branch (an up-to-date merge
+  /// reports the target's existing tip) — safe to show to the user.
   merged_commit: string;
   created: boolean;
   up_to_date: boolean;
