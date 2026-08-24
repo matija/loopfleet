@@ -13,8 +13,10 @@
 //!     worktree (the only place the current branch can move). Guarded by a
 //!     clean working tree so uncommitted work is never clobbered. A conflicting
 //!     merge is aborted, leaving the branch unchanged.
-//!   * custom target doesn't exist → create it pointing at the run's final
-//!     commit (a pure ref creation; no working tree touched, no conflicts).
+//!   * custom target doesn't exist → create it at the repo's current HEAD, then
+//!     squash the run onto it in a throwaway worktree, exactly as for an
+//!     existing target. A conflicting merge is aborted and the half-made branch
+//!     removed, leaving the repo as it was.
 //!   * custom target exists → a real squash merge in a THROWAWAY worktree so the
 //!     user's own checkout is never disturbed. A conflicting merge is aborted
 //!     and the target left unchanged (conflict assistance is post-v1).
@@ -43,10 +45,10 @@ const AUTHOR_EMAIL: &str = "loopfleet@localhost";
 pub struct MergeResult {
     /// The branch the run was merged into.
     pub target_branch: String,
-    /// The run's final commit (the shadow commit whose tree was squashed in, or
-    /// that a freshly created target points at).
+    /// The run's final commit: the shadow commit whose tree was squashed in.
     pub merged_commit: String,
-    /// The target branch was newly created at the run's final commit.
+    /// The target branch did not exist and was created by this merge (at the
+    /// repo's HEAD, then squash-committed onto like any other target).
     pub created: bool,
     /// The target already contained the run's commit — the merge was a no-op.
     pub up_to_date: bool,
@@ -91,11 +93,10 @@ type Result<T> = std::result::Result<T, MergeError>;
 /// the user's working tree advances to include the run. A dirty working tree is
 /// refused up front so uncommitted work is never clobbered.
 ///
-/// `Some(target)` names a custom branch: created at the run's final commit if it
-/// doesn't exist, else squash-merged in a throwaway worktree under `scratch_root`
+/// `Some(target)` names a custom branch: branched off the repo's HEAD first if it
+/// doesn't exist, then squash-merged in a throwaway worktree under `scratch_root`
 /// so the user's own checkout is never touched. `commit_message` is the squashed
-/// commit's message (used for the real merges; the fresh-branch case has no new
-/// commit).
+/// commit's message — every path lands the run as one described commit.
 pub fn merge_run(
     repo: &Path,
     source_rev: &str,
@@ -131,10 +132,13 @@ fn merge_into_current(repo: &Path, source: &str, message: &str) -> Result<MergeR
     })
 }
 
-/// Custom-target path: merge into a named branch. A fresh branch is created at
-/// the run's commit (no new commit at all); an existing branch gets a single
+/// Custom-target path: merge into a named branch. A branch that doesn't exist
+/// yet is first created at the repo's HEAD, so it starts as an ordinary branch
+/// off the user's current work; from there both cases are the same single
 /// squashed commit, made in a throwaway worktree so the user's checkout is never
-/// disturbed.
+/// disturbed. Pointing a fresh branch straight at the shadow commit would
+/// instead expose the app's synthetic run history and skip the described commit
+/// every other path produces.
 fn merge_into_named(
     repo: &Path,
     source: &str,
@@ -142,19 +146,14 @@ fn merge_into_named(
     message: &str,
     scratch_root: &Path,
 ) -> Result<MergeResult> {
-    if !branch_exists(repo, target_branch)? {
-        // Fresh target: point it straight at the run's final commit. No worktree,
-        // no conflicts — this is the custom-target "create" flow.
-        git(repo, &["branch", target_branch, source])?;
-        return Ok(MergeResult {
-            target_branch: target_branch.to_string(),
-            merged_commit: source.to_string(),
-            created: true,
-            up_to_date: false,
-        });
+    let created = !branch_exists(repo, target_branch)?;
+    if created {
+        // Branch off HEAD (not `source`): the run lands as a commit on top, not
+        // as the branch's entire history.
+        git(repo, &["branch", target_branch, "HEAD"])?;
     }
 
-    // Existing target: merge in a throwaway worktree so the user's own checkout
+    // Target now exists either way: merge in a throwaway worktree so the user's own checkout
     // is never disturbed. A unique path keyed by pid+nanos avoids collisions.
     std::fs::create_dir_all(scratch_root)?;
     let nanos = SystemTime::now()
@@ -174,12 +173,22 @@ fn merge_into_named(
     // outcome, the worktree is torn down before returning.
     let squashed = squash_merge(&tmp, source, message);
     cleanup_worktree(repo, &tmp_str);
-    let up_to_date = squashed?;
+    let up_to_date = match squashed {
+        Ok(up_to_date) => up_to_date,
+        Err(e) => {
+            // A branch this call invented has no reason to survive a failed
+            // merge: drop it so the repo is left exactly as it was found.
+            if created {
+                let _ = git(repo, &["branch", "-D", target_branch]);
+            }
+            return Err(e);
+        }
+    };
 
     Ok(MergeResult {
         target_branch: target_branch.to_string(),
         merged_commit: source.to_string(),
-        created: false,
+        created,
         up_to_date,
     })
 }
@@ -422,9 +431,16 @@ mod tests {
         assert_eq!(git_out(repo, &["log", "-1", "--pretty=%s", branch]), subject);
     }
 
+    /// A custom target that doesn't exist yet is branched off HEAD and then
+    /// squash-committed onto, so it ends up with the same single described
+    /// commit as every other path — not pointed straight at the app's shadow
+    /// commit, whose synthetic history and identities would otherwise leak onto
+    /// the user's branch.
     #[test]
-    fn creates_target_branch_at_run_final_commit() {
+    fn creates_target_branch_and_squashes_run_onto_it() {
         let (repo, _root, wt) = repo_with_worktree("merge-r1");
+        let head_tip = git_out(repo.path(), &["rev-parse", "HEAD"]);
+        let head_count = commit_count(repo.path(), "HEAD");
         std::fs::write(wt.path.join("out.txt"), "result\n").unwrap();
         let snap = snapshot(repo.path(), &wt.path, "merge-r1", 1).unwrap();
 
@@ -433,16 +449,56 @@ mod tests {
             repo.path(),
             &snap.git_ref,
             Some("review/x"),
-            "apply run",
+            "Apply loopfleet run r1",
             scratch.path(),
         )
         .unwrap();
 
         assert!(res.created);
+        assert!(!res.up_to_date);
         assert_eq!(res.target_branch, "review/x");
         assert_eq!(res.merged_commit, snap.commit);
-        // The new branch carries the run's file.
+        // The new branch carries the run's file, on top of the base content.
         assert_eq!(show(repo.path(), "review/x", "out.txt"), "result\n");
+        assert_eq!(show(repo.path(), "review/x", "README.md"), "hi\n");
+        // One squashed commit on top of HEAD, under the supplied message — the
+        // shadow commit is not the branch tip and is not a parent.
+        assert_squashed_onto(repo.path(), "review/x", &head_tip, head_count, "Apply loopfleet run r1");
+        assert_ne!(git_out(repo.path(), &["rev-parse", "review/x"]), snap.commit);
+        // ...stamped with the same author/committer split as the other paths.
+        let (author, committer) = identity(repo.path(), "review/x");
+        assert_eq!(author, "loopfleet <loopfleet@localhost>");
+        assert_eq!(committer, "t <t@t.test>");
+        // The throwaway worktree used for the squash is gone.
+        assert!(crate::worktree::list(repo.path())
+            .unwrap()
+            .iter()
+            .all(|w| !w.path.starts_with(scratch.path())));
+    }
+
+    /// A fresh target whose merge conflicts leaves no trace: the branch this
+    /// call invented is removed rather than left behind at HEAD.
+    #[test]
+    fn conflicting_merge_into_fresh_target_removes_the_branch() {
+        let (repo, _root, wt) = repo_with_worktree("merge-r14");
+        // The run rewrites README; HEAD gains a conflicting change of its own.
+        std::fs::write(wt.path.join("README.md"), "run side\n").unwrap();
+        let snap = snapshot(repo.path(), &wt.path, "merge-r14", 1).unwrap();
+        std::fs::write(repo.path().join("README.md"), "main side\n").unwrap();
+        git_out(repo.path(), &["commit", "-aqm", "main change"]);
+
+        let scratch = tempfile::tempdir().unwrap();
+        let err = merge_run(
+            repo.path(),
+            &snap.git_ref,
+            Some("review/z"),
+            "Apply loopfleet run r14",
+            scratch.path(),
+        )
+        .unwrap_err();
+
+        assert!(matches!(err, MergeError::Conflict(_)), "got {err:?}");
+        assert!(!branch_exists(repo.path(), "review/z").unwrap(), "half-made branch should be removed");
     }
 
     #[test]

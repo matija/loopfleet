@@ -97,7 +97,7 @@ impl GitActor {
     /// `merge::merge_run`) through the actor. `target_branch = None` merges into
     /// the repo's current branch; `Some(name)` names a custom target.
     /// `commit_message` is the squashed commit's message. `scratch_root` roots the
-    /// throwaway worktree used when a custom target already exists.
+    /// throwaway worktree every custom-target merge runs in.
     pub async fn merge_run(
         &self,
         repo: PathBuf,
