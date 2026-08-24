@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "check": "node scripts/check-tokens.mjs && node scripts/check-contrast.mjs && node scripts/check-theme-bootstrap.mjs",
+    "check": "node scripts/check-tokens.mjs && node scripts/check-contrast.mjs && node scripts/check-theme-bootstrap.mjs && node scripts/check-drag-region.mjs",
     "test": "vitest run"
   },
   "dependencies": {
