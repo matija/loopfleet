@@ -1,8 +1,12 @@
 // The shell's single per-view strip: sits above the main pane's body, one per
 // view, carrying a breadcrumb at the left, a filter/status cluster in the
-// middle, and actions at the right. It's part of the drag region (like
-// `.sidebar__top`) since it sits under the window's top edge, but its slots
-// opt out individually so their controls stay clickable.
+// middle, and actions at the right. It's the main pane's half of the window's
+// drag region (the sidebar's `.sidebar__top` is the other half — see
+// AppShell.tsx) since it sits under the window's top edge: `deep` makes a
+// press anywhere in the subtree drag the window, including the breadcrumb
+// text and the gaps around it, while the slots that hold interactive content
+// opt out with `data-tauri-drag-region="false"` so their controls stay
+// clickable.
 
 import type { ReactNode } from "react";
 
@@ -31,13 +35,25 @@ export function Toolbar({
   trailing?: ReactNode;
 }) {
   return (
-    <div className="toolbar" data-tauri-drag-region>
+    <div className="toolbar" data-tauri-drag-region="deep">
       <div className="toolbar__breadcrumb">{breadcrumb}</div>
-      <div className="toolbar__filter" ref={filterRef} />
-      <div className="toolbar__actions" ref={actionsRef}>
+      <div
+        className="toolbar__filter"
+        ref={filterRef}
+        data-tauri-drag-region="false"
+      />
+      <div
+        className="toolbar__actions"
+        ref={actionsRef}
+        data-tauri-drag-region="false"
+      >
         {actions}
       </div>
-      {trailing && <div className="toolbar__trailing">{trailing}</div>}
+      {trailing && (
+        <div className="toolbar__trailing" data-tauri-drag-region="false">
+          {trailing}
+        </div>
+      )}
     </div>
   );
 }

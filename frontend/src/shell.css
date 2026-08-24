@@ -69,6 +69,14 @@
   box-shadow: var(--shadow-chip-hi);
 }
 
+/* Box-less slot for the strip's trailing content (the ⌘K trigger): exists
+ * only to carry the drag-region opt-out, so it must not add a flex item —
+ * `display: contents` keeps `.titlebar__k` positioned against the strip
+ * exactly as before. */
+.titlebar__trailing {
+  display: contents;
+}
+
 .titlebar__name {
   font-size: var(--text-base);
   font-weight: 600;

@@ -11,6 +11,22 @@
 // `titleBarStyle: Overlay` + `hiddenTitle`, so the native traffic lights still
 // work but sit over the strip's left inset; the strip carries the drag region
 // that moves the window.
+//
+// --- the drag region ---
+// The window has no native title bar to grab, so the whole titlebar-height
+// strip under the window's top edge has to move the window: the sidebar's top
+// strip on the left and the main pane's top row (`.toolbar`, see Toolbar.tsx)
+// beside it. Both halves carry `data-tauri-drag-region="deep"`, so a press
+// anywhere in the subtree — brand mark, wordmark, breadcrumb text, the gaps
+// between them — starts a drag, rather than only a press that lands exactly on
+// the strip element itself (the bare attribute's meaning; see Tauri's
+// `drag.js`). Interactive descendants opt back out with
+// `data-tauri-drag-region="false"`, which blocks the drag for them and for
+// everything nested inside them, so a click on a button, an input, or the
+// palette trigger never gets swallowed by a window drag. Tauri already
+// exempts bare `<button>`/`<input>`-style elements, but the explicit marks
+// keep slots that hold caller-supplied content honest — the opt-out lives on
+// the slot, so whatever gets rendered into it stays clickable.
 
 import type { ReactNode } from "react";
 import { PanelLeftIcon, SettingsIcon, XIcon } from "./Icon";
@@ -29,7 +45,8 @@ export function AppShell({
   children: ReactNode;
   dock: ReactNode;
   /// Right-aligned content in the top window bar (the ⌘K entry point). Sits
-  /// over the drag region but its buttons opt out of dragging.
+  /// over the drag region, inside a slot that opts out of dragging, so the
+  /// trigger stays clickable.
   titlebarTrailing?: ReactNode;
   /// Optional dismissible accent notice shown above the Settings row. App.tsx
   /// owns whether there's anything to announce and how dismissal is tracked —
@@ -51,15 +68,16 @@ export function AppShell({
         aria-hidden={sidebarHidden}
         inert={sidebarHidden ? true : undefined}
       >
-        <div className="sidebar__top" data-tauri-drag-region>
-          <div className="titlebar__brand-group" data-tauri-drag-region>
-            <div className="titlebar__brand" data-tauri-drag-region>
+        <div className="sidebar__top" data-tauri-drag-region="deep">
+          <div className="titlebar__brand-group">
+            <div className="titlebar__brand">
               <span className="titlebar__mark" aria-hidden="true" />
               <span className="titlebar__name">loopfleet</span>
             </div>
             <button
               type="button"
               className="sidebar__collapse-btn"
+              data-tauri-drag-region="false"
               onClick={onToggleSidebar}
               title="Hide sidebar (⌘B)"
               aria-label="Hide sidebar"
@@ -68,7 +86,11 @@ export function AppShell({
               <PanelLeftIcon size={15} />
             </button>
           </div>
-          {titlebarTrailing}
+          {/* Box-less wrapper (`display: contents`), so the opt-out covers the
+              caller's trailing content without changing the strip's layout. */}
+          <div className="titlebar__trailing" data-tauri-drag-region="false">
+            {titlebarTrailing}
+          </div>
         </div>
         {sidebar}
         <div className="sidebar__footer">
@@ -100,6 +122,7 @@ export function AppShell({
           <button
             type="button"
             className="main__restore-sidebar"
+            data-tauri-drag-region="false"
             onClick={onToggleSidebar}
             title="Show sidebar (⌘B)"
             aria-label="Show sidebar"
