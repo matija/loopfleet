@@ -107,6 +107,22 @@ fn record_event(
     Some(seq)
 }
 
+/// Persist the latest rate-limit observation for `agent`, overwriting whatever
+/// was recorded before: the snapshot is the agent's current headroom, so only
+/// the most recent one is meaningful. Best-effort — a poisoned lock or a write
+/// error must not take down the run that saw the limit.
+fn record_agent_limit(
+    db: &Mutex<Connection>,
+    agent: &str,
+    reset_at: Option<&str>,
+    message: Option<&str>,
+) {
+    let observed_at = (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64;
+    if let Ok(conn) = db.lock() {
+        let _ = loopfleet_store::record_agent_usage(&conn, agent, reset_at, message, observed_at);
+    }
+}
+
 /// Validate `path` is a git repo and persist it as a project.
 #[tauri::command]
 fn register_project(path: String, state: State<'_, AppState>) -> Result<Project, String> {
@@ -558,6 +574,9 @@ fn spawn_run(
     // Keep the launch inputs for a possible rate-limit re-run (`task_anchor` and
     // `agent` are moved into the run row just below).
     let rerun = (project_id, task_anchor.clone(), agent.clone(), model.clone(), max_iterations);
+    // Rate limits are the agent's, not the run's, so the headroom snapshot this
+    // run observes is filed under the agent name (see `record_agent_limit`).
+    let ev_agent = agent.clone();
 
     {
         let conn = db.lock().unwrap();
@@ -652,6 +671,13 @@ fn spawn_run(
         let offsets: Arc<Mutex<HashMap<u32, i64>>> = Arc::new(Mutex::new(HashMap::new()));
         let ev_offsets = offsets.clone();
         let mut on_event = move |pass: u32, ev: &NormalizedEvent| {
+            // Every rate-limit notice refreshes this agent's headroom, not just
+            // the one that ends the run: an agent can report a limit mid-pass
+            // and carry on, and that observation is still the latest thing we
+            // know about its standing.
+            if let NormalizedEvent::RateLimited { reset_at, message } = ev {
+                record_agent_limit(&ev_db, &ev_agent, reset_at.as_deref(), message.as_deref());
+            }
             if let Some(seq) = record_event(&ev_db, &ev_app, &ev_id, ev) {
                 ev_offsets.lock().unwrap().insert(pass, seq);
             }

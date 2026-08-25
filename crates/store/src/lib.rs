@@ -28,6 +28,9 @@ pub use runs::{
     RunSummary, SweepCandidate,
 };
 
+mod agent_usage;
+pub use agent_usage::{list_agent_usage, load_agent_usage, record_agent_usage, AgentUsage};
+
 mod pending_resumes;
 pub use pending_resumes::{
     delete_pending_resume, has_pending_resume, insert_pending_resume, list_pending_resumes,
@@ -55,6 +58,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
     (
         "0005_run_reaped_at",
         include_str!("migrations/0005_run_reaped_at.sql"),
+    ),
+    (
+        "0006_agent_usage",
+        include_str!("migrations/0006_agent_usage.sql"),
     ),
 ];
 
@@ -130,6 +137,7 @@ mod tests {
             "sessions",
             "events",
             "pending_resumes",
+            "agent_usage",
             "schema_migrations",
         ] {
             assert!(t.contains(&expected.to_string()), "missing table {expected}");
