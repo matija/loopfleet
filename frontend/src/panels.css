@@ -257,6 +257,36 @@
   font-size: var(--text-xs);
 }
 
+/* Limit headroom beside the version: quiet while there is room, louder as the
+   window fills, and visibly "no idea" rather than reassuring when unknown. */
+.agent-chip__usage {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+}
+
+.agent-chip__usage--available {
+  color: var(--c-text-muted);
+  background: var(--c-ok-wash);
+}
+
+.agent-chip__usage--low {
+  color: var(--c-warn);
+  background: var(--c-warn-quiet);
+}
+
+.agent-chip__usage--exhausted {
+  color: var(--c-danger);
+  background: var(--c-danger-quiet);
+}
+
+.agent-chip__usage--unknown {
+  color: var(--c-text-faint);
+  background: var(--c-surface-3);
+}
+
 .agent-chip__warn {
   color: var(--c-warn);
   font-size: var(--text-xs);
