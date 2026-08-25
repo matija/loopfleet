@@ -46,6 +46,10 @@ struct AppState {
     /// by the original run id, so `cancel_scheduled_resume` can abort it before
     /// it fires.
     scheduled_resumes: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
+    /// Handle to a user-scheduled launch's sleep-then-launch task, keyed by the
+    /// `scheduled_launches` row id, so `cancel_scheduled_launch` can abort it
+    /// before it fires.
+    scheduled_launches: Arc<Mutex<HashMap<i64, tauri::async_runtime::JoinHandle<()>>>>,
     /// The last usage snapshot published to the UI for each agent, keyed by
     /// agent key. Purely a de-duplication ledger for the `agent_usage` event:
     /// a snapshot is emitted only when it says something different from what
@@ -84,6 +88,29 @@ struct ScheduledResumePayload {
 #[derive(Clone, serde::Serialize)]
 struct ScheduledResumeCancelledPayload {
     run_id: String,
+}
+
+/// A launch has been scheduled for later, pushed to the UI so it can show when
+/// the task will launch (and offer to cancel it). `launch_at` is RFC 3339.
+#[derive(Clone, serde::Serialize)]
+struct ScheduledLaunchPayload {
+    id: i64,
+    plan_id: String,
+    task_anchor: String,
+    launch_at: String,
+}
+
+/// A scheduled launch fired, pushed with the run id it produced.
+#[derive(Clone, serde::Serialize)]
+struct ScheduledLaunchFiredPayload {
+    id: i64,
+    run_id: String,
+}
+
+/// A previously scheduled launch was cancelled before it fired.
+#[derive(Clone, serde::Serialize)]
+struct ScheduledLaunchCancelledPayload {
+    id: i64,
 }
 
 /// Persist one event to the run's log and push it to the live UI. Returns the
@@ -1414,6 +1441,235 @@ fn cancel_scheduled_resume(
     }
 }
 
+/// Schedule a run of `task_anchor` in `plan_id`'s project to launch later, at
+/// `launch_at` (RFC 3339). The schedule is persisted (`scheduled_launches`)
+/// before returning, so a crash or quit before it fires is recovered at the
+/// next startup (see `rearm_scheduled_launches`); a sleeping task is then
+/// spawned that calls the same `spawn_run` path `launch_run` uses once the
+/// time comes. Returns the schedule's row id — the handle
+/// `cancel_scheduled_launch` needs.
+#[tauri::command]
+fn schedule_launch(
+    plan_id: String,
+    task_anchor: String,
+    agent: String,
+    model: Option<String>,
+    max_iterations: u32,
+    launch_at: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<i64, String> {
+    let launch_at_dt =
+        OffsetDateTime::parse(&launch_at, &Rfc3339).map_err(|e| format!("invalid launch_at: {e}"))?;
+    let launch_at_millis = (launch_at_dt.unix_timestamp_nanos() / 1_000_000) as i64;
+
+    let id = {
+        let conn = state.db.lock().unwrap();
+        loopfleet_store::insert_scheduled_launch(
+            &conn,
+            &loopfleet_store::NewScheduledLaunch {
+                plan_id: plan_id.clone(),
+                task_anchor: task_anchor.clone(),
+                agent: agent.clone(),
+                model: model.clone(),
+                pass_count: max_iterations,
+                launch_at: launch_at_millis,
+            },
+        )
+        .map_err(|e| e.to_string())?
+    };
+
+    let _ = app.emit(
+        "scheduled_launch",
+        ScheduledLaunchPayload {
+            id,
+            plan_id: plan_id.clone(),
+            task_anchor: task_anchor.clone(),
+            launch_at: launch_at_dt
+                .format(&Rfc3339)
+                .unwrap_or_else(|_| launch_at.clone()),
+        },
+    );
+
+    let delay = std::time::Duration::try_from(launch_at_dt - OffsetDateTime::now_utc())
+        .unwrap_or(std::time::Duration::ZERO);
+    arm_scheduled_launch(
+        app,
+        state.db.clone(),
+        state.git.clone(),
+        state.data_dir.clone(),
+        state.stops.clone(),
+        state.unacknowledged_runs.clone(),
+        state.scheduled_resumes.clone(),
+        state.scheduled_launches.clone(),
+        id,
+        plan_id,
+        task_anchor,
+        agent,
+        model,
+        max_iterations,
+        delay,
+    );
+
+    Ok(id)
+}
+
+/// Abort a scheduled launch before it fires, keyed by its `scheduled_launches`
+/// row id. Emits `scheduled_launch_cancelled` so the UI can drop the
+/// "launching at…" indicator.
+#[tauri::command]
+fn cancel_scheduled_launch(id: i64, app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let handle = state.scheduled_launches.lock().unwrap().remove(&id);
+    match handle {
+        Some(handle) => {
+            handle.abort();
+            if let Ok(conn) = state.db.lock() {
+                let _ = loopfleet_store::delete_scheduled_launch(&conn, id);
+            }
+            let _ = app.emit(
+                "scheduled_launch_cancelled",
+                ScheduledLaunchCancelledPayload { id },
+            );
+            Ok(())
+        }
+        None => Err(format!("no scheduled launch: {id}")),
+    }
+}
+
+/// Spawn the sleep-then-launch task behind one scheduled launch and register
+/// its handle, so `cancel_scheduled_launch` can abort it before it fires.
+/// Shared by `schedule_launch` (a fresh schedule) and `rearm_scheduled_launches`
+/// (recovering one across a restart) — the only difference between them is
+/// `delay`, computed relative to whenever each is called.
+///
+/// When it fires, the project id is resolved fresh from `plan_id` (rather than
+/// carried since scheduling) since a scheduled launch, unlike a run, has no
+/// project id of its own to remember; the plan is expected to still exist. The
+/// launch then runs through the exact same `spawn_run` path `launch_run` uses,
+/// as a fresh attempt (`resume_attempt = 0`) independent of any rate-limit
+/// resume chain. The schedule row and this handle's entry are cleared whether
+/// or not the launch actually started, since either way there's nothing left
+/// to cancel.
+#[allow(clippy::too_many_arguments)]
+fn arm_scheduled_launch(
+    app: AppHandle,
+    db: Arc<Mutex<Connection>>,
+    git: GitActor,
+    data_dir: PathBuf,
+    stops: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
+    unacknowledged: Arc<AtomicI64>,
+    scheduled_resumes: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
+    scheduled_launches: Arc<Mutex<HashMap<i64, tauri::async_runtime::JoinHandle<()>>>>,
+    id: i64,
+    plan_id: String,
+    task_anchor: String,
+    agent: String,
+    model: Option<String>,
+    max_iterations: u32,
+    delay: std::time::Duration,
+) {
+    let launches_for_task = scheduled_launches.clone();
+    let launch_db = db.clone();
+    let spawn_db = db.clone();
+    let app_for_spawn = app.clone();
+    let handle = tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(delay).await;
+
+        let project_id = {
+            let conn = match launch_db.lock() {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            conn.query_row(
+                "SELECT project_id FROM plans WHERE id = ?1",
+                [&plan_id],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()
+        };
+
+        if let Some(project_id) = project_id {
+            if let Ok(run_id) = spawn_run(
+                project_id,
+                task_anchor,
+                agent,
+                model,
+                max_iterations,
+                app_for_spawn,
+                spawn_db,
+                git,
+                data_dir,
+                stops,
+                unacknowledged,
+                scheduled_resumes,
+                0,
+            )
+            .await
+            {
+                let _ = app.emit("scheduled_launch_fired", ScheduledLaunchFiredPayload { id, run_id });
+            }
+        }
+
+        launches_for_task.lock().unwrap().remove(&id);
+        if let Ok(conn) = launch_db.lock() {
+            let _ = loopfleet_store::delete_scheduled_launch(&conn, id);
+        }
+    });
+    scheduled_launches.lock().unwrap().insert(id, handle);
+}
+
+/// Re-create every persisted `scheduled_launches` row as a live scheduled
+/// launch, called once at startup — the launch-side counterpart of
+/// `rearm_pending_resumes`. A scheduled launch survives a crash or quit because
+/// it's just waiting for its time to arrive, so recovering it is both safe and
+/// the whole point of persisting it. Each entry is re-armed with whatever delay
+/// remains until its `launch_at` (already-due fires right away), and the
+/// `scheduled_launch` event is re-emitted so the frontend's indicator and
+/// Cancel action reattach exactly as if the wait had never been interrupted.
+fn rearm_scheduled_launches(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let pending = {
+        let conn = state.db.lock().unwrap();
+        loopfleet_store::list_scheduled_launches(&conn).unwrap_or_default()
+    };
+
+    for launch in pending {
+        let launch_at = OffsetDateTime::from_unix_timestamp(launch.launch_at / 1000)
+            .unwrap_or_else(|_| OffsetDateTime::now_utc());
+        let launch_at_str = launch_at.format(&Rfc3339).unwrap_or_else(|_| launch_at.to_string());
+        let _ = app.emit(
+            "scheduled_launch",
+            ScheduledLaunchPayload {
+                id: launch.id,
+                plan_id: launch.plan_id.clone(),
+                task_anchor: launch.task_anchor.clone(),
+                launch_at: launch_at_str,
+            },
+        );
+
+        let delay = std::time::Duration::try_from(launch_at - OffsetDateTime::now_utc())
+            .unwrap_or(std::time::Duration::ZERO);
+
+        arm_scheduled_launch(
+            app.clone(),
+            state.db.clone(),
+            state.git.clone(),
+            state.data_dir.clone(),
+            state.stops.clone(),
+            state.unacknowledged_runs.clone(),
+            state.scheduled_resumes.clone(),
+            state.scheduled_launches.clone(),
+            launch.id,
+            launch.plan_id,
+            launch.task_anchor,
+            launch.agent,
+            launch.model,
+            launch.pass_count,
+            delay,
+        );
+    }
+}
+
 /// Every run bound to any task in `plan_id`. The plan view groups these by
 /// `task_anchor` so each task can list its runs and open their timelines.
 #[tauri::command]
@@ -1783,6 +2039,7 @@ pub fn run() {
                 edits: Arc::new(Mutex::new(HashMap::new())),
                 unacknowledged_runs: Arc::new(AtomicI64::new(0)),
                 scheduled_resumes: Arc::new(Mutex::new(HashMap::new())),
+                scheduled_launches: Arc::new(Mutex::new(HashMap::new())),
                 published_usage: Arc::new(Mutex::new(HashMap::new())),
             });
 
@@ -1790,6 +2047,9 @@ pub fn run() {
             // (see `rearm_pending_resumes`), so the resume chip and its Cancel
             // action reappear exactly as they were before the restart.
             rearm_pending_resumes(&app.handle().clone());
+            // Same recovery for user-scheduled launches (see
+            // `rearm_scheduled_launches`).
+            rearm_scheduled_launches(&app.handle().clone());
 
             // Regaining focus counts as acknowledging any runs that finished
             // while the user was away — clear the dock badge along with it.
@@ -1826,6 +2086,8 @@ pub fn run() {
             stop_run,
             sweep_worktrees_now,
             cancel_scheduled_resume,
+            schedule_launch,
+            cancel_scheduled_launch,
             acknowledge_runs,
             compare_task,
             use_run,

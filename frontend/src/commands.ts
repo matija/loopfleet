@@ -127,6 +127,26 @@ export function cancelScheduledResume(runId: string): Promise<void> {
   return invoke("cancel_scheduled_resume", { runId });
 }
 
+/// Schedule a run of a plan task to launch later, at `launchAt` (RFC 3339).
+/// Persisted before returning, so it survives a crash or quit before it fires;
+/// fires through the same path `launchRun` uses. Returns the schedule's id —
+/// the handle `cancelScheduledLaunch` needs.
+export function scheduleLaunch(args: {
+  planId: string;
+  taskAnchor: string;
+  agent: string;
+  model?: string | null;
+  maxIterations: number;
+  launchAt: string;
+}): Promise<number> {
+  return invoke("schedule_launch", { ...args, model: args.model ?? null });
+}
+
+/// Abort a scheduled launch before it fires, keyed by its schedule id.
+export function cancelScheduledLaunch(id: number): Promise<void> {
+  return invoke("cancel_scheduled_launch", { id });
+}
+
 /// Run a worktree sweep pass immediately (same eligibility rules as the
 /// hourly background sweep) and report how much it reclaimed, for the
 /// settings panel's "Clean up now" control.

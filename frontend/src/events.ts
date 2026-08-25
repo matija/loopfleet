@@ -9,6 +9,9 @@ import type {
   AgentUsagePayload,
   RunEventPayload,
   RunStatusPayload,
+  ScheduledLaunchCancelledPayload,
+  ScheduledLaunchFiredPayload,
+  ScheduledLaunchPayload,
   ScheduledResumeCancelledPayload,
   ScheduledResumePayload,
 } from "./types";
@@ -45,6 +48,36 @@ export function onScheduledResumeCancelled(
 ): Promise<UnlistenFn> {
   return listen<ScheduledResumeCancelledPayload>(
     "scheduled_resume_cancelled",
+    (e) => handler(e.payload),
+  );
+}
+
+/// Subscribe to a launch being scheduled for later — the launch time rides
+/// `launch_at` (RFC 3339).
+export function onScheduledLaunch(
+  handler: (payload: ScheduledLaunchPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<ScheduledLaunchPayload>("scheduled_launch", (e) =>
+    handler(e.payload),
+  );
+}
+
+/// Subscribe to a scheduled launch firing — the payload carries the run id it
+/// produced.
+export function onScheduledLaunchFired(
+  handler: (payload: ScheduledLaunchFiredPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<ScheduledLaunchFiredPayload>("scheduled_launch_fired", (e) =>
+    handler(e.payload),
+  );
+}
+
+/// Subscribe to a scheduled launch being cancelled before it fired.
+export function onScheduledLaunchCancelled(
+  handler: (payload: ScheduledLaunchCancelledPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<ScheduledLaunchCancelledPayload>(
+    "scheduled_launch_cancelled",
     (e) => handler(e.payload),
   );
 }

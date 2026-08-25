@@ -307,6 +307,30 @@ export type ScheduledResumeCancelledPayload = {
   run_id: string;
 };
 
+/// A launch has been scheduled for later, pushed on the `scheduled_launch`
+/// Tauri event. `launch_at` is RFC 3339. `src-tauri::ScheduledLaunchPayload`.
+export type ScheduledLaunchPayload = {
+  id: number;
+  plan_id: string;
+  task_anchor: string;
+  launch_at: string;
+};
+
+/// A scheduled launch fired, pushed on the `scheduled_launch_fired` Tauri
+/// event with the run id it produced.
+/// `src-tauri::ScheduledLaunchFiredPayload`.
+export type ScheduledLaunchFiredPayload = {
+  id: number;
+  run_id: string;
+};
+
+/// A previously scheduled launch was cancelled before it fired, pushed on the
+/// `scheduled_launch_cancelled` Tauri event.
+/// `src-tauri::ScheduledLaunchCancelledPayload`.
+export type ScheduledLaunchCancelledPayload = {
+  id: number;
+};
+
 /// An agent's limit headroom changed, pushed on the `agent_usage` Tauri event.
 /// The payload is the snapshot itself — the agent it describes rides in
 /// `agent_key`. Emitted only when the snapshot says something different from
