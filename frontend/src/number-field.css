@@ -1,0 +1,98 @@
+/* NumberField (components/NumberField.tsx): the boxed-input look shared with
+ * .field input (panels.css) and .select-trigger (select.css), with the
+ * native spinner stripped off the right edge and redrawn as a stacked
+ * +/- pair drawn from app tokens instead of browser chrome. */
+
+.number-field {
+  display: inline-flex;
+  align-items: stretch;
+  width: 100%;
+  min-height: var(--control-h);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-md);
+}
+
+.number-field:focus-within {
+  border-color: var(--c-accent);
+}
+
+.number-field--disabled {
+  opacity: 0.6;
+}
+
+.number-field__input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--c-text);
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: var(--space-2) 0 var(--space-2) var(--space-3);
+  /* Firefox's own flag for suppressing the native up/down spinner. */
+  -moz-appearance: textfield;
+}
+
+/* Chrome/Safari draw the native spinner as a pseudo-element rather than
+ * respecting -moz-appearance, so it needs its own removal. */
+.number-field__input::-webkit-outer-spin-button,
+.number-field__input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.number-field__input:disabled {
+  cursor: default;
+}
+
+.number-field__unit {
+  align-self: center;
+  flex: none;
+  color: var(--c-text-faint);
+  font-size: var(--text-sm);
+  padding-right: var(--space-2);
+}
+
+.number-field__stepper {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  width: 20px;
+  border-left: 1px solid var(--c-border);
+}
+
+.number-field__step {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--c-text-faint);
+}
+
+.number-field__step--up {
+  border-bottom: 1px solid var(--c-border);
+  border-top-right-radius: calc(var(--radius-md) - 1px);
+}
+
+.number-field__step--down {
+  border-bottom-right-radius: calc(var(--radius-md) - 1px);
+}
+
+.number-field__step:hover:not(:disabled) {
+  background: var(--c-surface-3);
+  color: var(--c-text);
+}
+
+.number-field__step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.number-field__step .icon {
+  opacity: 1;
+}

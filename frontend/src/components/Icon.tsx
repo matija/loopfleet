@@ -252,6 +252,22 @@ export function ChecklistIcon({ size = 16, className }: IconProps) {
   );
 }
 
+export function PlusIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...defaultProps}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+export function MinusIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...defaultProps}>
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
 // A document-with-checklist glyph: a plan file waiting to be added.
 export function DocPlusIcon({ size = 26, className }: IconProps) {
   return (

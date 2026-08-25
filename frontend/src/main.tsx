@@ -16,6 +16,7 @@ import "./palette.css";
 import "./toolbar.css";
 import "./popover.css";
 import "./select.css";
+import "./number-field.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
