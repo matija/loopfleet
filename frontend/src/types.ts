@@ -50,6 +50,41 @@ export type AgentStatus = {
   detail: string | null;
 };
 
+// --- core: usage.rs ---
+
+/// How a usage snapshot's numbers were come by. `core::UsageSource`
+/// (snake_case).
+export type UsageSource =
+  /// The agent reported the figure itself.
+  | "reported"
+  /// Derived from an observed rate-limit notice — the agent said it was
+  /// blocked, not how much of the window it had spent.
+  | "inferred"
+  /// Nothing is known. Never to be rendered as headroom.
+  | "unknown";
+
+/// One agent's limit consumption at a point in time. `core::UsageSnapshot`.
+///
+/// Every agent's limit reporting collapses into this shape, so the UI never
+/// learns the per-agent dialects. Instants are epoch millis.
+export type UsageSnapshot = {
+  /// Which agent this describes — matches `AgentStatus.key`.
+  agent_key: string;
+  /// The model the limit applies to, when the agent scopes limits per model.
+  model: string | null;
+  /// The limit window as the agent names it (e.g. `"5h"`, `"weekly"`).
+  limit_window: string | null;
+  /// Fraction of the window consumed, always in `0.0..=1.0`.
+  used_fraction: number;
+  /// When the window resets, epoch millis, when known.
+  reset_at_ms: number | null;
+  /// When this snapshot was observed, epoch millis.
+  observed_at_ms: number;
+  /// How much of the above is the agent's word. A `used_fraction` of `0` with
+  /// source `"unknown"` means "no idea", not "plenty left".
+  source: UsageSource;
+};
+
 // --- core: task_status.rs / overview.rs ---
 
 /// Derived per-task state (kebab-case, from `core::TaskStatus`).
@@ -271,3 +306,9 @@ export type ScheduledResumePayload = {
 export type ScheduledResumeCancelledPayload = {
   run_id: string;
 };
+
+/// An agent's limit headroom changed, pushed on the `agent_usage` Tauri event.
+/// The payload is the snapshot itself — the agent it describes rides in
+/// `agent_key`. Emitted only when the snapshot says something different from
+/// what the UI was last told, so `observed_at_ms` alone moving is not an event.
+export type AgentUsagePayload = UsageSnapshot;

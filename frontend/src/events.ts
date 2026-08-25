@@ -1,10 +1,12 @@
-// Typed wrappers over the two live Tauri event streams the run loop emits
-// (PRD M7: "one `events.ts` for the `run_event`/`run_status` streams"). Each
+// Typed wrappers over the live Tauri event streams the backend pushes (PRD M7:
+// "one `events.ts` for the `run_event`/`run_status` streams", since joined by
+// the scheduled-resume and per-agent usage streams). Each
 // returns the `UnlistenFn` promise from `@tauri-apps/api/event` — await it and
 // call the result to stop listening (e.g. in a React effect cleanup).
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  AgentUsagePayload,
   RunEventPayload,
   RunStatusPayload,
   ScheduledResumeCancelledPayload,
@@ -45,4 +47,14 @@ export function onScheduledResumeCancelled(
     "scheduled_resume_cancelled",
     (e) => handler(e.payload),
   );
+}
+
+/// Subscribe to per-agent limit headroom changes. Fires when an agent's
+/// snapshot starts saying something different — a refreshed `agentUsage` probe,
+/// or a rate limit observed mid-run — so a usage meter can stay live without
+/// polling. Not a heartbeat: an unchanged snapshot is not re-emitted.
+export function onAgentUsage(
+  handler: (payload: AgentUsagePayload) => void,
+): Promise<UnlistenFn> {
+  return listen<AgentUsagePayload>("agent_usage", (e) => handler(e.payload));
 }

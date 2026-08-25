@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 
 use loopfleet_adapters::{ClaudeAdapter, CursorAdapter, PiAdapter};
 use loopfleet_core::{
-    run_loop, AgentAdapter, CompareView, LoopConfig, NormalizedEvent, PlanView, RunSpec, RunState,
-    RunTimeline,
+    fold_rate_limit, run_loop, AgentAdapter, CompareView, LoopConfig, NormalizedEvent, PlanView,
+    RateLimitNotice, RunSpec, RunState, RunTimeline, UsageSnapshot, UsageSource,
 };
 use loopfleet_gitx::GitActor;
 use loopfleet_sandbox::{confine_prefix, RenderParams};
@@ -46,6 +46,12 @@ struct AppState {
     /// by the original run id, so `cancel_scheduled_resume` can abort it before
     /// it fires.
     scheduled_resumes: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
+    /// The last usage snapshot published to the UI for each agent, keyed by
+    /// agent key. Purely a de-duplication ledger for the `agent_usage` event:
+    /// a snapshot is emitted only when it says something different from what
+    /// the UI was last told, so a surface can listen instead of polling
+    /// without being woken by every re-probe of unchanged headroom.
+    published_usage: Arc<Mutex<HashMap<String, UsageSnapshot>>>,
 }
 
 /// A live run event pushed to the UI as it happens: the run it belongs to, its
@@ -111,16 +117,98 @@ fn record_event(
 /// was recorded before: the snapshot is the agent's current headroom, so only
 /// the most recent one is meaningful. Best-effort — a poisoned lock or a write
 /// error must not take down the run that saw the limit.
+///
+/// The observation is also folded into the agent's normalized snapshot and
+/// published (see [`publish_usage`]), so a limit seen mid-run reaches every open
+/// surface immediately rather than on their next `agent_usage` call.
 fn record_agent_limit(
     db: &Mutex<Connection>,
+    app: &AppHandle,
     agent: &str,
     reset_at: Option<&str>,
     message: Option<&str>,
 ) {
-    let observed_at = (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64;
+    let observed_at = now_ms();
     if let Ok(conn) = db.lock() {
         let _ = loopfleet_store::record_agent_usage(&conn, agent, reset_at, message, observed_at);
     }
+
+    // Folded over what the UI was last told, so a terse notice ("limited", no
+    // reset time) keeps the labels a richer earlier one established.
+    let prior = published_snapshot(app, agent);
+    let notice = rate_limit_notice(agent, reset_at, observed_at);
+    publish_usage(app, fold_rate_limit(prior.as_ref(), &notice));
+}
+
+/// Now, in epoch millis — the instant vocabulary `core::usage` and the store's
+/// `observed_at` both speak.
+fn now_ms() -> i64 {
+    (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64
+}
+
+/// Parse an agent-supplied RFC 3339 reset time into epoch millis. Agents write
+/// this string themselves, so an unparseable one is expected rather than
+/// exceptional: it degrades to "limited, reset time unknown".
+fn reset_at_ms(reset_at: Option<&str>) -> Option<i64> {
+    let parsed = OffsetDateTime::parse(reset_at?, &Rfc3339).ok()?;
+    Some((parsed.unix_timestamp_nanos() / 1_000_000) as i64)
+}
+
+/// The `RateLimitNotice` a stored/observed rate limit amounts to. Our agents
+/// report the fact of a limit, never a fraction, so `used_fraction` stays `None`
+/// and `fold_rate_limit` reads it as inferred-exhausted.
+fn rate_limit_notice(agent: &str, reset_at: Option<&str>, observed_at_ms: i64) -> RateLimitNotice {
+    let notice = RateLimitNotice::new(agent, observed_at_ms);
+    match reset_at_ms(reset_at) {
+        Some(ms) => notice.with_reset_at(ms),
+        None => notice,
+    }
+}
+
+/// The snapshot the UI was last told about `agent`, if any.
+fn published_snapshot(app: &AppHandle, agent: &str) -> Option<UsageSnapshot> {
+    let state = app.state::<AppState>();
+    let published = state.published_usage.lock().ok()?;
+    published.get(agent).cloned()
+}
+
+/// Whether two snapshots for the same agent say anything different.
+///
+/// `observed_at_ms` is deliberately excluded: every probe restamps it, and
+/// "we asked again and got the same answer" is not news the UI needs waking
+/// for. Everything a surface actually renders is compared.
+fn usage_changed(before: &UsageSnapshot, after: &UsageSnapshot) -> bool {
+    before.agent_key != after.agent_key
+        || before.model != after.model
+        || before.limit_window != after.limit_window
+        || before.used_fraction != after.used_fraction
+        || before.reset_at_ms != after.reset_at_ms
+        || before.source != after.source
+}
+
+/// Record `snapshot` as the agent's current published state and, when it
+/// differs from what the UI was last told, emit it on the `agent_usage` event.
+/// Returns the snapshot so callers can hand it straight back to a command.
+///
+/// Best-effort on the lock: a poisoned ledger costs de-duplication, never the
+/// answer itself.
+fn publish_usage(app: &AppHandle, snapshot: UsageSnapshot) -> UsageSnapshot {
+    let state = app.state::<AppState>();
+    let changed = match state.published_usage.lock() {
+        Ok(mut published) => {
+            let changed = published
+                .get(&snapshot.agent_key)
+                .map(|prior| usage_changed(prior, &snapshot))
+                .unwrap_or(true);
+            published.insert(snapshot.agent_key.clone(), snapshot.clone());
+            changed
+        }
+        Err(_) => true,
+    };
+    if changed {
+        let _ = app.emit("agent_usage", snapshot.clone());
+    }
+    snapshot
 }
 
 /// Validate `path` is a git repo and persist it as a project.
@@ -676,7 +764,13 @@ fn spawn_run(
             // and carry on, and that observation is still the latest thing we
             // know about its standing.
             if let NormalizedEvent::RateLimited { reset_at, message } = ev {
-                record_agent_limit(&ev_db, &ev_agent, reset_at.as_deref(), message.as_deref());
+                record_agent_limit(
+                    &ev_db,
+                    &ev_app,
+                    &ev_agent,
+                    reset_at.as_deref(),
+                    message.as_deref(),
+                );
             }
             if let Some(seq) = record_event(&ev_db, &ev_app, &ev_id, ev) {
                 ev_offsets.lock().unwrap().insert(pass, seq);
@@ -1542,6 +1636,72 @@ async fn agent_status() -> Vec<loopfleet_adapters::AgentStatus> {
     loopfleet_adapters::discover_all().await
 }
 
+/// Every known agent's current limit headroom, one [`UsageSnapshot`] per entry
+/// in `KNOWN_AGENTS` — the list is exhaustive and in a stable order, so a UI can
+/// render a row per agent without cross-referencing `agent_status`.
+///
+/// Each agent's snapshot is resolved by preference:
+///
+/// 1. A **fresh adapter probe** ([`AgentAdapter::usage_snapshot`]). This is the
+///    only source that reflects usage the app never saw — headroom spent by the
+///    user's own terminal sessions, not just by runs launched here — so it wins
+///    whenever it actually knows something. Adapters that cannot probe answer
+///    `UsageUnsupported`, and `claude`'s probe degrades to an
+///    [`UsageSource::Unknown`] snapshot rather than failing; both mean "no
+///    answer" and fall through.
+/// 2. The **stored observation** — the latest `RateLimited` notice the app saw
+///    from that agent, folded into the same normalized shape. Older and
+///    coarser (a limit notice says "spent", never "63% spent"), but it is real
+///    evidence and outlives the run that produced it.
+/// 3. An [`UsageSnapshot::unknown`], which says exactly that. Never a
+///    zero-used snapshot dressed up as headroom.
+///
+/// Every resolved snapshot goes through [`publish_usage`], so calling this
+/// primes the `agent_usage` event stream: a caller can invoke once for the
+/// initial paint and then listen, and any later change — a probe here, or a
+/// limit observed mid-run — arrives without polling.
+#[tauri::command]
+async fn agent_usage(app: AppHandle) -> Result<Vec<UsageSnapshot>, String> {
+    // One read of the stored observations for the whole sweep, resolved through
+    // `spec_for` so an observation filed under the `cursor-agent` alias still
+    // answers for `cursor`. The store lists newest-observed first, so the first
+    // entry per key is the one to keep.
+    let stored: HashMap<String, loopfleet_store::AgentUsage> = {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().map_err(|_| "database lock poisoned")?;
+        let mut by_key: HashMap<String, loopfleet_store::AgentUsage> = HashMap::new();
+        for usage in loopfleet_store::list_agent_usage(&conn).map_err(|e| e.to_string())? {
+            if let Some(spec) = loopfleet_adapters::spec_for(&usage.agent) {
+                by_key.entry(spec.key.to_string()).or_insert(usage);
+            }
+        }
+        by_key
+    };
+
+    let mut out = Vec::with_capacity(loopfleet_adapters::KNOWN_AGENTS.len());
+    for spec in loopfleet_adapters::KNOWN_AGENTS {
+        let now = now_ms();
+        // Probes are sequential, like `discover_all`'s: at v1's three agents
+        // only `claude` spawns anything, and its probe is bounded by its own
+        // timeout.
+        let probed = match build_adapter(spec.key) {
+            Some(adapter) => adapter.usage_snapshot(now).await.ok(),
+            None => None,
+        };
+        let snapshot = probed
+            .filter(|s| s.source != UsageSource::Unknown)
+            .or_else(|| {
+                let usage = stored.get(spec.key)?;
+                let notice =
+                    rate_limit_notice(spec.key, usage.reset_at.as_deref(), usage.observed_at);
+                Some(fold_rate_limit(None, &notice))
+            })
+            .unwrap_or_else(|| UsageSnapshot::unknown(spec.key, now));
+        out.push(publish_usage(&app, snapshot));
+    }
+    Ok(out)
+}
+
 /// The v1 agents, dispatched by name. Boxed so the loop holds a `dyn` adapter.
 fn build_adapter(agent: &str) -> Option<Box<dyn AgentAdapter>> {
     match agent {
@@ -1624,6 +1784,7 @@ pub fn run() {
                 edits: Arc::new(Mutex::new(HashMap::new())),
                 unacknowledged_runs: Arc::new(AtomicI64::new(0)),
                 scheduled_resumes: Arc::new(Mutex::new(HashMap::new())),
+                published_usage: Arc::new(Mutex::new(HashMap::new())),
             });
 
             // Recover any rate-limit resume a crash or quit interrupted mid-wait
@@ -1650,6 +1811,7 @@ pub fn run() {
             register_project,
             list_projects,
             agent_status,
+            agent_usage,
             get_settings,
             save_settings,
             project_sandbox_writes,
@@ -1678,6 +1840,103 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- agent usage ---
+
+    const NOW_MS: i64 = 1_700_000_000_000;
+
+    #[test]
+    fn reset_at_parses_rfc3339_into_epoch_millis() {
+        assert_eq!(reset_at_ms(Some("1970-01-01T00:00:01Z")), Some(1_000));
+        assert_eq!(
+            reset_at_ms(Some("2025-01-15T10:00:00Z")),
+            Some(1_736_935_200_000)
+        );
+    }
+
+    /// An agent writes the reset string itself, so unparseable is expected, not
+    /// exceptional: it degrades to "limited, reset time unknown".
+    #[test]
+    fn an_unparseable_or_absent_reset_is_simply_unknown() {
+        assert_eq!(reset_at_ms(None), None);
+        assert_eq!(reset_at_ms(Some("whenever")), None);
+        assert_eq!(reset_at_ms(Some("")), None);
+    }
+
+    /// Our agents report the fact of a limit, never a fraction — so the notice
+    /// carries none, and folding reads it as inferred-exhausted rather than
+    /// claiming the agent gave us a number.
+    #[test]
+    fn a_limit_notice_carries_no_fraction_and_folds_to_inferred_exhausted() {
+        let notice = rate_limit_notice("claude", Some("2025-01-15T10:00:00Z"), NOW_MS);
+        assert_eq!(notice.agent_key, "claude");
+        assert_eq!(notice.used_fraction, None);
+        assert_eq!(notice.reset_at_ms, Some(1_736_935_200_000));
+        assert_eq!(notice.observed_at_ms, NOW_MS);
+
+        let folded = fold_rate_limit(None, &notice);
+        assert_eq!(folded.source, UsageSource::Inferred);
+        assert_eq!(folded.used_fraction, 1.0);
+        assert_eq!(folded.reset_at_ms, Some(1_736_935_200_000));
+    }
+
+    #[test]
+    fn a_notice_without_a_usable_reset_still_marks_the_agent_limited() {
+        let folded = fold_rate_limit(None, &rate_limit_notice("pi", Some("soon"), NOW_MS));
+        assert_eq!(folded.reset_at_ms, None);
+        assert_eq!(folded.source, UsageSource::Inferred);
+        assert_eq!(folded.used_fraction, 1.0);
+    }
+
+    /// Re-probing an agent whose standing has not moved must not wake the UI:
+    /// only `observed_at_ms` differs, and that is not news.
+    #[test]
+    fn a_restamped_but_identical_snapshot_is_not_a_change() {
+        let before = UsageSnapshot::reported("claude", 0.42, NOW_MS);
+        let after = UsageSnapshot::reported("claude", 0.42, NOW_MS + 60_000);
+        assert!(!usage_changed(&before, &after));
+    }
+
+    #[test]
+    fn every_rendered_field_counts_as_a_change() {
+        let before = UsageSnapshot::reported("claude", 0.42, NOW_MS)
+            .with_model("opus")
+            .with_limit_window("5h")
+            .with_reset_at(NOW_MS + 60_000);
+
+        let cases = [
+            UsageSnapshot::reported("codex", 0.42, NOW_MS)
+                .with_model("opus")
+                .with_limit_window("5h")
+                .with_reset_at(NOW_MS + 60_000),
+            before.clone().with_model("sonnet"),
+            before.clone().with_limit_window("weekly"),
+            UsageSnapshot::reported("claude", 0.43, NOW_MS)
+                .with_model("opus")
+                .with_limit_window("5h")
+                .with_reset_at(NOW_MS + 60_000),
+            before.clone().with_reset_at(NOW_MS + 120_000),
+            UsageSnapshot::unknown("claude", NOW_MS),
+        ];
+        for after in cases {
+            assert!(
+                usage_changed(&before, &after),
+                "{after:?} should be a change"
+            );
+        }
+    }
+
+    /// The distinction the meter hangs on: a zero-used `Unknown` snapshot and a
+    /// genuine zero-used `Reported` one must not be conflated.
+    #[test]
+    fn unknown_and_reported_zero_are_different_snapshots() {
+        let unknown = UsageSnapshot::unknown("claude", NOW_MS);
+        let reported = UsageSnapshot::reported("claude", 0.0, NOW_MS);
+        assert_eq!(unknown.used_fraction, reported.used_fraction);
+        assert!(usage_changed(&unknown, &reported));
+    }
+
+    // --- rate-limit resume scheduling ---
 
     #[test]
     fn no_reschedule_without_a_parseable_reset_time() {

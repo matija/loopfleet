@@ -14,6 +14,7 @@ import type {
   RunTimeline,
   Settings,
   SweepResult,
+  UsageSnapshot,
   UseRunResult,
 } from "./types";
 
@@ -30,6 +31,18 @@ export function listProjects(): Promise<Project[]> {
 /// Discover the v1 agent CLIs: availability, version, drift.
 export function agentStatus(): Promise<AgentStatus[]> {
   return invoke("agent_status");
+}
+
+/// Every known agent's current limit headroom, one snapshot per agent in a
+/// stable order (the same set `agentStatus` reports, keyed by `agent_key`).
+///
+/// Prefers a fresh probe of the agent CLI, falling back to the latest
+/// rate-limit observation the app recorded, and finally to an `"unknown"`
+/// snapshot. Probing spawns the agent CLI, so this is a deliberate refresh, not
+/// something to call on a timer: invoke it once for the initial paint and then
+/// subscribe with `onAgentUsage` — every change, here or mid-run, is pushed.
+export function agentUsage(): Promise<UsageSnapshot[]> {
+  return invoke("agent_usage");
 }
 
 /// The global app settings.
