@@ -65,7 +65,7 @@ export function AddProject({
 
   return (
     <div className="add-project">
-      <button className="btn btn--accent" onClick={pick} disabled={busy}>
+      <button className="btn btn--primary" onClick={pick} disabled={busy}>
         {busy ? "Adding…" : "Add project…"}
       </button>
       {error && <div className="add-project__error">{error}</div>}

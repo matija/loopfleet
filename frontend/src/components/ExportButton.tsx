@@ -48,12 +48,12 @@ export function ExportButton({
 
   return (
     <button
-      className="export-btn"
+      className="btn btn--quiet"
       onClick={run}
       disabled={disabled || busy}
       title={title}
     >
-      <DownloadIcon size={14} className="export-btn__icon" />
+      <DownloadIcon size={14} className="btn__icon" />
       {busy ? "Exporting…" : label}
     </button>
   );

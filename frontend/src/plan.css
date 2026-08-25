@@ -45,7 +45,7 @@
 /* The plan-level export sits at the far end of the header, away from the title
  * and path. The head aligns its text on a shared baseline; a button has no
  * useful baseline there, so it centers on the row instead. */
-.plan-card__head .export-btn {
+.plan-card__head .btn--quiet {
   margin-left: auto;
   align-self: center;
 }

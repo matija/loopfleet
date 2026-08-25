@@ -260,7 +260,7 @@ export function SettingsPanel({
         </label>
       </div>
       <div className="panel__actions">
-        <button className="btn" onClick={save} disabled={saving || !loaded}>
+        <button className="btn btn--primary" onClick={save} disabled={saving || !loaded}>
           {saving ? "Saving…" : "Save settings"}
         </button>
         {msg && (
@@ -271,7 +271,7 @@ export function SettingsPanel({
       </div>
       <div className="panel__actions">
         <button
-          className="btn"
+          className="btn btn--secondary"
           onClick={cleanUpNow}
           disabled={sweeping || !loaded}
         >

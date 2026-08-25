@@ -33,7 +33,7 @@ export function UseRun({
   const custom = branch.trim() !== "";
   const useButton = (
     <button
-      className="btn btn--accent use-run__go"
+      className="btn btn--primary use-run__go"
       onClick={apply}
       disabled={!mergeable || busy}
       title={!mergeable ? "No snapshot to merge" : undefined}

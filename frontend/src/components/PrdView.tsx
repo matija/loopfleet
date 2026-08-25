@@ -205,14 +205,14 @@ export function PrdView({
                   {phase === "instruct" && (
                     <>
                       <button
-                        className="btn"
+                        className="btn btn--secondary"
                         onClick={discard}
                         disabled={busy}
                       >
                         Cancel
                       </button>
                       <button
-                        className="btn btn--accent"
+                        className="btn btn--primary"
                         onClick={() => run(plan.plan_id)}
                         disabled={busy || instruction.trim() === ""}
                         title={
@@ -234,14 +234,14 @@ export function PrdView({
                   {phase === "review" && (
                     <>
                       <button
-                        className="btn"
+                        className="btn btn--secondary"
                         onClick={discard}
                         disabled={busy}
                       >
                         Discard
                       </button>
                       <button
-                        className="btn btn--accent"
+                        className="btn btn--primary"
                         onClick={accept}
                         disabled={busy || noChange}
                         title={
@@ -264,7 +264,7 @@ export function PrdView({
                     title="Save this plan — every task's runs, events, and diffs — as an HTML report"
                   />
                   <button
-                    className="btn prd-doc__edit"
+                    className="btn btn--secondary prd-doc__edit"
                     onClick={() => startEdit(plan)}
                     disabled={!canStart}
                     title={editDisabledTitle}

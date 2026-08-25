@@ -58,7 +58,13 @@
   margin-top: var(--space-4);
 }
 
-/* --- buttons --- */
+/* --- buttons ---
+ * Three levels, one hierarchy: `.btn--primary` is the filled-accent call to
+ * action, `.btn--secondary` is the hairline default, and `.btn--quiet` is
+ * the text-weight affordance that only picks up a border on hover — used
+ * wherever an action rides beside a surface's real work (e.g. the export
+ * control) rather than being it. All three share `.btn` for sizing and
+ * disabled handling. */
 
 .btn {
   border: 1px solid var(--c-border-strong);
@@ -68,10 +74,7 @@
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   font-weight: 500;
-}
-
-.btn:hover:not(:disabled) {
-  background: var(--c-surface-3);
+  cursor: pointer;
 }
 
 .btn:disabled {
@@ -79,24 +82,23 @@
   cursor: default;
 }
 
-.btn--accent {
+.btn--secondary:hover:not(:disabled) {
+  background: var(--c-surface-3);
+}
+
+.btn--primary {
   background: var(--c-accent);
   border-color: var(--c-accent);
   color: var(--c-on-accent);
 }
 
-.btn--accent:hover:not(:disabled) {
+.btn--primary:hover:not(:disabled) {
   filter: brightness(1.08);
 }
 
-/* --- export affordance --- */
-/* A quiet secondary control (see ExportButton). Saving a report is an errand
- * beside the surface's real work, so at rest it reads as faint text with a
- * hairline box, and only picks up border and surface on hover — the same
- * restraint `.task-row__compare` uses, but always legible since it isn't
- * revealed by hovering a row. */
-
-.export-btn {
+/* Same restraint `.task-row__compare` uses, but always legible since it
+ * isn't revealed by hovering a row. */
+.btn--quiet {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -108,21 +110,15 @@
   background: transparent;
   color: var(--c-text-faint);
   font-size: var(--text-xs);
-  cursor: pointer;
 }
 
-.export-btn:hover:not(:disabled) {
+.btn--quiet:hover:not(:disabled) {
   background: var(--c-surface-2);
   border-color: var(--c-accent);
   color: var(--c-text);
 }
 
-.export-btn:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-.export-btn__icon {
+.btn__icon {
   flex: none;
 }
 

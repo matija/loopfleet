@@ -94,7 +94,7 @@ export function NoProjectEmptyState({
       title="Add a project to get started"
       subtitle="Point Loopfleet at a git repo with a plan to launch runs against."
       action={
-        <button type="button" className="btn btn--accent" onClick={onAddProject}>
+        <button type="button" className="btn btn--primary" onClick={onAddProject}>
           Add project
         </button>
       }
@@ -110,7 +110,7 @@ export function NoRunEmptyState({ onLaunch }: { onLaunch: () => void }) {
       title="Launch a run to see it here"
       subtitle="Pick a task from the plan and start an agent against it."
       action={
-        <button type="button" className="btn btn--accent" onClick={onLaunch}>
+        <button type="button" className="btn btn--primary" onClick={onLaunch}>
           Launch a run
         </button>
       }
