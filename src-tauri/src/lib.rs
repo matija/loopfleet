@@ -1595,12 +1595,19 @@ fn cancel_scheduled_launch(id: i64, app: AppHandle, state: State<'_, AppState>) 
 ///
 /// Once it actually fires, the project id is resolved fresh from `plan_id`
 /// (rather than carried since scheduling) since a scheduled launch, unlike a
-/// run, has no project id of its own to remember; the plan is expected to
-/// still exist. The launch then runs through the exact same `spawn_run` path
-/// `launch_run` uses, as a fresh attempt (`resume_attempt = 0`) independent of
-/// any rate-limit resume chain. The schedule row and this handle's entry are
-/// cleared once the launch either fires, is pushed back, or is dropped, since
-/// in every case there is nothing left for this armed wait to do.
+/// run, has no project id of its own to remember — and the plan may no longer
+/// exist by firing time (e.g. deleted after the schedule was set). The launch
+/// then runs through the exact same `spawn_run` path `launch_run` uses, as a
+/// fresh attempt (`resume_attempt = 0`) independent of any rate-limit resume
+/// chain; `spawn_run` re-validates the task anchor still resolves in the
+/// project's plans, the project is still attached, and the agent CLI is still
+/// installed. A missing plan or a `spawn_run` failure both drop the schedule
+/// and emit `scheduled_launch_dropped` with the reason, the same
+/// user-visible path used when reschedules run out, rather than launching
+/// nothing and leaving the "launching at…" indicator to vanish unexplained.
+/// The schedule row and this handle's entry are cleared once the launch
+/// either fires, is pushed back, or is dropped, since in every case there is
+/// nothing left for this armed wait to do.
 #[allow(clippy::too_many_arguments)]
 fn arm_scheduled_launch(
     app: AppHandle,
@@ -1707,10 +1714,17 @@ fn arm_scheduled_launch(
             .ok()
         };
 
-        if let Some(project_id) = project_id {
-            if let Ok(run_id) = spawn_run(
+        // `spawn_run` re-validates the task anchor, the project's attachment,
+        // and the agent CLI's presence itself — all of which may have changed
+        // in the time between scheduling and firing. Either a missing plan
+        // (caught here) or a `spawn_run` failure (caught below) must drop the
+        // schedule with a visible reason rather than launch nothing and stay
+        // silent, since by this point there's no "launching at…" indicator
+        // left in the UI to explain the absence.
+        let launch_result = match project_id {
+            Some(project_id) => spawn_run(
                 project_id,
-                task_anchor,
+                task_anchor.clone(),
                 agent,
                 model,
                 max_iterations,
@@ -1724,8 +1738,26 @@ fn arm_scheduled_launch(
                 0,
             )
             .await
-            {
+            .map_err(|e| format!("scheduled launch of '{task_anchor}' failed: {e}")),
+            None => Err(format!(
+                "scheduled launch of '{task_anchor}' failed: plan no longer exists"
+            )),
+        };
+
+        match launch_result {
+            Ok(run_id) => {
                 let _ = app.emit("scheduled_launch_fired", ScheduledLaunchFiredPayload { id, run_id });
+            }
+            Err(reason) => {
+                let _ = app.emit(
+                    "scheduled_launch_dropped",
+                    ScheduledLaunchDroppedPayload {
+                        id,
+                        plan_id,
+                        task_anchor,
+                        reason,
+                    },
+                );
             }
         }
 
