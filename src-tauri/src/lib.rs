@@ -1457,7 +1457,7 @@ struct UseRunResult {
 /// "Use this run": merge the run's final state into a target branch and mark
 /// the run accepted. `target_branch = None` (or empty) merges into the repo's
 /// currently checked-out branch — the default, landing the run's work where the
-/// user is working as a single squashed commit with a descriptive message. A
+/// user is working as a single squashed commit. A
 /// non-empty `target_branch`
 /// names a custom branch (created if absent). The merge runs through the
 /// serialized git actor; the current-branch default merges in the main worktree
@@ -1473,9 +1473,8 @@ async fn use_run(
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty());
 
-    // Resolve the run's parent repo, its final shadow ref, and the identity
-    // pieces that make the squashed commit message descriptive.
-    let (repo_path, source_ref, agent, task_anchor) = {
+    // Resolve the run's parent repo and its final shadow ref.
+    let (repo_path, source_ref) = {
         let conn = state.db.lock().unwrap();
         let detail = loopfleet_store::load_run(&conn, &run_id)
             .map_err(|e| e.to_string())?
@@ -1486,13 +1485,13 @@ async fn use_run(
             .rev()
             .find_map(|it| it.shadow_ref)
             .ok_or_else(|| "run has no snapshot to use".to_string())?;
-        (detail.repo_path, source_ref, detail.agent, detail.task_anchor)
+        (detail.repo_path, source_ref)
     };
 
-    // A nice squashed commit message: subject names the run and agent, body carries
-    // the task so the history reads as what the run accomplished.
-    let short = &run_id[..run_id.len().min(8)];
-    let message = format!("Apply loopfleet run {short} ({agent})\n\n{task_anchor}");
+    // The squashed commit message records the shared origin of the work: loopfleet
+    // produced it (and is its author), the user chose to land it (and is its
+    // committer). See `MERGE_COMMIT_MESSAGE`.
+    let message = loopfleet_gitx::MERGE_COMMIT_MESSAGE.to_string();
 
     let scratch_root = state.data_dir.join("worktrees");
     let merge = state

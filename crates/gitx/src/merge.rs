@@ -40,6 +40,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const AUTHOR_NAME: &str = "loopfleet";
 const AUTHOR_EMAIL: &str = "loopfleet@localhost";
 
+/// The message stamped on every "use this run" squash commit. The work is a
+/// collaboration — loopfleet produced it, the user landed it — so the message
+/// says exactly that, matching the author/committer split above.
+pub const MERGE_COMMIT_MESSAGE: &str = "Co-authored by loopfleet";
+
 /// The outcome of a "use this run" merge.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MergeResult {
