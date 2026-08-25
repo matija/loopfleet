@@ -83,6 +83,74 @@ export type ActiveRun = {
   resumeExhausted?: boolean;
 };
 
+/// A launch booked for later via `schedule_launch` (the "run when the limit
+/// resets" path), not yet fired — seeded from the `scheduled_launch` event
+/// (and re-seeded from the same event on a startup rearm), dropped from the
+/// dock once `scheduled_launch_fired`/`scheduled_launch_cancelled` lands.
+/// App.tsx owns resolving `projectName`/`taskText` from the payload's
+/// `plan_id`/`task_anchor` — the dock just renders what it's given.
+export type PendingLaunch = {
+  id: number;
+  projectName: string;
+  taskText: string;
+  /// Epoch ms the launch is booked to fire at.
+  launchAt: number;
+};
+
+/// Live countdown to `target` (epoch ms), ticking once a second — the
+/// scheduled-launch counterpart to `Elapsed`. Floors at "now" rather than
+/// going negative once the target passes; App.tsx removes the chip once the
+/// backend actually confirms the fire, so a brief "now" reads better than a
+/// negative duration in the gap.
+function Countdown({ target }: { target: number }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const remaining = Math.max(0, target - Date.now());
+  return (
+    <span className="run-elapsed" aria-label="Time until launch">
+      {remaining === 0 ? "now" : `in ${formatDuration(remaining)}`}
+    </span>
+  );
+}
+
+function PendingLaunchChip({
+  launch,
+  onCancel,
+}: {
+  launch: PendingLaunch;
+  onCancel: (id: number) => void;
+}) {
+  const taskText = taskSummary(launch.taskText);
+  const chipTitle = `${taskText} — ${launch.projectName} — scheduled ${new Date(
+    launch.launchAt,
+  ).toLocaleString([], { hour: "numeric", minute: "2-digit" })}`;
+
+  return (
+    <li className="run-chip run-chip--pending-launch" title={chipTitle}>
+      <span className="run-chip__open" aria-disabled="true">
+        <span className="run-chip__status run-chip__status--queued" aria-label="Scheduled">
+          <ClockIcon size={14} />
+        </span>
+        <span className="run-chip__task">{taskText}</span>
+        <span className="run-chip__meta run-chip__meta--warn">
+          <Countdown target={launch.launchAt} />
+        </span>
+      </span>
+      <button
+        className="run-chip__action run-chip__action--cancel-resume"
+        onClick={() => onCancel(launch.id)}
+        title="Cancel this scheduled launch"
+        aria-label="Cancel scheduled launch"
+      >
+        <XIcon size={14} />
+      </button>
+    </li>
+  );
+}
+
 /// Opens `open` after a hover delay, closes it immediately on pointer-leave,
 /// and opens/closes on focus/blur too so keyboard users reach the same
 /// content a mouse hover would reveal. Shared by every metadata hover card
@@ -398,20 +466,28 @@ function RunChip({
 
 export function RunDock({
   runs,
+  pendingLaunches = [],
   selectedRunId,
   onOpen,
   onStop,
   onDismiss,
   onCancelResume,
+  onCancelLaunch,
   onMerge,
   collapsed,
 }: {
   runs: ActiveRun[];
+  /// Launches booked for later that haven't fired yet. Rendered ahead of the
+  /// run chips — they aren't runs, so they carry no status/elapsed, only a
+  /// countdown and a cancel action.
+  pendingLaunches?: PendingLaunch[];
   selectedRunId: string | null;
   onOpen: (runId: string) => void;
   onStop: (runId: string) => void;
   onDismiss: (runId: string) => void;
   onCancelResume: (runId: string) => void;
+  /// Abort a pending scheduled launch before it fires (`cancel_scheduled_launch`).
+  onCancelLaunch: (id: number) => void;
   /// Merge a finished run into the current branch — offered on chips where
   /// `canMergeFromDock` holds, so landing a good run needs no detour through
   /// the run view. Resolves when the attempt settles, success or failure.
@@ -422,9 +498,10 @@ export function RunDock({
 }) {
   const activeCount = runs.filter((r) => isActiveRun(r.status)).length;
   const unseenCount = runs.filter((r) => r.unseen).length;
-  // Idle (no run launched this session yet) collapses the dock to the head
-  // strip the same way the manual toggle does — there is nothing to show.
-  const idle = runs.length === 0;
+  // Idle (no run launched this session yet, and nothing booked for later)
+  // collapses the dock to the head strip the same way the manual toggle
+  // does — there is nothing to show.
+  const idle = runs.length === 0 && pendingLaunches.length === 0;
   const effectiveCollapsed = collapsed || idle;
 
   // No server-side "finished at" timestamp rides `ActiveRun` — this captures
@@ -449,11 +526,15 @@ export function RunDock({
         <span className="run-dock__title">Runs</span>
         <span className="run-dock__count">
           {activeCount} active{runs.length > activeCount ? ` · ${runs.length - activeCount} done` : ""}
+          {pendingLaunches.length > 0 ? ` · ${pendingLaunches.length} scheduled` : ""}
           {unseenCount > 0 ? ` · ${unseenCount} new` : ""}
         </span>
       </div>
       {effectiveCollapsed ? null : (
         <ul className="run-dock__list">
+          {pendingLaunches.map((p) => (
+            <PendingLaunchChip key={`launch-${p.id}`} launch={p} onCancel={onCancelLaunch} />
+          ))}
           {runs.map((r) => (
             <RunChip
               key={r.runId}

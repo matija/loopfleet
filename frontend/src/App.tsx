@@ -7,6 +7,7 @@ import {
 } from "react";
 import {
   acknowledgeRuns,
+  cancelScheduledLaunch,
   cancelScheduledResume,
   launchRun,
   listProjects,
@@ -15,7 +16,7 @@ import {
   stopRun,
   useRun,
 } from "./commands";
-import { normalizeDisplayText } from "./displayText";
+import { normalizeDisplayText, taskSummary } from "./displayText";
 import {
   marksNoTasks,
   planHealth,
@@ -24,7 +25,10 @@ import {
 } from "./planHealth";
 import {
   onRunStatus,
+  onScheduledLaunch,
+  onScheduledLaunchCancelled,
   onScheduledLaunchDropped,
+  onScheduledLaunchFired,
   onScheduledResume,
   onScheduledResumeCancelled,
 } from "./events";
@@ -40,7 +44,7 @@ import type { CompareTarget, LaunchedRun } from "./components/PlanView";
 import { PlanSurface } from "./components/PlanSurface";
 import { PlanTree } from "./components/PlanTree";
 import { TaskTab } from "./components/TaskTab";
-import { RunDock, type ActiveRun } from "./components/RunDock";
+import { RunDock, type ActiveRun, type PendingLaunch } from "./components/RunDock";
 import { LiveRunView } from "./components/LiveRunView";
 import { RunTimeline } from "./components/RunTimeline";
 import { CompareView } from "./components/CompareView";
@@ -146,6 +150,12 @@ export default function App() {
   // Session-scoped registry of launched runs (the global run surface). Runs do
   // not survive a restart in v1, so this is complete for the session.
   const [runs, setRuns] = useState<ActiveRun[]>([]);
+  // Launches booked for later via `scheduleLaunch` (the "run when the limit
+  // resets" path) that haven't fired yet. Unlike `runs`, these do survive a
+  // restart on the backend (`scheduled_launches` table); the startup rearm
+  // re-emits `scheduled_launch` for each persisted row, so this list is
+  // rebuilt from that same event rather than a dedicated list command.
+  const [pendingLaunches, setPendingLaunches] = useState<PendingLaunch[]>([]);
   // Bumped to force the plan overview to refetch after a run is accepted (its
   // derived TaskStatus changes).
   const [planNonce, setPlanNonce] = useState(0);
@@ -363,6 +373,86 @@ export default function App() {
       un.then((f) => f());
     };
   }, [pushError]);
+
+  // Latest `projects`/`pendingLaunches`, read from event handlers below that
+  // register once (`[]` deps) and would otherwise close over a stale value.
+  const projectsRef = useRef<Project[]>([]);
+  useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
+  const pendingLaunchesRef = useRef<PendingLaunch[]>([]);
+  useEffect(() => {
+    pendingLaunchesRef.current = pendingLaunches;
+  }, [pendingLaunches]);
+
+  // A launch was booked for later (fresh, or re-announced by the backend's
+  // startup rearm of a persisted schedule): resolve its project name and task
+  // text — the event payload carries only `plan_id`/`task_anchor` — and add
+  // it to the dock's pending-launch strip. `plan_id` is the project id here
+  // (the same value `LaunchControl` passes as both `projectId` to itself and
+  // `planId` to `scheduleLaunch`), so it matches straight against `projects`.
+  useEffect(() => {
+    const un = onScheduledLaunch((p) => {
+      const launchAt = new Date(p.launch_at).getTime();
+      const project = projectsRef.current.find((x) => x.id === p.plan_id);
+      const projectName = project ? repoName(project.repo_path) : p.plan_id;
+      setPendingLaunches((prev) =>
+        prev.some((x) => x.id === p.id)
+          ? prev
+          : [...prev, { id: p.id, projectName, taskText: p.task_anchor, launchAt }],
+      );
+      planOverview(p.plan_id)
+        .then((plans) => {
+          for (const plan of plans) {
+            const task = plan.tasks.find((t) => t.anchor === p.task_anchor);
+            if (task) {
+              setPendingLaunches((prev) =>
+                prev.map((x) => (x.id === p.id ? { ...x, taskText: task.text } : x)),
+              );
+              break;
+            }
+          }
+        })
+        .catch(() => {
+          // Plan may no longer be readable (deleted file, etc.) — the chip
+          // just keeps showing the raw task anchor as its label.
+        });
+    });
+    return () => {
+      un.then((f) => f());
+    };
+  }, []);
+
+  // A scheduled launch fired: drop its pending-launch chip and toast the
+  // outcome. The run it produced isn't added to `runs` here — that registry
+  // is populated from explicit launch call sites (`onLaunch`/`onRetry`), and
+  // there is no run-detail fetch wired to a bare run id yet — so the toast is
+  // the notification this task asks for.
+  useEffect(() => {
+    const un = onScheduledLaunchFired((p) => {
+      const entry = pendingLaunchesRef.current.find((x) => x.id === p.id);
+      if (entry) {
+        pushError(
+          `Scheduled launch fired: ${taskSummary(entry.taskText)} (${entry.projectName})`,
+        );
+      }
+      setPendingLaunches((prev) => prev.filter((x) => x.id !== p.id));
+    });
+    return () => {
+      un.then((f) => f());
+    };
+  }, [pushError]);
+
+  // A pending launch was cancelled (either from the dock or elsewhere) before
+  // it fired: drop its chip.
+  useEffect(() => {
+    const un = onScheduledLaunchCancelled((p) => {
+      setPendingLaunches((prev) => prev.filter((x) => x.id !== p.id));
+    });
+    return () => {
+      un.then((f) => f());
+    };
+  }, []);
 
   // Acknowledge on focus: returning to the app (its window regaining focus)
   // means the user is looking again, so clear every finished run's attention
@@ -616,6 +706,7 @@ export default function App() {
       dock={
         <RunDock
           runs={runs}
+          pendingLaunches={pendingLaunches}
           selectedRunId={selectedRunId}
           collapsed={dockCollapsed}
           onOpen={openRun}
@@ -628,6 +719,9 @@ export default function App() {
           }}
           onCancelResume={(id) => {
             cancelScheduledResume(id).catch((e) => pushError(String(e)));
+          }}
+          onCancelLaunch={(id) => {
+            cancelScheduledLaunch(id).catch((e) => pushError(String(e)));
           }}
           onMerge={mergeRunFromDock}
         />
