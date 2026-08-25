@@ -22,7 +22,12 @@ import {
   planHealthTitle,
   type PlanHealth,
 } from "./planHealth";
-import { onRunStatus, onScheduledResume, onScheduledResumeCancelled } from "./events";
+import {
+  onRunStatus,
+  onScheduledLaunchDropped,
+  onScheduledResume,
+  onScheduledResumeCancelled,
+} from "./events";
 import type { Project } from "./types";
 import { isActiveRun } from "./status";
 import { AppShell } from "./components/AppShell";
@@ -346,6 +351,18 @@ export default function App() {
       un.then((f) => f());
     };
   }, []);
+
+  // A scheduled launch found the agent still exhausted through every allowed
+  // reschedule and was dropped rather than fired: surface it so the user
+  // knows to launch the task manually once the limit clears.
+  useEffect(() => {
+    const un = onScheduledLaunchDropped((p) => {
+      pushError(p.reason);
+    });
+    return () => {
+      un.then((f) => f());
+    };
+  }, [pushError]);
 
   // Acknowledge on focus: returning to the app (its window regaining focus)
   // means the user is looking again, so clear every finished run's attention

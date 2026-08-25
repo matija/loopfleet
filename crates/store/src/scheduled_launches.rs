@@ -58,13 +58,17 @@ pub struct ScheduledLaunch {
     pub launch_at: i64,
     /// When the schedule was recorded, unix millis.
     pub created_at: i64,
+    /// How many times this launch has already been pushed back because the
+    /// agent was still exhausted when it fired (0 for one that has never
+    /// fired yet).
+    pub reschedule_count: u32,
 }
 
 /// Every scheduled launch, ordered by when it's due to fire. Called at startup
 /// to reschedule anything a crash interrupted, and by the scheduler loop.
 pub fn list_scheduled_launches(conn: &Connection) -> rusqlite::Result<Vec<ScheduledLaunch>> {
     let mut stmt = conn.prepare(
-        "SELECT id, plan_id, task_anchor, agent, model, pass_count, launch_at, created_at
+        "SELECT id, plan_id, task_anchor, agent, model, pass_count, launch_at, created_at, reschedule_count
          FROM scheduled_launches ORDER BY launch_at, id",
     )?;
     let rows = stmt
@@ -78,6 +82,7 @@ pub fn list_scheduled_launches(conn: &Connection) -> rusqlite::Result<Vec<Schedu
                 pass_count: r.get(5)?,
                 launch_at: r.get(6)?,
                 created_at: r.get(7)?,
+                reschedule_count: r.get(8)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -88,6 +93,22 @@ pub fn list_scheduled_launches(conn: &Connection) -> rusqlite::Result<Vec<Schedu
 /// cancelled. A no-op if none exists.
 pub fn delete_scheduled_launch(conn: &Connection, id: i64) -> rusqlite::Result<()> {
     conn.execute("DELETE FROM scheduled_launches WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+/// Push a scheduled launch back to `launch_at` and bump its reschedule count,
+/// because a pre-fire re-check found the agent still exhausted. A no-op if the
+/// row is gone (e.g. cancelled concurrently).
+pub fn reschedule_launch(
+    conn: &Connection,
+    id: i64,
+    launch_at: i64,
+    reschedule_count: u32,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE scheduled_launches SET launch_at = ?1, reschedule_count = ?2 WHERE id = ?3",
+        params![launch_at, reschedule_count, id],
+    )?;
     Ok(())
 }
 
@@ -141,6 +162,27 @@ mod tests {
             launches[0].created_at > 0,
             "created_at is stamped on insert"
         );
+        assert_eq!(launches[0].reschedule_count, 0, "a fresh launch has never been rescheduled");
+    }
+
+    #[test]
+    fn reschedule_bumps_launch_at_and_count() {
+        let conn = crate::open(":memory:").unwrap();
+        let pid = seed(&conn);
+        let id = insert_scheduled_launch(&conn, &new_launch(&pid, "task a", 1_000)).unwrap();
+
+        reschedule_launch(&conn, id, 5_000, 1).unwrap();
+
+        let launches = list_scheduled_launches(&conn).unwrap();
+        assert_eq!(launches[0].launch_at, 5_000);
+        assert_eq!(launches[0].reschedule_count, 1);
+    }
+
+    #[test]
+    fn reschedule_is_a_noop_when_absent() {
+        let conn = crate::open(":memory:").unwrap();
+        seed(&conn);
+        reschedule_launch(&conn, 404, 5_000, 1).unwrap();
     }
 
     #[test]

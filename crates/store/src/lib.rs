@@ -39,8 +39,8 @@ pub use pending_resumes::{
 
 mod scheduled_launches;
 pub use scheduled_launches::{
-    delete_scheduled_launch, insert_scheduled_launch, list_scheduled_launches, NewScheduledLaunch,
-    ScheduledLaunch,
+    delete_scheduled_launch, insert_scheduled_launch, list_scheduled_launches,
+    reschedule_launch, NewScheduledLaunch, ScheduledLaunch,
 };
 
 /// Ordered list of migrations. Each entry is `(name, sql)`; names double as the
@@ -72,6 +72,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
     (
         "0007_scheduled_launches",
         include_str!("migrations/0007_scheduled_launches.sql"),
+    ),
+    (
+        "0008_scheduled_launch_reschedule",
+        include_str!("migrations/0008_scheduled_launch_reschedule.sql"),
     ),
 ];
 

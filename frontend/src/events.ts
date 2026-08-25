@@ -10,6 +10,7 @@ import type {
   RunEventPayload,
   RunStatusPayload,
   ScheduledLaunchCancelledPayload,
+  ScheduledLaunchDroppedPayload,
   ScheduledLaunchFiredPayload,
   ScheduledLaunchPayload,
   ScheduledResumeCancelledPayload,
@@ -78,6 +79,18 @@ export function onScheduledLaunchCancelled(
 ): Promise<UnlistenFn> {
   return listen<ScheduledLaunchCancelledPayload>(
     "scheduled_launch_cancelled",
+    (e) => handler(e.payload),
+  );
+}
+
+/// Subscribe to a scheduled launch being dropped after the agent was found
+/// still exhausted through `MAX_LAUNCH_RESCHEDULES` pre-fire re-checks —
+/// `reason` is a user-facing sentence explaining why.
+export function onScheduledLaunchDropped(
+  handler: (payload: ScheduledLaunchDroppedPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<ScheduledLaunchDroppedPayload>(
+    "scheduled_launch_dropped",
     (e) => handler(e.payload),
   );
 }

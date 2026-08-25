@@ -331,6 +331,16 @@ export type ScheduledLaunchCancelledPayload = {
   id: number;
 };
 
+/// A scheduled launch was dropped after repeatedly finding the agent still
+/// exhausted, pushed on the `scheduled_launch_dropped` Tauri event.
+/// `src-tauri::ScheduledLaunchDroppedPayload`.
+export type ScheduledLaunchDroppedPayload = {
+  id: number;
+  plan_id: string;
+  task_anchor: string;
+  reason: string;
+};
+
 /// An agent's limit headroom changed, pushed on the `agent_usage` Tauri event.
 /// The payload is the snapshot itself — the agent it describes rides in
 /// `agent_key`. Emitted only when the snapshot says something different from

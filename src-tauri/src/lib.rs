@@ -5,8 +5,9 @@ use std::sync::{Arc, Mutex};
 
 use loopfleet_adapters::{ClaudeAdapter, CursorAdapter, PiAdapter};
 use loopfleet_core::{
-    fold_rate_limit, run_loop, AgentAdapter, CompareView, LoopConfig, NormalizedEvent, PlanView,
-    RateLimitNotice, RunSpec, RunState, RunTimeline, UsageSnapshot, UsageSource,
+    fold_rate_limit, resolve_display, run_loop, AgentAdapter, CompareView, LoopConfig,
+    NormalizedEvent, PlanView, RateLimitNotice, RunSpec, RunState, RunTimeline, UsageDisplay,
+    UsageSnapshot, UsageSource, UsageThresholds,
 };
 use loopfleet_gitx::GitActor;
 use loopfleet_sandbox::{confine_prefix, RenderParams};
@@ -1138,6 +1139,46 @@ fn resume_buffer(attempt: u32) -> time::Duration {
     time::Duration::seconds(60 * 2i64.pow(attempt.saturating_sub(1)))
 }
 
+/// A scheduled launch found the agent still exhausted at most this many times
+/// before the schedule is dropped rather than pushed back again — the launch
+/// counterpart of `MAX_RESUME_ATTEMPTS`, so a launch scheduled against a
+/// persistently-limited agent doesn't push itself back forever.
+const MAX_LAUNCH_RESCHEDULES: u32 = 3;
+
+/// Resolve one agent's current usage snapshot fresh, right before a scheduled
+/// launch is about to fire — the snapshot the UI was last told about
+/// (`published_snapshot`) can be minutes stale, so this re-probes rather than
+/// trusting it. Same three-tier fallback `agent_usage` sweeps over every known
+/// agent with: a live adapter probe, then the last stored rate-limit
+/// observation, then `unknown`.
+async fn resolve_agent_usage(db: &Mutex<Connection>, agent: &str) -> UsageSnapshot {
+    let now = now_ms();
+    let probed = match build_adapter(agent) {
+        Some(adapter) => adapter.usage_snapshot(now).await.ok(),
+        None => None,
+    };
+    probed
+        .filter(|s| s.source != UsageSource::Unknown)
+        .or_else(|| {
+            let conn = db.lock().ok()?;
+            let usage = loopfleet_store::load_agent_usage(&conn, agent).ok()??;
+            let notice = rate_limit_notice(agent, usage.reset_at.as_deref(), usage.observed_at);
+            Some(fold_rate_limit(None, &notice))
+        })
+        .unwrap_or_else(|| UsageSnapshot::unknown(agent, now))
+}
+
+/// A scheduled launch is dropped after `MAX_LAUNCH_RESCHEDULES` pushbacks,
+/// pushed with the reason so the UI can surface a notice rather than let the
+/// schedule silently vanish.
+#[derive(Clone, serde::Serialize)]
+struct ScheduledLaunchDroppedPayload {
+    id: i64,
+    plan_id: String,
+    task_anchor: String,
+    reason: String,
+}
+
 /// Clear the OS-level "finished runs waiting" signal — dock badge count and any
 /// pending attention request. The manual counterpart to the native window-focus
 /// handler installed in `run()`: that handler only fires on an OS-level focus
@@ -1509,6 +1550,7 @@ fn schedule_launch(
         model,
         max_iterations,
         delay,
+        0,
     );
 
     Ok(id)
@@ -1538,18 +1580,27 @@ fn cancel_scheduled_launch(id: i64, app: AppHandle, state: State<'_, AppState>) 
 
 /// Spawn the sleep-then-launch task behind one scheduled launch and register
 /// its handle, so `cancel_scheduled_launch` can abort it before it fires.
-/// Shared by `schedule_launch` (a fresh schedule) and `rearm_scheduled_launches`
-/// (recovering one across a restart) — the only difference between them is
-/// `delay`, computed relative to whenever each is called.
+/// Shared by `schedule_launch` (a fresh schedule, `reschedule_count = 0`) and
+/// `rearm_scheduled_launches` (recovering one across a restart, carrying
+/// forward whatever count was persisted) — the only other difference between
+/// them is `delay`, computed relative to whenever each is called.
 ///
-/// When it fires, the project id is resolved fresh from `plan_id` (rather than
-/// carried since scheduling) since a scheduled launch, unlike a run, has no
-/// project id of its own to remember; the plan is expected to still exist. The
-/// launch then runs through the exact same `spawn_run` path `launch_run` uses,
-/// as a fresh attempt (`resume_attempt = 0`) independent of any rate-limit
-/// resume chain. The schedule row and this handle's entry are cleared whether
-/// or not the launch actually started, since either way there's nothing left
-/// to cancel.
+/// Before actually launching, the agent's usage is re-checked: the schedule
+/// may have been set minutes or hours ago, and the snapshot the UI last saw
+/// can be stale by the time it fires. If the agent is still exhausted and
+/// reports a reset time later than now, the launch is pushed back to that
+/// reset time instead — up to `MAX_LAUNCH_RESCHEDULES` times, after which the
+/// schedule is dropped and `scheduled_launch_dropped` is emitted so the UI can
+/// tell the user rather than let it vanish silently.
+///
+/// Once it actually fires, the project id is resolved fresh from `plan_id`
+/// (rather than carried since scheduling) since a scheduled launch, unlike a
+/// run, has no project id of its own to remember; the plan is expected to
+/// still exist. The launch then runs through the exact same `spawn_run` path
+/// `launch_run` uses, as a fresh attempt (`resume_attempt = 0`) independent of
+/// any rate-limit resume chain. The schedule row and this handle's entry are
+/// cleared once the launch either fires, is pushed back, or is dropped, since
+/// in every case there is nothing left for this armed wait to do.
 #[allow(clippy::too_many_arguments)]
 fn arm_scheduled_launch(
     app: AppHandle,
@@ -1567,6 +1618,7 @@ fn arm_scheduled_launch(
     model: Option<String>,
     max_iterations: u32,
     delay: std::time::Duration,
+    reschedule_count: u32,
 ) {
     let launches_for_task = scheduled_launches.clone();
     let launch_db = db.clone();
@@ -1574,6 +1626,73 @@ fn arm_scheduled_launch(
     let app_for_spawn = app.clone();
     let handle = tauri::async_runtime::spawn(async move {
         tokio::time::sleep(delay).await;
+
+        let snapshot = resolve_agent_usage(&launch_db, &agent).await;
+        let now = now_ms();
+        let still_exhausted = resolve_display(&snapshot, now, UsageThresholds::default())
+            == UsageDisplay::Exhausted;
+        let later_reset = snapshot.reset_at_ms.filter(|reset_at_ms| *reset_at_ms > now);
+
+        if still_exhausted {
+            if let Some(reset_at_ms) = later_reset {
+                let next_count = reschedule_count + 1;
+                if next_count <= MAX_LAUNCH_RESCHEDULES {
+                    if let Ok(conn) = launch_db.lock() {
+                        let _ = loopfleet_store::reschedule_launch(&conn, id, reset_at_ms, next_count);
+                    }
+                    let reset_at = OffsetDateTime::from_unix_timestamp(reset_at_ms / 1000)
+                        .unwrap_or_else(|_| OffsetDateTime::now_utc());
+                    let _ = app.emit(
+                        "scheduled_launch",
+                        ScheduledLaunchPayload {
+                            id,
+                            plan_id: plan_id.clone(),
+                            task_anchor: task_anchor.clone(),
+                            launch_at: reset_at.format(&Rfc3339).unwrap_or_else(|_| reset_at.to_string()),
+                        },
+                    );
+                    let next_delay = std::time::Duration::try_from(reset_at - OffsetDateTime::now_utc())
+                        .unwrap_or(std::time::Duration::ZERO);
+                    arm_scheduled_launch(
+                        app,
+                        db,
+                        git,
+                        data_dir,
+                        stops,
+                        unacknowledged,
+                        scheduled_resumes,
+                        launches_for_task,
+                        id,
+                        plan_id,
+                        task_anchor,
+                        agent,
+                        model,
+                        max_iterations,
+                        next_delay,
+                        next_count,
+                    );
+                    return;
+                }
+
+                launches_for_task.lock().unwrap().remove(&id);
+                if let Ok(conn) = launch_db.lock() {
+                    let _ = loopfleet_store::delete_scheduled_launch(&conn, id);
+                }
+                let _ = app.emit(
+                    "scheduled_launch_dropped",
+                    ScheduledLaunchDroppedPayload {
+                        id,
+                        plan_id,
+                        task_anchor,
+                        reason: format!(
+                            "{agent} is still rate-limited after {next_count} reschedule(s); \
+                             this scheduled launch was dropped — launch it manually once it clears"
+                        ),
+                    },
+                );
+                return;
+            }
+        }
 
         let project_id = {
             let conn = match launch_db.lock() {
@@ -1666,6 +1785,7 @@ fn rearm_scheduled_launches(app: &AppHandle) {
             launch.model,
             launch.pass_count,
             delay,
+            launch.reschedule_count,
         );
     }
 }
