@@ -462,6 +462,31 @@
   line-height: var(--leading-normal);
 }
 
+/* Books a `scheduleLaunch` for the reset instant, offered only once the
+ * window is spent — sits under the warning note it answers. */
+.launch__schedule {
+  flex: 1 0 100%;
+  align-self: flex-start;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-bg-raised);
+  color: var(--c-text);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.launch__schedule:hover:not(:disabled) {
+  background: var(--c-accent-quiet);
+  color: var(--c-accent-text);
+}
+
+.launch__schedule:disabled {
+  color: var(--c-text-faint);
+  cursor: help;
+}
+
 /* Beside the Run button: a warning, not a readout (see LaunchControl). */
 .launch__headroom {
   flex: none;

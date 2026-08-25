@@ -15,12 +15,13 @@ import {
   launchRun,
   listProjects,
   planOverview,
+  scheduleLaunch,
 } from "../commands";
 import { taskSummary } from "../displayText";
 import { onRunStatus } from "../events";
 import { preferredAgent, readLaunchPrefs, writeLaunchPrefs } from "../launchPrefs";
 import { isActiveRun, RUN_STATUS_LABEL } from "../status";
-import { launchHeadroom, usageIndicator } from "../usage";
+import { formatResetTime, launchHeadroom, usageIndicator } from "../usage";
 import { SplitButton } from "./Button";
 import { formatDuration } from "./DataGrid";
 import { Elapsed } from "./Elapsed";
@@ -517,6 +518,11 @@ export function LaunchControl({
   // below since they need to stay put until the user reads/dismisses them.
   const [justLaunched, setJustLaunched] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: false } | null>(null);
+  // Scheduling a start for when the limit resets is a separate action from
+  // Run — it books a `scheduleLaunch` for later rather than starting now — so
+  // it gets its own in-flight/confirmation state alongside `launching`.
+  const [scheduling, setScheduling] = useState(false);
+  const [justScheduled, setJustScheduled] = useState(false);
   // Headroom for the agent about to be launched, from the same store the
   // agents panel and the run toolbar read — the state on screen is the state
   // the run will meet.
@@ -558,6 +564,10 @@ export function LaunchControl({
     snapshots[selectedAgent] ?? null,
     now,
   );
+  // Known only when the agent's own snapshot carries it — an exhausted
+  // window with no reported reset instant can't be scheduled against, only
+  // waited out.
+  const resetAtMs = snapshots[selectedAgent]?.reset_at_ms ?? null;
 
   function changePasses(delta: number) {
     setPasses(Math.min(50, Math.max(1, passCount + delta)));
@@ -587,10 +597,37 @@ export function LaunchControl({
     }
   }
 
+  // Books a `scheduleLaunch` for the instant the exhausted agent's window
+  // reopens, so the run fires unattended instead of the user having to
+  // remember to come back and press Run. Only reachable when `resetAtMs` is
+  // known — the button is disabled otherwise.
+  async function scheduleForReset() {
+    if (resetAtMs === null) return;
+    setMenuOpen(false);
+    setScheduling(true);
+    setMsg(null);
+    try {
+      await scheduleLaunch({
+        planId: projectId,
+        taskAnchor,
+        agent: selectedAgent,
+        model: model.trim() || null,
+        maxIterations: passCount,
+        launchAt: new Date(resetAtMs).toISOString(),
+      });
+      setJustScheduled(true);
+      setTimeout(() => setJustScheduled(false), 1500);
+    } catch (e) {
+      setMsg({ text: String(e), ok: false });
+    } finally {
+      setScheduling(false);
+    }
+  }
+
   // Mirrored onto the DOM so plan.css's `:has(.launch--engaged)` can keep the
   // row visible while the menu/result popover is open — both now portal to
   // document.body via Popover, out of reach of a plain `:has(.launch__menu)`.
-  const engaged = menuOpen || msg !== null || justLaunched;
+  const engaged = menuOpen || msg !== null || justLaunched || justScheduled;
 
   const content = (
     <div
@@ -690,6 +727,27 @@ export function LaunchControl({
             </span>
             {headroom.warning && (
               <span className="launch__usage-note">{headroom.warning}</span>
+            )}
+            {headroom.display === "exhausted" && (
+              <button
+                type="button"
+                className="launch__schedule"
+                disabled={resetAtMs === null || scheduling}
+                title={
+                  resetAtMs === null
+                    ? "The agent hasn't reported when this window resets, so a start can't be scheduled — launch manually once it reports a limit."
+                    : `Books a run to start at ${formatResetTime(resetAtMs, now)}, once the limit resets.`
+                }
+                onClick={scheduleForReset}
+              >
+                {scheduling
+                  ? "Scheduling…"
+                  : justScheduled
+                    ? "Scheduled"
+                    : resetAtMs === null
+                      ? "Start when the limit resets"
+                      : `Start at ${formatResetTime(resetAtMs, now)}`}
+              </button>
             )}
           </div>
         )}
