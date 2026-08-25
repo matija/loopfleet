@@ -18,12 +18,33 @@
 //!
 //! Other line types Claude emits (hook lifecycle, rate-limit notices, partial
 //! deltas) carry nothing the enum represents and are ignored.
+//!
+//! Separately from runs, the adapter answers [`AgentAdapter::usage_snapshot`]
+//! by probing the CLI's `/usage` slash command headlessly. That command is
+//! answered locally (no model turn, no tokens, no cost) and its only
+//! machine-readable surface is the `result` string of `--output-format json`,
+//! which holds a block of prose:
+//!
+//! ```text
+//! You are currently using your subscription to power your Claude Code usage
+//!
+//! Current session: 17% used · resets Aug 25 at 12:20pm (Europe/Zagreb)
+//! Current week (all models): 56% used · resets Aug 25 at 1pm (Europe/Zagreb)
+//! ```
+//!
+//! [`map_usage`] reads the `<label>: <n>% used` rows out of that prose. Because
+//! prose is not a contract, every way it can disappoint us — the CLI missing,
+//! the probe failing, JSON we cannot parse, wording we do not recognize — maps
+//! to [`UsageSnapshot::unknown`] rather than an error: the snapshot's
+//! [`UsageSource::Unknown`](loopfleet_core::UsageSource::Unknown) already says "nothing is known", and a limit query
+//! is not worth failing a caller over.
 
 use std::collections::HashSet;
 use std::path::Path;
+use std::time::Duration;
 
 use async_trait::async_trait;
-use loopfleet_core::{NormalizedEvent, Usage};
+use loopfleet_core::{NormalizedEvent, Usage, UsageSnapshot};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
@@ -33,6 +54,15 @@ use crate::{AdapterError, AgentAdapter, RunHandle, RunSpec, SessionHandle, Sessi
 /// Longest excerpt (in bytes, on a char boundary) kept for tool inputs and
 /// results — the event log stores excerpts, not full payloads.
 const EXCERPT_LIMIT: usize = 2000;
+
+/// The agent key every snapshot this adapter produces is stamped with — the
+/// same key `discovery` registers the CLI under.
+const AGENT_KEY: &str = "claude";
+
+/// How long the out-of-band `/usage` probe may take before we give up and call
+/// the answer unknown. Generous enough for a cold CLI start, short enough that
+/// a wedged binary cannot stall a scheduling decision.
+const USAGE_PROBE_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// The Claude Code headless adapter. Stateless; each `start_run` spawns its own
 /// process and mapper.
@@ -80,6 +110,150 @@ impl AgentAdapter for ClaudeAdapter {
     ) -> Result<SessionHandle, AdapterError> {
         Err(AdapterError::SessionsUnsupported)
     }
+
+    /// Probes `/usage` and maps its prose into a snapshot stamped `now_ms`.
+    ///
+    /// Never `Err`: a failed or unrecognized probe answers
+    /// [`UsageSnapshot::unknown`]. That is a truthful "the agent can report,
+    /// but told us nothing this time", and is deliberately distinct from the
+    /// trait default's [`AdapterError::UsageUnsupported`], which claims the
+    /// agent has no way to report at all.
+    async fn usage_snapshot(&self, now_ms: i64) -> Result<UsageSnapshot, AdapterError> {
+        Ok(map_usage(probe_usage().await.as_deref(), now_ms))
+    }
+}
+
+/// Runs `claude -p /usage --output-format json` and returns the envelope's
+/// `result` string, or `None` if anything at all went wrong — the binary is
+/// missing, the probe timed out or exited non-zero, stdout was not the JSON
+/// envelope, or the envelope reported an error or carried no `result`.
+///
+/// Callers turn `None` into an unknown snapshot. Which failure it was is not a
+/// distinction [`UsageSnapshot`] can express, so it is not one worth carrying
+/// up.
+///
+/// The probe needs no worktree, no sandbox wrapper and no permissions: `/usage`
+/// is answered by the CLI itself, without a model turn.
+async fn probe_usage() -> Option<String> {
+    let mut cmd = tokio::process::Command::new("claude");
+    cmd.arg("-p")
+        .arg("/usage")
+        .args(["--output-format", "json"])
+        // A limit query has no business in the user's resumable history.
+        .arg("--no-session-persistence")
+        .stdin(std::process::Stdio::null());
+    // Own process group, matching every other agent spawn here, so a probe that
+    // outlives the timeout is signallable on its own.
+    #[cfg(unix)]
+    cmd.process_group(0);
+
+    let output = tokio::time::timeout(USAGE_PROBE_TIMEOUT, cmd.output())
+        .await
+        .ok()?
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let v: Value = serde_json::from_slice(&output.stdout).ok()?;
+    if v.get("is_error").and_then(Value::as_bool).unwrap_or(false) {
+        return None;
+    }
+    v.get("result").and_then(Value::as_str).map(String::from)
+}
+
+/// One `<label>: <n>% used` row of the `/usage` prose, split into the parts a
+/// [`UsageSnapshot`] has fields for.
+#[derive(Debug, PartialEq)]
+struct UsageWindow {
+    /// The window's label, normalized where we recognize the wording.
+    window: String,
+    /// The model the row scopes its window to, when it names one.
+    model: Option<String>,
+    used_fraction: f64,
+}
+
+/// Maps the `/usage` prose (or its absence) into a snapshot stamped `now_ms`.
+///
+/// When several windows are reported — session and week, or a per-model week
+/// alongside the all-model one — the snapshot describes the *fullest* of them.
+/// A snapshot carries one fraction, and the fullest window is the one that will
+/// stop the next run, so it is the one a scheduler has to see.
+///
+/// The `resets …` half of each row is deliberately not mapped:
+/// "Aug 25 at 12:19pm (Europe/Zagreb)" names neither a year nor a UTC offset,
+/// so producing the epoch millis [`UsageSnapshot::reset_at_ms`] wants would
+/// mean guessing at both. It stays `None`, and staleness falls back to the
+/// snapshot's age.
+fn map_usage(text: Option<&str>, now_ms: i64) -> UsageSnapshot {
+    let unknown = UsageSnapshot::unknown(AGENT_KEY, now_ms);
+    let Some(text) = text else {
+        return unknown;
+    };
+    let fullest = text
+        .lines()
+        .filter_map(parse_usage_row)
+        .max_by(|a, b| a.used_fraction.total_cmp(&b.used_fraction));
+    // Prose we recognize nothing in tells us exactly as much as no prose.
+    let Some(fullest) = fullest else {
+        return unknown;
+    };
+
+    let mut snapshot = UsageSnapshot::reported(AGENT_KEY, fullest.used_fraction, now_ms)
+        .with_limit_window(fullest.window);
+    if let Some(model) = fullest.model {
+        snapshot = snapshot.with_model(model);
+    }
+    snapshot
+}
+
+/// Parses one line of the prose as a usage row, or `None` if it is not one.
+///
+/// The shape required is `<label>: <n>% used`, optionally trailed by the
+/// `· resets …` clause we ignore. Insisting on the `used` keyword is what keeps
+/// the prose's other colon-and-percent lines (`Top skills: /to-prd 4%`) from
+/// reading as windows.
+fn parse_usage_row(line: &str) -> Option<UsageWindow> {
+    let (label, rest) = line.trim().split_once(':')?;
+    let (percent, tail) = rest.split_once('%')?;
+    if !tail.trim_start().starts_with("used") {
+        return None;
+    }
+    let used_fraction = percent.trim().parse::<f64>().ok()? / 100.0;
+    if !used_fraction.is_finite() {
+        return None;
+    }
+    let (window, model) = split_label(label.trim());
+    Some(UsageWindow {
+        window,
+        model,
+        used_fraction,
+    })
+}
+
+/// Splits a row's label into a window name and, where the label scopes the
+/// window to a model, that model.
+///
+/// The labels the CLI is known to print become the short window names the rest
+/// of the app already speaks (`"session"`, `"weekly"`), and a parenthesized
+/// qualifier that is not the all-models marker is read as a model name
+/// (`"Current week (Opus)"`). An unfamiliar label is passed through verbatim
+/// rather than guessed at — it is still worth showing.
+fn split_label(label: &str) -> (String, Option<String>) {
+    let (head, qualifier) = match label.split_once('(') {
+        Some((head, rest)) => (head.trim(), rest.strip_suffix(')').map(str::trim)),
+        None => (label, None),
+    };
+    let window = match head.to_ascii_lowercase().as_str() {
+        "current session" => "session".to_string(),
+        "current week" => "weekly".to_string(),
+        _ => label.to_string(),
+    };
+    // "all models" scopes nothing: it is how the CLI spells *no* model
+    // qualifier.
+    let model = qualifier
+        .filter(|q| !q.eq_ignore_ascii_case("all models"))
+        .map(str::to_string);
+    (window, model)
 }
 
 /// Reads the process's stdout line by line, maps each into normalized events,
@@ -374,6 +548,7 @@ fn excerpt(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use loopfleet_core::UsageSource;
 
     fn map_all(text: &str) -> Vec<NormalizedEvent> {
         let mut mapper = ClaudeMapper::new();
@@ -574,6 +749,162 @@ mod tests {
         let out = excerpt(&long);
         assert!(out.ends_with('…'));
         assert_eq!(out.chars().filter(|c| *c == 'x').count(), EXCERPT_LIMIT);
+    }
+
+    // --- usage_snapshot mapping -------------------------------------------
+
+    /// A fixed "now" (epoch millis) for the usage tests, so nothing reads a
+    /// clock.
+    const NOW: i64 = 1_760_000_000_000;
+
+    /// Pulls the `/usage` prose out of a captured `--output-format json`
+    /// envelope, the way [`probe_usage`] does.
+    fn usage_text(envelope: &str) -> String {
+        serde_json::from_str::<Value>(envelope)
+            .unwrap()
+            .get("result")
+            .and_then(Value::as_str)
+            .unwrap()
+            .to_string()
+    }
+
+    /// The captured `/usage` payload maps to the fullest of its two windows:
+    /// the 56% week, not the 20% session. No model (the row says "all models"),
+    /// and no reset instant (the prose names no year or offset).
+    #[test]
+    fn maps_captured_usage_payload() {
+        let text = usage_text(include_str!("../fixtures/claude_usage.json"));
+        assert_eq!(
+            map_usage(Some(&text), NOW),
+            UsageSnapshot {
+                agent_key: "claude".into(),
+                model: None,
+                limit_window: Some("weekly".into()),
+                used_fraction: 0.56,
+                reset_at_ms: None,
+                observed_at_ms: NOW,
+                source: UsageSource::Reported,
+            }
+        );
+    }
+
+    /// The session window wins when it is the fuller one — the snapshot tracks
+    /// whichever limit will actually stop the next run.
+    #[test]
+    fn fullest_window_wins_when_it_is_the_session() {
+        let text = "Current session: 91% used · resets Aug 25 at 12:20pm (Europe/Zagreb)\n\
+                    Current week (all models): 12% used · resets Aug 27 at 1pm (Europe/Zagreb)";
+        let snap = map_usage(Some(text), NOW);
+        assert_eq!(snap.limit_window.as_deref(), Some("session"));
+        assert!((snap.used_fraction - 0.91).abs() < f64::EPSILON);
+        assert_eq!(snap.source, UsageSource::Reported);
+    }
+
+    /// A week row scoped to one model carries that model through; "all models"
+    /// is the CLI's way of writing *no* model, and must not become one.
+    #[test]
+    fn per_model_week_row_carries_the_model() {
+        let text = "Current session: 4% used · resets Aug 25 at 12:20pm (Europe/Zagreb)\n\
+                    Current week (all models): 30% used · resets Aug 27 at 1pm (Europe/Zagreb)\n\
+                    Current week (Opus): 72% used · resets Aug 27 at 1pm (Europe/Zagreb)";
+        let snap = map_usage(Some(text), NOW);
+        assert_eq!(snap.limit_window.as_deref(), Some("weekly"));
+        assert_eq!(snap.model.as_deref(), Some("Opus"));
+        assert!((snap.used_fraction - 0.72).abs() < f64::EPSILON);
+    }
+
+    /// Wording we do not recognize is still a window worth showing: the label
+    /// passes through verbatim rather than being guessed at.
+    #[test]
+    fn unfamiliar_label_passes_through_as_the_window() {
+        let snap = map_usage(Some("Current 5h block: 33% used"), NOW);
+        assert_eq!(snap.limit_window.as_deref(), Some("Current 5h block"));
+        assert_eq!(snap.model, None);
+    }
+
+    /// The prose's other colon-and-percent lines are not usage rows. A payload
+    /// of nothing but those is as uninformative as no payload.
+    #[test]
+    fn non_window_rows_do_not_read_as_usage() {
+        let text = "What's contributing to your limits usage?\n\
+                    Last 24h · 706 requests · 31 sessions\n\
+                    \x20 Top skills: /to-prd 4%";
+        let snap = map_usage(Some(text), NOW);
+        assert_eq!(snap, UsageSnapshot::unknown("claude", NOW));
+        assert_eq!(snap.source, UsageSource::Unknown);
+    }
+
+    /// An API-key user gets prose with no percentages at all. Unknown, not an
+    /// error, and not a zero that would read as headroom.
+    #[test]
+    fn payload_without_percentages_is_unknown() {
+        let text = "You are currently using a Claude API key to power your Claude Code usage";
+        assert_eq!(
+            map_usage(Some(text), NOW),
+            UsageSnapshot::unknown("claude", NOW)
+        );
+    }
+
+    /// A failed probe — CLI missing, timed out, non-zero exit, unparseable
+    /// JSON — reaches the mapper as `None` and is likewise unknown.
+    #[test]
+    fn absent_payload_is_unknown() {
+        let snap = map_usage(None, NOW);
+        assert_eq!(snap, UsageSnapshot::unknown("claude", NOW));
+        assert_eq!(snap.used_fraction, 0.0);
+        assert_eq!(snap.source, UsageSource::Unknown);
+    }
+
+    /// A percentage above 100 is clamped by the constructor, so consumers can
+    /// compare against `EXHAUSTED_FRACTION` without re-validating.
+    #[test]
+    fn out_of_range_percentage_is_clamped() {
+        assert_eq!(
+            map_usage(Some("Current session: 140% used"), NOW).used_fraction,
+            1.0
+        );
+    }
+
+    /// Fractional percentages survive the trip.
+    #[test]
+    fn fractional_percentage_is_kept() {
+        let snap = map_usage(Some("Current session: 7.5% used"), NOW);
+        assert!((snap.used_fraction - 0.075).abs() < f64::EPSILON);
+    }
+
+    /// Rows the mapper accepts, split the way the snapshot's fields want.
+    #[test]
+    fn parses_a_row_into_window_model_and_fraction() {
+        assert_eq!(
+            parse_usage_row("Current week (Opus): 56% used · resets Aug 25 at 1pm"),
+            Some(UsageWindow {
+                window: "weekly".into(),
+                model: Some("Opus".into()),
+                used_fraction: 0.56,
+            })
+        );
+        assert_eq!(
+            parse_usage_row("Last 7d · 2238 requests · 104 sessions"),
+            None
+        );
+        assert_eq!(parse_usage_row("  Top skills: /to-prd 4%"), None);
+        assert_eq!(parse_usage_row("Current session: lots% used"), None);
+    }
+
+    /// The probe against the real `claude` binary. Ignored by default: it needs
+    /// the CLI installed and logged in. `/usage` is answered locally, so unlike
+    /// `live_run` below it costs no tokens.
+    #[tokio::test]
+    #[ignore = "spawns the real claude CLI; needs it installed and logged in"]
+    async fn live_usage_snapshot() {
+        use crate::AgentAdapter;
+
+        let snap = ClaudeAdapter.usage_snapshot(NOW).await.unwrap();
+        assert_eq!(snap.agent_key, "claude");
+        assert_eq!(snap.observed_at_ms, NOW);
+        // Whatever the account's state, a logged-in CLI reports a figure.
+        assert_eq!(snap.source, UsageSource::Reported);
+        assert!((0.0..=1.0).contains(&snap.used_fraction));
     }
 
     /// End-to-end against the real `claude` binary in a throwaway git repo.

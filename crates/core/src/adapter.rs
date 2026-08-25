@@ -137,10 +137,11 @@ pub trait AgentAdapter: Send + Sync {
     ///
     /// The default returns [`AdapterError::UsageUnsupported`], which is the
     /// honest answer for every agent whose CLI has no headless usage query
-    /// (all three v1 agents: `claude`, `pi`, `cursor-agent`). Callers must
-    /// treat that as "ask again some other way", not as "plenty left" — it is
-    /// distinct from a successful [`UsageSnapshot::unknown`], which says the
-    /// agent *can* report but has said nothing yet.
+    /// (`pi` and `cursor-agent`; `claude` overrides it, probing its `/usage`
+    /// command). Callers must treat that as "ask again some other way", not as
+    /// "plenty left" — it is distinct from a successful
+    /// [`UsageSnapshot::unknown`], which says the agent *can* report but has
+    /// said nothing yet.
     async fn usage_snapshot(&self, now_ms: i64) -> Result<UsageSnapshot, AdapterError> {
         let _ = now_ms;
         Err(AdapterError::UsageUnsupported)
