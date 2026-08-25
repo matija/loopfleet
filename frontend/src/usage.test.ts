@@ -10,6 +10,7 @@ import {
   formatUsedPercent,
   headroomBucket,
   isStale,
+  launchHeadroom,
   usageIndicator,
 } from "./usage";
 
@@ -238,5 +239,57 @@ describe("usageIndicator", () => {
     expect(indicator.display).toBe("unknown");
     expect(indicator.label).toBe("usage unknown");
     expect(indicator.staleness).toBe("last measured 22m ago");
+  });
+});
+
+describe("launchHeadroom", () => {
+  it("leaves the launch unremarked while the agent has room", () => {
+    const readout = launchHeadroom("claude", snapshot(), NOW, undefined, CLOCK);
+    expect(readout.display).toBe("available");
+    expect(readout.label).toBe("50%");
+    expect(readout.warning).toBeNull();
+  });
+
+  it("says nothing extra for a low window — visible, but not a wait", () => {
+    const readout = launchHeadroom(
+      "claude",
+      snapshot({ used_fraction: DEFAULT_LOW_FRACTION }),
+      NOW,
+    );
+    expect(readout.display).toBe("low");
+    expect(readout.warning).toBeNull();
+  });
+
+  it("spells out the wait, with the reset, when the window is spent", () => {
+    const readout = launchHeadroom(
+      "claude",
+      snapshot({ used_fraction: 1, reset_at_ms: NOW + 2 * HOUR }),
+      NOW,
+      undefined,
+      CLOCK,
+    );
+    expect(readout.display).toBe("exhausted");
+    expect(readout.label).toBe("limit reached");
+    expect(readout.warning).toBe(
+      "claude has no limit headroom left — a run started now waits until the window resets in 2h (Wed 12:13 AM).",
+    );
+  });
+
+  it("still warns when the agent never said when it resets", () => {
+    const readout = launchHeadroom(
+      "pi",
+      snapshot({ agent_key: "pi", used_fraction: 1 }),
+      NOW,
+    );
+    expect(readout.warning).toBe(
+      "pi has no limit headroom left — a run started now waits until the window resets.",
+    );
+  });
+
+  it("does not warn about a figure it no longer believes", () => {
+    const stale = snapshot({ used_fraction: 1 });
+    const readout = launchHeadroom("claude", stale, NOW + 22 * MINUTE);
+    expect(readout.display).toBe("unknown");
+    expect(readout.warning).toBeNull();
   });
 });

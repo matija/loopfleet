@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useAgentUsage } from "../agentUsage";
 import {
   agentStatus,
   exportPlanReport,
@@ -17,8 +18,9 @@ import {
 } from "../commands";
 import { taskSummary } from "../displayText";
 import { onRunStatus } from "../events";
-import { readLaunchPrefs, writeLaunchPrefs } from "../launchPrefs";
+import { preferredAgent, readLaunchPrefs, writeLaunchPrefs } from "../launchPrefs";
 import { isActiveRun, RUN_STATUS_LABEL } from "../status";
+import { launchHeadroom, usageIndicator } from "../usage";
 import { SplitButton } from "./Button";
 import { formatDuration } from "./DataGrid";
 import { Elapsed } from "./Elapsed";
@@ -515,6 +517,10 @@ export function LaunchControl({
   // below since they need to stay put until the user reads/dismisses them.
   const [justLaunched, setJustLaunched] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: false } | null>(null);
+  // Headroom for the agent about to be launched, from the same store the
+  // agents panel and the run toolbar read — the state on screen is the state
+  // the run will meet.
+  const { snapshots, now } = useAgentUsage();
   const initialized = useRef(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const chevronRef = useRef<HTMLButtonElement>(null);
@@ -543,6 +549,15 @@ export function LaunchControl({
 
   const noAgents = installed.length === 0;
   const passCount = passes || 1;
+
+  // The agent this control is about to launch: the user's pick once made,
+  // otherwise the stored preference the bare `Run` segment would use.
+  const selectedAgent = agent || preferredAgent(projectId, installed);
+  const headroom = launchHeadroom(
+    selectedAgent,
+    snapshots[selectedAgent] ?? null,
+    now,
+  );
 
   function changePasses(delta: number) {
     setPasses(Math.min(50, Math.max(1, passCount + delta)));
@@ -579,9 +594,17 @@ export function LaunchControl({
 
   const content = (
     <div
-      className={engaged ? "launch launch--engaged" : "launch"}
+      className={[
+        "launch",
+        engaged ? "launch--engaged" : "",
+        headroom.warning ? "launch--exhausted" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       ref={rootRef}
-      title={noAgents ? "No agent CLI is installed" : undefined}
+      title={
+        noAgents ? "No agent CLI is installed" : (headroom.warning ?? undefined)
+      }
     >
       <SplitButton
         className="launch__run"
@@ -593,6 +616,19 @@ export function LaunchControl({
       >
         {launching ? "Launching…" : justLaunched ? "Launched" : "Run"}
       </SplitButton>
+      {/* Inline, this chip is a warning rather than a readout: a percentage on
+          every task row would be noise, and "usage unknown" (most agents, most
+          of the time) doubly so. Only a window worth hesitating over earns the
+          space — the full figure is one click away in the menu. */}
+      {!noAgents &&
+        (headroom.display === "low" || headroom.display === "exhausted") && (
+          <span
+            className={`launch__headroom launch__headroom--${headroom.display}`}
+            title={headroom.warning ?? headroom.title}
+          >
+            {headroom.label}
+          </span>
+        )}
       <Popover
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -610,21 +646,53 @@ export function LaunchControl({
         >
           {agentsLoading
             ? null
-            : installed.map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  role="radio"
-                  aria-checked={agent === k}
-                  className={`launch__agent${agent === k ? " launch__agent--on" : ""}`}
-                  data-label={k}
-                  disabled={noAgents}
-                  onClick={() => setAgent(k)}
-                >
-                  {k}
-                </button>
-              ))}
+            : installed.map((k) => {
+                // Each agent carries its own state into the pick: a spent
+                // window is marked on the button itself, so choosing one isn't
+                // a guess that has to be undone after reading the line below.
+                const chip = usageIndicator(snapshots[k] ?? null, now);
+                const classes = [
+                  "launch__agent",
+                  agent === k ? "launch__agent--on" : "",
+                  chip.display === "exhausted"
+                    ? "launch__agent--exhausted"
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    role="radio"
+                    aria-checked={agent === k}
+                    className={classes}
+                    data-label={k}
+                    disabled={noAgents}
+                    title={chip.title}
+                    onClick={() => setAgent(k)}
+                  >
+                    {k}
+                  </button>
+                );
+              })}
         </div>
+        {/* The selected agent's headroom in full: the figure always, and the
+            consequence of launching into a spent window when there is one. */}
+        {!agentsLoading && !noAgents && (
+          <div
+            className={`launch__usage launch__usage--${headroom.display}`}
+            role="status"
+          >
+            <span className="launch__usage-agent">{selectedAgent}</span>
+            <span className="launch__usage-figure" title={headroom.title}>
+              {headroom.label}
+            </span>
+            {headroom.warning && (
+              <span className="launch__usage-note">{headroom.warning}</span>
+            )}
+          </div>
+        )}
         {agent === "claude" && (
           <div className="launch__model" role="group" aria-label="Model">
             <input

@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { readLaunchPrefs, writeLaunchPrefs } from "./launchPrefs";
+import {
+  preferredAgent,
+  readLaunchPrefs,
+  writeLaunchPrefs,
+} from "./launchPrefs";
 
 // The vitest environment here is plain node (no jsdom), so localStorage isn't
 // globally available. A minimal in-memory stand-in is enough to exercise the
@@ -145,5 +149,20 @@ describe("writeLaunchPrefs", () => {
       model: "sonnet",
       passes: 5,
     });
+  });
+});
+
+describe("preferredAgent", () => {
+  it("names the agent a bare Run would start", () => {
+    expect(preferredAgent(PROJECT_ID, INSTALLED)).toBe("claude");
+    writeLaunchPrefs(PROJECT_ID, { agent: "codex", model: "", passes: 2 });
+    expect(preferredAgent(PROJECT_ID, INSTALLED)).toBe("codex");
+  });
+
+  it("follows the same fallback the launch itself would take", () => {
+    writeLaunchPrefs(PROJECT_ID, { agent: "codex", model: "", passes: 2 });
+    // Uninstalled since it was stored: the run would go to the default, so the
+    // headroom shown has to be the default's.
+    expect(preferredAgent(PROJECT_ID, ["claude"])).toBe("claude");
   });
 });

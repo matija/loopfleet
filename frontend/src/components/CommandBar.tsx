@@ -6,10 +6,17 @@
 // freshness) — so only the pieces the host supplies render. It is purely
 // presentational; filter state, agent status, and freshness source all live
 // in the host.
+//
+// The agent pill answers "is this agent there?"; the headroom chip beside it
+// answers "has it got anything left?" — the same snapshot the agents panel and
+// the launch control read, so the run you are watching and the run you are
+// about to start are described by one figure.
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { normalizeDisplayText } from "../displayText";
+import type { UsageSnapshot } from "../types";
+import { usageIndicator } from "../usage";
 
 export function CommandBar({
   toolbarFilter,
@@ -25,7 +32,14 @@ export function CommandBar({
   /// The `WHERE …` client-side event filter, when the tab has an event stream.
   filter?: { value: string; onChange: (v: string) => void };
   /// Agent connection pill: `connected` reflects `agent_status.installed`.
-  agent?: { name: string; connected: boolean };
+  /// `usage` is that agent's limit headroom as of `now` (from the shared
+  /// `agentUsage` store); omit it to show availability alone.
+  agent?: {
+    name: string;
+    connected: boolean;
+    usage?: UsageSnapshot | null;
+    now?: number;
+  };
   /// Epoch ms of the last activity to stamp "Xs ago" against; omit to hide.
   since?: number;
 }) {
@@ -60,9 +74,29 @@ export function CommandBar({
             {agent.name} · {agent.connected ? "Connected" : "missing"}
           </span>
         )}
+        {/* A missing CLI's headroom is beside the point — the run is refused on
+            availability first. */}
+        {agent?.connected && agent.now !== undefined && (
+          <Headroom usage={agent.usage ?? null} now={agent.now} />
+        )}
       </div>
     </>,
     toolbarFilter,
+  );
+}
+
+/// The selected agent's headroom, in the same words and buckets the agents
+/// panel uses: a percentage while the figure holds, the state in words once it
+/// doesn't — "limit reached" in danger tone when the window is spent.
+function Headroom({ usage, now }: { usage: UsageSnapshot | null; now: number }) {
+  const { display, label, title } = usageIndicator(usage, now);
+  return (
+    <span
+      className={`toolbar__usage toolbar__usage--${display}`}
+      title={title}
+    >
+      {label}
+    </span>
   );
 }
 

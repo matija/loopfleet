@@ -407,6 +407,83 @@
   color: var(--c-text-faint);
 }
 
+/* An agent whose window is spent stays pickable — the run schedules its own
+ * resume — but says so: the label recedes and carries the danger tone, so the
+ * pick is made knowing what it costs. */
+.launch__agent--exhausted {
+  color: var(--c-danger);
+}
+
+.launch__agent--exhausted.launch__agent--on {
+  background: var(--c-danger-quiet);
+  color: var(--c-danger);
+}
+
+/* The selected agent's headroom under the picker: who, how much, and — when
+ * the window is spent — what launching into it means. */
+.launch__usage {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  max-width: 260px;
+  font-size: var(--text-xs);
+}
+
+.launch__usage-agent {
+  color: var(--c-text-muted);
+  font-weight: 600;
+}
+
+.launch__usage-figure {
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text-muted);
+  cursor: help;
+}
+
+.launch__usage--low .launch__usage-figure {
+  color: var(--c-warn);
+}
+
+.launch__usage--exhausted .launch__usage-figure {
+  color: var(--c-danger);
+  font-weight: 600;
+}
+
+.launch__usage--unknown .launch__usage-figure {
+  color: var(--c-text-faint);
+}
+
+/* The consequence, spelled out — it wraps under the figure rather than
+ * widening the menu. */
+.launch__usage-note {
+  flex: 1 0 100%;
+  color: var(--c-text-muted);
+  line-height: var(--leading-normal);
+}
+
+/* Beside the Run button: a warning, not a readout (see LaunchControl). */
+.launch__headroom {
+  flex: none;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  cursor: help;
+}
+
+.launch__headroom--low {
+  color: var(--c-warn);
+  background: var(--c-warn-quiet);
+}
+
+.launch__headroom--exhausted {
+  color: var(--c-danger);
+  background: var(--c-danger-quiet);
+  font-weight: 600;
+}
+
 /* Model override (Claude only): a free-text box with preset suggestions via
  * `<datalist>` — matches the agent/count controls' box chrome. */
 .launch__model {

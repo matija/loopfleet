@@ -288,3 +288,40 @@ export function usageIndicator(
   }
   return { display, label, title: `${parts.join(" · ")}.`, staleness };
 }
+
+/// The headroom readout for the agent a launch is about to use: the same chip
+/// rendering every other surface gets, plus the consequence of pressing Run
+/// against it.
+export type LaunchHeadroom = UsageIndicator & {
+  /// The warning under the Run button, or `null` when there is room. Set only
+  /// for `"exhausted"` — a low or unknown figure is worth showing but not worth
+  /// a sentence, and neither one stops a run from getting somewhere.
+  warning: string | null;
+};
+
+/// Resolve a snapshot for the launch control: what the chip says, and — when
+/// the agent's window is spent — what launching into it means.
+///
+/// The launch isn't refused (the run schedules its own resume once the agent
+/// reports the limit), so the wording is about the wait, not a refusal.
+export function launchHeadroom(
+  agentName: string,
+  snapshot: UsageSnapshot | null | undefined,
+  nowMs: number,
+  thresholds: UsageThresholds = DEFAULT_THRESHOLDS,
+  clock: ClockFormat = {},
+): LaunchHeadroom {
+  const indicator = usageIndicator(snapshot, nowMs, thresholds, clock);
+  if (indicator.display !== "exhausted") {
+    return { ...indicator, warning: null };
+  }
+  const resetAt = snapshot?.reset_at_ms ?? null;
+  const when =
+    resetAt === null
+      ? "the window resets"
+      : `the window resets in ${formatCountdown(resetAt, nowMs)} (${formatResetTime(resetAt, nowMs, clock)})`;
+  return {
+    ...indicator,
+    warning: `${agentName} has no limit headroom left — a run started now waits until ${when}.`,
+  };
+}

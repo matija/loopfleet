@@ -69,3 +69,18 @@ export function writeLaunchPrefs(projectId: string, prefs: LaunchPrefs): void {
     // doesn't persist across reloads.
   }
 }
+
+/// The agent a bare `Run` would start for `projectId` — the stored preference
+/// resolved against `installedAgents`, exactly as [`readLaunchPrefs`] resolves
+/// it.
+///
+/// The launch control needs this answer before the user has touched the agent
+/// picker, so its headroom readout describes the agent the button would
+/// actually launch rather than nothing at all while the preference is being
+/// adopted into state.
+export function preferredAgent(
+  projectId: string,
+  installedAgents: string[],
+): string {
+  return readLaunchPrefs(projectId, installedAgents).agent;
+}

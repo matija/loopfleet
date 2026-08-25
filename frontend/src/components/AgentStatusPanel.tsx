@@ -5,20 +5,16 @@
 //
 // Each installed agent's chip also carries its limit headroom beside the
 // version, so the same glance that answers "can I launch this agent?" answers
-// "will it get anywhere?". The wording and bucketing are `usage.ts`'s; this
-// file only fetches, ticks, and renders.
+// "will it get anywhere?". The snapshots come from the shared store
+// (`agentUsage.ts`) that the run toolbar and the launch control read too, so
+// every surface quotes the same figure; the wording and bucketing are
+// `usage.ts`'s. This file only refreshes and renders.
 
 import { useEffect, useState } from "react";
-import { agentStatus, agentUsage } from "../commands";
-import { onAgentUsage } from "../events";
+import { refreshAgentUsage, useAgentUsage } from "../agentUsage";
+import { agentStatus } from "../commands";
 import type { AgentStatus, UsageSnapshot } from "../types";
 import { usageIndicator } from "../usage";
-
-/// How often the headroom text is re-resolved. Nothing pushes an event when a
-/// snapshot merely *ages* past the staleness cutoff, so the chip re-reads the
-/// clock on its own; a minute is finer than the 15-minute cutoff it guards and
-/// coarse enough to be invisible.
-const TICK_MS = 60 * 1_000;
 
 export function AgentStatusPanel() {
   // `loaded` distinguishes "fetching" from "fetched an empty set" — without it,
@@ -26,8 +22,7 @@ export function AgentStatusPanel() {
   const [agents, setAgents] = useState<AgentStatus[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usage, setUsage] = useState<Record<string, UsageSnapshot>>({});
-  const [now, setNow] = useState(() => Date.now());
+  const { snapshots, now } = useAgentUsage();
 
   useEffect(() => {
     let cancelled = false;
@@ -49,26 +44,11 @@ export function AgentStatusPanel() {
 
   // Headroom is a nicety beside the availability answer: a failed probe leaves
   // the chips reading "usage unknown" rather than taking the whole panel down.
+  // This panel is the one surface whose whole job is agent state, so it is
+  // where a fresh probe is worth spawning; every other reader lives off the
+  // pushes that follow.
   useEffect(() => {
-    let cancelled = false;
-    agentUsage()
-      .then((snapshots) => {
-        if (cancelled) return;
-        setUsage(byAgent(snapshots));
-      })
-      .catch(() => {});
-    const unlisten = onAgentUsage((snapshot) => {
-      setUsage((prior) => ({ ...prior, [snapshot.agent_key]: snapshot }));
-    });
-    return () => {
-      cancelled = true;
-      unlisten.then((stop) => stop());
-    };
-  }, []);
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), TICK_MS);
-    return () => clearInterval(id);
+    void refreshAgentUsage();
   }, []);
 
   return (
@@ -91,7 +71,7 @@ export function AgentStatusPanel() {
             <AgentChip
               key={a.key}
               agent={a}
-              usage={usage[a.key] ?? null}
+              usage={snapshots[a.key] ?? null}
               now={now}
             />
           ))}
@@ -99,12 +79,6 @@ export function AgentStatusPanel() {
       )}
     </section>
   );
-}
-
-/// Latest snapshot per agent key. The backend sends one per agent already; this
-/// keeps the lookup a map rather than a scan on every render.
-function byAgent(snapshots: UsageSnapshot[]): Record<string, UsageSnapshot> {
-  return Object.fromEntries(snapshots.map((s) => [s.agent_key, s]));
 }
 
 function AgentChip({
