@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
-use crate::NormalizedEvent;
+use crate::{NormalizedEvent, UsageSnapshot};
 
 /// Everything an adapter needs to launch a headless run. Grows as real adapters
 /// land (per-agent flag sets, model selection); v1 carries only what the stub
@@ -84,6 +84,9 @@ pub enum AdapterError {
     Protocol(String),
     /// Interactive sessions are not implemented in v1 (M5).
     SessionsUnsupported,
+    /// This agent has no way to report how much of its limit window is left,
+    /// so [`AgentAdapter::usage_snapshot`] has nothing to answer with.
+    UsageUnsupported,
 }
 
 impl std::fmt::Display for AdapterError {
@@ -93,6 +96,9 @@ impl std::fmt::Display for AdapterError {
             AdapterError::Protocol(m) => write!(f, "agent protocol error: {m}"),
             AdapterError::SessionsUnsupported => {
                 write!(f, "interactive sessions are not supported in v1")
+            }
+            AdapterError::UsageUnsupported => {
+                write!(f, "this agent does not report usage/limit headroom")
             }
         }
     }
@@ -115,4 +121,76 @@ pub trait AgentAdapter: Send + Sync {
         cwd: &Path,
         seed: SessionSeed,
     ) -> Result<SessionHandle, AdapterError>;
+
+    /// Report how much of the agent's limit window is spent right now, as a
+    /// normalized [`UsageSnapshot`] stamped `now_ms` (epoch millis, supplied by
+    /// the caller so this stays clock-free and testable, like `usage`'s
+    /// functions).
+    ///
+    /// This is an *optional capability*, not part of the run path: an agent
+    /// that can be asked for its headroom out of band answers here, and
+    /// scheduling can read it before committing a run. Agents that only ever
+    /// mention limits mid-stream keep reaching the same state the other way —
+    /// [`NormalizedEvent::RateLimited`] folded through
+    /// [`fold_rate_limit`](crate::fold_rate_limit) — so nothing is lost by
+    /// leaving this unimplemented.
+    ///
+    /// The default returns [`AdapterError::UsageUnsupported`], which is the
+    /// honest answer for every agent whose CLI has no headless usage query
+    /// (all three v1 agents: `claude`, `pi`, `cursor-agent`). Callers must
+    /// treat that as "ask again some other way", not as "plenty left" — it is
+    /// distinct from a successful [`UsageSnapshot::unknown`], which says the
+    /// agent *can* report but has said nothing yet.
+    async fn usage_snapshot(&self, now_ms: i64) -> Result<UsageSnapshot, AdapterError> {
+        let _ = now_ms;
+        Err(AdapterError::UsageUnsupported)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An adapter that implements only the required methods — the shape every
+    /// v1 adapter has.
+    struct MinimalAdapter;
+
+    #[async_trait]
+    impl AgentAdapter for MinimalAdapter {
+        async fn start_run(&self, _spec: &RunSpec) -> Result<RunHandle, AdapterError> {
+            let (_tx, rx) = mpsc::channel(1);
+            Ok(RunHandle { events: rx })
+        }
+
+        async fn open_session(
+            &self,
+            _cwd: &Path,
+            _seed: SessionSeed,
+        ) -> Result<SessionHandle, AdapterError> {
+            Err(AdapterError::SessionsUnsupported)
+        }
+    }
+
+    /// Not implementing the capability compiles, and answers "unsupported" —
+    /// never a zero-used snapshot, which would read as headroom.
+    #[tokio::test]
+    async fn default_usage_snapshot_is_unsupported() {
+        let err = MinimalAdapter.usage_snapshot(0).await.unwrap_err();
+        assert!(matches!(err, AdapterError::UsageUnsupported));
+        assert_eq!(
+            err.to_string(),
+            "this agent does not report usage/limit headroom"
+        );
+    }
+
+    /// The capability must not have broken object safety: the supervisor holds
+    /// adapters as `Box<dyn AgentAdapter>`.
+    #[tokio::test]
+    async fn default_is_reachable_through_dyn_adapter() {
+        let adapter: Box<dyn AgentAdapter> = Box::new(MinimalAdapter);
+        assert!(matches!(
+            adapter.usage_snapshot(0).await.unwrap_err(),
+            AdapterError::UsageUnsupported
+        ));
+    }
 }
