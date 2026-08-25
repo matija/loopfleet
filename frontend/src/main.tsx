@@ -17,6 +17,7 @@ import "./toolbar.css";
 import "./popover.css";
 import "./select.css";
 import "./number-field.css";
+import "./segmented-control.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

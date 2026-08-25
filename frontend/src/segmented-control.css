@@ -1,0 +1,45 @@
+/* SegmentedControl — adjoining-pill radio group (SegmentedControl.tsx). The
+ * track borrows the boxed-input look from .select-trigger (select.css) so it
+ * reads as a sibling of the other form controls; segments sit flush inside
+ * it and only the checked one lifts onto a raised fill. */
+
+.segmented-control {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 1px;
+  min-height: var(--control-h);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-md);
+  padding: 1px;
+}
+
+.segmented-control__segment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--c-text-muted);
+  white-space: nowrap;
+}
+
+.segmented-control__segment:hover:not(:disabled):not(.segmented-control__segment--checked) {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.segmented-control__segment--checked {
+  background: var(--c-surface-3);
+  color: var(--c-text);
+  font-weight: 600;
+}
+
+.segmented-control__segment:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
