@@ -1,0 +1,117 @@
+/* Select — the themed native-<select> replacement (Select.tsx). The trigger
+ * borrows the boxed-input look from .field select/input (panels.css) so it
+ * drops into the same forms without looking like a different control family;
+ * the popup borrows the floating-surface shell from popover.css and adds
+ * only the listbox/option layer on top. */
+
+.select-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--control-h);
+  font: inherit;
+  color: var(--c-text);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+}
+
+.select-trigger:hover:not(:disabled) {
+  background: var(--c-surface-3);
+}
+
+.select-trigger[aria-expanded="true"],
+.select-trigger:focus-visible {
+  border-color: var(--c-accent);
+}
+
+.select-trigger:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.select-trigger__label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.select-trigger__chevron {
+  flex: none;
+  color: var(--c-text-faint);
+}
+
+/* The popup only needs the floating shell (.popover) plus enough width to
+ * match its trigger; the listbox itself carries no extra padding so options
+ * can span edge-to-edge like palette rows. */
+.select-popover {
+  padding: var(--space-1);
+}
+
+.select-listbox {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.select-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--row-h);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--c-text-muted);
+  cursor: pointer;
+}
+
+.select-option:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+/* Keyboard highlight — same quiet fill as the palette's active row, so
+ * "current option" reads consistently across every listbox-style menu. */
+.select-option--active {
+  background: var(--c-surface-3);
+  color: var(--c-text);
+}
+
+.select-option[aria-selected="true"] {
+  color: var(--c-text);
+  font-weight: 600;
+}
+
+.select-option--disabled {
+  color: var(--c-text-faint);
+  cursor: default;
+  pointer-events: none;
+}
+
+.select-option__icon {
+  flex: none;
+  color: var(--c-text-faint);
+}
+
+.select-option--active .select-option__icon,
+.select-option:hover .select-option__icon {
+  color: var(--c-text-muted);
+}
+
+.select-option__label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
