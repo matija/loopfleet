@@ -18,6 +18,8 @@ import {
   type RetentionMode,
 } from "../retention";
 import { isThemeId, THEMES, type ThemeId } from "../themes";
+import { Select } from "./Select";
+import { NumberField } from "./NumberField";
 
 // The v1 agent keys (matches the adapters' discovery set). A small stable list;
 // no need to derive it from `agent_status` here.
@@ -154,32 +156,24 @@ export function SettingsPanel({
       <div className="form-grid">
         <label className="field">
           <span>Default agent</span>
-          <select
+          <Select
             value={settings.default_agent}
             disabled={!loaded}
-            onChange={(e) =>
-              setSettings({ ...settings, default_agent: e.target.value })
-            }
-          >
-            {AGENTS.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setSettings({ ...settings, default_agent: v })}
+            options={AGENTS.map((a) => ({ value: a, label: a }))}
+          />
         </label>
         <label className="field">
           <span>Default iterations</span>
-          <input
-            type="number"
+          <NumberField
             min={1}
             max={50}
             value={settings.default_iterations}
             disabled={!loaded}
-            onChange={(e) =>
+            onChange={(v) =>
               setSettings({
                 ...settings,
-                default_iterations: Number(e.target.value),
+                default_iterations: v,
               })
             }
           />
@@ -188,39 +182,38 @@ export function SettingsPanel({
           <span>
             Concurrency cap <em>(0 = unlimited)</em>
           </span>
-          <input
-            type="number"
+          <NumberField
             min={0}
             max={20}
             value={settings.concurrency_cap}
             disabled={!loaded}
-            onChange={(e) =>
+            onChange={(v) =>
               setSettings({
                 ...settings,
-                concurrency_cap: Number(e.target.value),
+                concurrency_cap: v,
               })
             }
           />
         </label>
         <label className="field">
           <span>Worktree retention</span>
-          <select
+          <Select
             value={retentionMode}
             disabled={!loaded}
-            onChange={(e) => setRetentionMode(e.target.value as RetentionMode)}
-          >
-            <option value="immediately">Immediately</option>
-            <option value="after">After a number of hours</option>
-            <option value="never">Never</option>
-          </select>
+            onChange={(v) => setRetentionMode(v as RetentionMode)}
+            options={[
+              { value: "immediately", label: "Immediately" },
+              { value: "after", label: "After a number of hours" },
+              { value: "never", label: "Never" },
+            ]}
+          />
           {retentionMode === "after" && (
-            <input
-              type="number"
+            <NumberField
               min={1}
               aria-label="Retention hours"
-              value={retentionHours}
+              value={Number(retentionHours) || 0}
               disabled={!loaded}
-              onChange={(e) => setRetentionHours(e.target.value)}
+              onChange={(v) => setRetentionHours(String(v))}
             />
           )}
           {/* All three modes spelled out, not just the selected one, so the
@@ -238,20 +231,15 @@ export function SettingsPanel({
       <div className="form-grid">
         <label className="field">
           <span>Theme</span>
-          <select
+          <Select
             value={themeId}
-            onChange={(e) => {
-              // The <option> values are exactly THEMES ids; the guard is only
+            onChange={(v) => {
+              // The option values are exactly THEMES ids; the guard is only
               // to keep the cast honest.
-              if (isThemeId(e.target.value)) onThemeChange(e.target.value);
+              if (isThemeId(v)) onThemeChange(v);
             }}
-          >
-            {THEMES.map((theme) => (
-              <option key={theme.id} value={theme.id}>
-                {theme.label}
-              </option>
-            ))}
-          </select>
+            options={THEMES.map((theme) => ({ value: theme.id, label: theme.label }))}
+          />
           <span className="field__hint">
             Applies immediately and is remembered on this device only — it
             isn’t part of the settings above, so “Save settings” doesn’t
