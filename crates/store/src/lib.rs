@@ -37,6 +37,12 @@ pub use pending_resumes::{
     NewPendingResume, PendingResume,
 };
 
+mod scheduled_launches;
+pub use scheduled_launches::{
+    delete_scheduled_launch, insert_scheduled_launch, list_scheduled_launches, NewScheduledLaunch,
+    ScheduledLaunch,
+};
+
 /// Ordered list of migrations. Each entry is `(name, sql)`; names double as the
 /// applied-migrations key, so they must be unique and never reordered. Add new
 /// migrations by appending — never editing an already-shipped entry.
@@ -62,6 +68,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
     (
         "0006_agent_usage",
         include_str!("migrations/0006_agent_usage.sql"),
+    ),
+    (
+        "0007_scheduled_launches",
+        include_str!("migrations/0007_scheduled_launches.sql"),
     ),
 ];
 
@@ -138,6 +148,7 @@ mod tests {
             "events",
             "pending_resumes",
             "agent_usage",
+            "scheduled_launches",
             "schema_migrations",
         ] {
             assert!(t.contains(&expected.to_string()), "missing table {expected}");
