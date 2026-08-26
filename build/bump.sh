@@ -4,6 +4,7 @@
 #
 # The version is defined in several places that must stay in sync:
 #   - Cargo.toml            (workspace.package; all crates inherit it)
+#   - Cargo.lock            (the `loopfleet` package entry)
 #   - package.json          (root)
 #   - frontend/package.json
 #   - src-tauri/tauri.conf.json
@@ -49,6 +50,19 @@ sed_i() {
 # Every crate uses `version.workspace = true`, so this is enough.
 sed_i "s/^version = \".*\"/version = \"$NEW\"/" "$ROOT/Cargo.toml"
 
+# Cargo.lock — bump only the `version` line inside the `[[package]]` block
+# for the `loopfleet` crate itself, leaving every other locked dependency
+# version (including other `loopfleet-*` crates) untouched.
+awk -v new="$NEW" '
+  /^name = "loopfleet"$/ { in_pkg = 1 }
+  in_pkg && /^version = / {
+    print "version = \"" new "\""
+    in_pkg = 0
+    next
+  }
+  { print }
+' "$ROOT/Cargo.lock" > "$ROOT/Cargo.lock.tmp" && mv "$ROOT/Cargo.lock.tmp" "$ROOT/Cargo.lock"
+
 # JSON manifests — each has exactly one `"version": "..."` field.
 for json in \
   "$ROOT/package.json" \
@@ -58,3 +72,7 @@ for json in \
 done
 
 echo "Bumped version to $NEW"
+echo
+git -C "$ROOT" --no-pager diff -- Cargo.toml Cargo.lock package.json frontend/package.json src-tauri/tauri.conf.json
+echo
+echo "Next step: review the diff above, then commit the bump (e.g. \`git add -u && git commit -m \"Bump version to $NEW\"\`)."
