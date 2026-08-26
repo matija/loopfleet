@@ -56,7 +56,7 @@
 .titlebar__mark {
   flex: none;
   width: 20px;
-  height: 20px;
+  height: 20px; /* tokens-allow: fixed 20px brand mark, off the space scale */
   border-radius: var(--radius-sm);
   background: linear-gradient(
     135deg,
@@ -196,7 +196,7 @@
 .sidebar__search-icon {
   flex: none;
   width: 14px;
-  height: 14px;
+  height: 14px; /* tokens-allow: fixed search glyph size, off the space scale */
   color: var(--c-text-faint);
 }
 
@@ -625,7 +625,7 @@
   color: var(--c-danger);
   line-height: var(--text-sm);
   background: var(--c-danger-tint);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 2px;
   margin: -2px;
 }

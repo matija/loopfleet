@@ -60,7 +60,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  max-height: 280px;
+  max-height: 280px; /* tokens-allow: listbox scroll cap, matches the 280px popover measure */
   overflow-y: auto;
 }
 

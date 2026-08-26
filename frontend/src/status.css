@@ -56,7 +56,7 @@
  * glyph's footprint (and the pill's reserved min-width) doesn't shift. */
 .status-pill--completed .status-pill__icon,
 .status-pill--failed .status-pill__icon {
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 2px;
   margin: -2px;
 }

@@ -91,10 +91,17 @@
   --radius-sm: 8px;
   --radius-md: 10px;
   --radius-lg: 14px;
+  /* Fully-rounded: the circular backing disc behind a glyph (status pill's
+   * terminal states, the danger toast icon). Not a scale step — it's the
+   * "round this completely" sentinel, so padding decides the disc's size. */
+  --radius-pill: 999px;
 
   /* --- layout --- */
   --sidebar-w: 268px;
   --titlebar-h: 38px;
+  /* The per-view toolbar strip below the titlebar. Taller than a control row
+   * because it frames --control-h-lg controls with breathing room either side. */
+  --toolbar-h: 44px;
   /* Shared height for compact control strips (steppers, tab bars) so they share
    * one baseline instead of drifting a pixel apart. */
   --control-h: 28px;

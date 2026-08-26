@@ -253,7 +253,7 @@
 .task-status__sr {
   position: absolute;
   width: 1px;
-  height: 1px;
+  height: 1px; /* tokens-allow: sr-only clip box, not a visual size */
   padding: 0;
   margin: -1px;
   overflow: hidden;

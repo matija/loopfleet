@@ -242,7 +242,7 @@
   -webkit-appearance: none;
   flex: none;
   width: 16px;
-  height: 16px;
+  height: 16px; /* tokens-allow: fixed markdown checkbox box, off the space scale */
   margin-inline-end: var(--space-2);
   vertical-align: middle;
   display: inline-grid;
@@ -254,7 +254,7 @@
 .md-check::before {
   content: "";
   width: 6px;
-  height: 6px;
+  height: 6px; /* tokens-allow: decorative status dot, below the space scale */
   border-radius: 50%;
   background: currentColor;
 }
@@ -263,7 +263,7 @@
 .md-check:checked::before {
   content: "";
   width: 9px;
-  height: 5px;
+  height: 5px; /* tokens-allow: checkmark stroke geometry, not a token-scale value */
   background: transparent;
   border-inline-start: 2px solid currentColor;
   border-block-end: 2px solid currentColor;
