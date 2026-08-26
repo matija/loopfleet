@@ -11,6 +11,13 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { PlusIcon, MinusIcon } from "./Icon";
+import {
+  atMax,
+  atMin,
+  normalizeValue,
+  parseFieldValue,
+  stepValue,
+} from "../numberSteps";
 
 export type NumberFieldProps = {
   value: number;
@@ -25,20 +32,6 @@ export type NumberFieldProps = {
   id?: string;
   "aria-label"?: string;
 };
-
-function clamp(n: number, min?: number, max?: number): number {
-  let v = n;
-  if (min !== undefined) v = Math.max(min, v);
-  if (max !== undefined) v = Math.min(max, v);
-  return v;
-}
-
-// Rounds to the step's own decimal precision so repeated +/- presses don't
-// accumulate floating-point noise (the classic 0.1 + 0.2 drift).
-function roundToStep(n: number, step: number): number {
-  const decimals = (step.toString().split(".")[1] ?? "").length;
-  return Number(n.toFixed(decimals));
-}
 
 export function NumberField({
   value,
@@ -61,17 +54,18 @@ export function NumberField({
     setText(String(value));
   }, [value]);
 
+  const bounds = { min, max, step };
+
   function commit(next: number) {
-    const clamped = clamp(roundToStep(next, step), min, max);
-    onChange(clamped);
-    setText(String(clamped));
+    onChange(next);
+    setText(String(next));
   }
 
   function nudge(delta: number) {
     if (disabled) return;
-    const parsed = Number(text);
-    const base = text.trim() !== "" && Number.isFinite(parsed) ? parsed : value;
-    commit(base + delta);
+    // A half-typed field steps from the last committed value, not from 0.
+    const base = parseFieldValue(text) ?? value;
+    commit(stepValue(base, delta, bounds));
   }
 
   function onKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
@@ -92,17 +86,17 @@ export function NumberField({
   }
 
   function onBlur() {
-    const parsed = Number(text);
-    if (text.trim() === "" || !Number.isFinite(parsed)) {
+    const parsed = parseFieldValue(text);
+    if (parsed === null) {
       setText(String(value));
       return;
     }
-    commit(parsed);
+    commit(normalizeValue(parsed, bounds));
   }
 
   const cls = className ? `number-field ${className}` : "number-field";
-  const atMin = min !== undefined && value <= min;
-  const atMax = max !== undefined && value >= max;
+  const lowered = atMin(value, min);
+  const raised = atMax(value, max);
 
   return (
     <div className={disabled ? `${cls} number-field--disabled` : cls}>
@@ -128,7 +122,7 @@ export function NumberField({
           className="number-field__step number-field__step--up"
           tabIndex={-1}
           aria-label="Increment"
-          disabled={disabled || atMax}
+          disabled={disabled || raised}
           onClick={() => nudge(step)}
         >
           <PlusIcon size={11} className="icon" />
@@ -138,7 +132,7 @@ export function NumberField({
           className="number-field__step number-field__step--down"
           tabIndex={-1}
           aria-label="Decrement"
-          disabled={disabled || atMin}
+          disabled={disabled || lowered}
           onClick={() => nudge(-step)}
         >
           <MinusIcon size={11} className="icon" />

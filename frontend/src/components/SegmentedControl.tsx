@@ -8,6 +8,7 @@
 // native radio button group.
 
 import { useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { enabledIndices, moveIndex } from "../optionIndex";
 
 export type SegmentedControlOption<T extends string = string> = {
   value: T;
@@ -38,9 +39,7 @@ export function SegmentedControl<T extends string = string>({
 
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const enabledIndices = options
-    .map((o, i) => (o.disabled ? -1 : i))
-    .filter((i) => i >= 0);
+  const enabled = enabledIndices(options);
 
   function focusSegment(index: number) {
     const root = rootRef.current;
@@ -50,12 +49,8 @@ export function SegmentedControl<T extends string = string>({
   }
 
   function moveFocus(from: number, delta: number) {
-    if (enabledIndices.length === 0) return;
-    const pos = enabledIndices.indexOf(from);
-    const basePos = pos === -1 ? 0 : pos;
-    const len = enabledIndices.length;
-    const nextPos = ((basePos + delta) % len + len) % len;
-    focusSegment(enabledIndices[nextPos]);
+    if (enabled.length === 0) return;
+    focusSegment(moveIndex(enabled, from, delta, "wrap"));
   }
 
   function onKeyDown(e: ReactKeyboardEvent<HTMLButtonElement>, index: number) {
@@ -73,11 +68,11 @@ export function SegmentedControl<T extends string = string>({
         return;
       case "Home":
         e.preventDefault();
-        if (enabledIndices.length) focusSegment(enabledIndices[0]);
+        if (enabled.length) focusSegment(enabled[0]);
         return;
       case "End":
         e.preventDefault();
-        if (enabledIndices.length) focusSegment(enabledIndices[enabledIndices.length - 1]);
+        if (enabled.length) focusSegment(enabled[enabled.length - 1]);
         return;
     }
   }
@@ -91,7 +86,7 @@ export function SegmentedControl<T extends string = string>({
         const checked = opt.value === value;
         // Roving tabindex: the checked segment is the tab stop, or the first
         // enabled segment when nothing is selected yet.
-        const isTabStop = selectedIndex === -1 ? i === enabledIndices[0] : checked;
+        const isTabStop = selectedIndex === -1 ? i === enabled[0] : checked;
         return (
           <button
             key={opt.value}

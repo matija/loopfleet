@@ -20,6 +20,8 @@ import {
 } from "react";
 import { Popover } from "./Popover";
 import { ChevronDownIcon } from "./Icon";
+import { clampToEnabled, enabledIndices, moveIndex } from "../optionIndex";
+import { emptyTypeahead, extendTypeahead, matchTypeahead } from "../typeahead";
 
 type IconComponent = (props: { size?: number; className?: string }) => JSX.Element;
 
@@ -41,11 +43,6 @@ export type SelectProps<T extends string = string> = {
   "aria-label"?: string;
 };
 
-// Type-ahead resets if the user pauses this long between keystrokes — matches
-// the informal ~1s window most native listboxes use before starting a fresh
-// search rather than extending the current one.
-const TYPEAHEAD_RESET_MS = 1000;
-
 export function Select<T extends string = string>({
   value,
   options,
@@ -63,25 +60,15 @@ export function Select<T extends string = string>({
     ),
   );
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const typeaheadRef = useRef({ text: "", at: 0 });
+  const typeaheadRef = useRef(emptyTypeahead);
   const listboxId = useId();
   const optionIdPrefix = useId();
 
   const selected = options.find((o) => o.value === value);
-  const enabledIndices = options
-    .map((o, i) => (o.disabled ? -1 : i))
-    .filter((i) => i >= 0);
-
-  function clampToEnabled(index: number): number {
-    if (enabledIndices.length === 0) return index;
-    if (enabledIndices.includes(index)) return index;
-    // Land on the nearest enabled option at or after `index`, wrapping to the
-    // first enabled option if none follow.
-    return enabledIndices.find((i) => i >= index) ?? enabledIndices[0];
-  }
+  const enabled = enabledIndices(options);
 
   function openAt(index: number) {
-    setActiveIndex(clampToEnabled(index));
+    setActiveIndex(clampToEnabled(enabled, index));
     setOpen(true);
   }
 
@@ -93,33 +80,20 @@ export function Select<T extends string = string>({
   }
 
   function moveActive(delta: number) {
-    if (enabledIndices.length === 0) return;
-    setActiveIndex((current) => {
-      const pos = enabledIndices.indexOf(current);
-      const nextPos =
-        pos === -1
-          ? 0
-          : Math.min(Math.max(pos + delta, 0), enabledIndices.length - 1);
-      return enabledIndices[nextPos];
-    });
+    if (enabled.length === 0) return;
+    setActiveIndex((current) => moveIndex(enabled, current, delta, "clamp"));
   }
 
   function typeahead(char: string) {
-    const now = Date.now();
-    const state = typeaheadRef.current;
-    const text = now - state.at < TYPEAHEAD_RESET_MS ? state.text + char : char;
-    typeaheadRef.current = { text, at: now };
+    const state = extendTypeahead(typeaheadRef.current, char, Date.now());
+    typeaheadRef.current = state;
 
-    const lower = text.toLowerCase();
-    // Search forward from just after the current highlight so repeated
-    // presses of the same letter cycle through same-initial options, same as
-    // native selects.
-    const startAfter = enabledIndices.indexOf(activeIndex);
-    const ordered = [
-      ...enabledIndices.slice(startAfter + 1),
-      ...enabledIndices.slice(0, startAfter + 1),
-    ];
-    const match = ordered.find((i) => options[i].label.toLowerCase().startsWith(lower));
+    const match = matchTypeahead(
+      options.map((o) => o.label),
+      enabled,
+      activeIndex,
+      state.text,
+    );
     if (match !== undefined) {
       if (open) setActiveIndex(match);
       else commit(match);
@@ -141,13 +115,13 @@ export function Select<T extends string = string>({
         return;
       case "Home":
         e.preventDefault();
-        if (enabledIndices.length) setActiveIndex(enabledIndices[0]);
-        if (!open) commit(enabledIndices[0]);
+        if (enabled.length) setActiveIndex(enabled[0]);
+        if (!open) commit(enabled[0]);
         return;
       case "End":
         e.preventDefault();
-        if (enabledIndices.length) {
-          const last = enabledIndices[enabledIndices.length - 1];
+        if (enabled.length) {
+          const last = enabled[enabled.length - 1];
           setActiveIndex(last);
           if (!open) commit(last);
         }
