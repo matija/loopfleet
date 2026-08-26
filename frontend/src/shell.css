@@ -652,43 +652,14 @@
 
 /* --- sandbox-boundary trust panel ---
  * PRD calls this "a trust feature, not a footnote": state the boundary plainly,
- * do not overstate "sandboxed". */
-
-.sandbox-panel {
-  max-width: 72ch;
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
-}
-
-.sandbox-panel__head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-}
-
-.sandbox-panel__head h3 {
-  font-size: var(--text-md);
-}
-
-.sandbox-panel__tag {
-  font-size: var(--text-xs);
-  font-family: var(--font-mono);
-  color: var(--c-text-muted);
-  background: var(--c-surface-2);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-sm);
-  padding: 1px var(--space-2);
-}
-
-.sandbox-panel__lead {
-  margin: 0 0 var(--space-4);
-  color: var(--c-text-muted);
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
-}
+ * do not overstate "sandboxed".
+ *
+ * The card, its head, its lead line and its closing note are the shared panel
+ * vocabulary (.panel, .panel__head, .panel__lead, .panel__foot in panels.css)
+ * — this panel used to carry its own byte-identical copies under
+ * .sandbox-panel__*, which meant a change to how panels open only reached two
+ * of the three overview surfaces. What's left here is what is genuinely this
+ * panel's own: the confined/open rule rows. */
 
 .sandbox-rules {
   display: grid;
@@ -734,15 +705,4 @@
   margin: var(--space-1) 0 0;
   font-size: var(--text-sm);
   color: var(--c-text-muted);
-}
-
-.sandbox-panel__foot {
-  margin: var(--space-4) 0 0;
-  font-size: var(--text-sm);
-  color: var(--c-text-muted);
-}
-
-.sandbox-panel__foot code {
-  font-size: var(--text-sm);
-  color: var(--c-text);
 }

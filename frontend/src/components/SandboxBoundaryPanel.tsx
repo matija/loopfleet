@@ -4,15 +4,24 @@
 // Overstating "sandboxed" is worse than stating the boundary narrowly, so the
 // wording here mirrors the PRD Sandbox section verbatim in spirit: writes are
 // confined to the worktree; reads and network are not.
+//
+// It opens like every other panel — `panel` / `panel__head` with the glyph its
+// surface card carries, a one-line `panel__lead`, a closing `panel__foot` —
+// rather than in the byte-identical `sandbox-panel__*` copies it used to own.
+// A trust panel that looked hand-built next to Agents and Settings read as
+// less a part of the app than the surfaces it is meant to vouch for.
+
+import { BoxIcon } from "./Icon";
 
 export function SandboxBoundaryPanel() {
   return (
-    <section className="sandbox-panel" aria-labelledby="sandbox-heading">
-      <div className="sandbox-panel__head">
+    <section className="panel" aria-labelledby="sandbox-heading">
+      <div className="panel__head">
+        <BoxIcon size={16} className="icon panel__icon" />
         <h3 id="sandbox-heading">Sandbox boundary</h3>
-        <span className="sandbox-panel__tag">sandbox-exec · Seatbelt</span>
+        <span className="panel__tag">sandbox-exec · Seatbelt</span>
       </div>
-      <p className="sandbox-panel__lead">
+      <p className="panel__lead">
         Agents run in full-auto with their own permission systems disabled. The
         OS sandbox profile rendered per run is the single security boundary — not
         a footnote.
@@ -48,7 +57,7 @@ export function SandboxBoundaryPanel() {
         </div>
       </div>
 
-      <p className="sandbox-panel__foot">
+      <p className="panel__foot">
         Read-scope confinement and an egress allowlist are post-v1 hardening.
       </p>
     </section>

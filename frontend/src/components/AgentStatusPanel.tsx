@@ -9,12 +9,18 @@
 // (`agentUsage.ts`) that the run toolbar and the launch control read too, so
 // every surface quotes the same figure; the wording and bucketing are
 // `usage.ts`'s. This file only refreshes and renders.
+//
+// The panel opens in the shared vocabulary — `panel__head` led by the same
+// glyph the overview card carries, then one `panel__lead` line saying what the
+// chips are for — so Agents, Settings and the sandbox panel all start the same
+// way rather than each opening in its own dialect.
 
 import { useEffect, useState } from "react";
 import { refreshAgentUsage, useAgentUsage } from "../agentUsage";
 import { agentStatus } from "../commands";
 import type { AgentStatus, UsageSnapshot } from "../types";
 import { usageIndicator } from "../usage";
+import { AgentIcon } from "./Icon";
 
 export function AgentStatusPanel() {
   // `loaded` distinguishes "fetching" from "fetched an empty set" — without it,
@@ -54,8 +60,14 @@ export function AgentStatusPanel() {
   return (
     <section className="panel">
       <div className="panel__head">
+        <AgentIcon size={16} className="icon panel__icon" />
         <h3>Agents</h3>
       </div>
+      <p className="panel__lead">
+        The agent CLIs installed on this machine. A run whose CLI is missing is
+        refused at launch, so this is the first thing to check when one won’t
+        start.
+      </p>
       {error ? (
         <p className="panel__error">{error}</p>
       ) : !loaded ? (

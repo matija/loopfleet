@@ -68,7 +68,7 @@ import { Select } from "./Select";
 import { Hint } from "./Hint";
 import { NumberField } from "./NumberField";
 import { ThemePreview } from "./ThemePreview";
-import { AgentIcon, DotIcon, FolderIcon } from "./Icon";
+import { AgentIcon, DotIcon, FolderIcon, SettingsIcon } from "./Icon";
 
 // The v1 agent keys (matches the adapters' discovery set). A small stable list;
 // no need to derive it from `agent_status` here.
@@ -104,7 +104,7 @@ function SectionReset({
   return (
     <Button
       variant="quiet"
-      className="settings-section__reset"
+      className="panel-section__reset"
       onClick={onReset}
       disabled={disabled}
       aria-label={`Reset ${section} to defaults`}
@@ -258,6 +258,7 @@ export function SettingsPanel({
   return (
     <section className="panel">
       <div className="panel__head">
+        <SettingsIcon size={16} className="icon panel__icon" />
         <h3>Settings</h3>
       </div>
       {loadError ? (
@@ -268,10 +269,10 @@ export function SettingsPanel({
       ) : !loaded ? (
         <p className="panel__loading">Loading settings…</p>
       ) : null}
-      <section className="settings-section">
-        <div className="settings-section__head">
-          <AgentIcon size={16} className="icon settings-section__icon" />
-          <h4 className="settings-section__title">Run defaults</h4>
+      <section className="panel-section">
+        <div className="panel-section__head">
+          <AgentIcon size={16} className="icon panel-section__icon" />
+          <h4 className="panel-section__title">Run defaults</h4>
           <SectionReset
             section="Run defaults"
             disabled={!loaded || isRunDefaultsAtDefault(settings)}
@@ -330,10 +331,10 @@ export function SettingsPanel({
         </div>
       </section>
 
-      <section className="settings-section">
-        <div className="settings-section__head">
-          <FolderIcon size={16} className="icon settings-section__icon" />
-          <h4 className="settings-section__title">Worktrees</h4>
+      <section className="panel-section">
+        <div className="panel-section__head">
+          <FolderIcon size={16} className="icon panel-section__icon" />
+          <h4 className="panel-section__title">Worktrees</h4>
           <SectionReset
             section="Worktree settings"
             disabled={
@@ -395,12 +396,12 @@ export function SettingsPanel({
         </Hint>
       </section>
 
-      <section className="settings-section">
-        <div className="settings-section__head">
+      <section className="panel-section">
+        <div className="panel-section__head">
           {/* A filled dot reads as a color swatch — the closest glyph in the
             * family to "how this looks". */}
-          <DotIcon size={16} className="icon settings-section__icon" />
-          <h4 className="settings-section__title">Appearance</h4>
+          <DotIcon size={16} className="icon panel-section__icon" />
+          <h4 className="panel-section__title">Appearance</h4>
           {/* Not gated on `loaded`: theme comes from localStorage, not the
             * settings load this panel waits on. */}
           <SectionReset

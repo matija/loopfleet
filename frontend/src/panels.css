@@ -12,7 +12,15 @@
   padding: var(--space-5);
 }
 
+/* Every panel opens the same way: a glyph, the title, and — when the panel
+ * has one — a tag naming the machinery behind it. The glyph is what makes a
+ * panel findable by shape before its title is read, and it's the same glyph
+ * the surface card that opens the panel carries, so the tile and the panel
+ * read as one thing. */
 .panel__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin-bottom: var(--space-3);
 }
 
@@ -20,14 +28,43 @@
   font-size: var(--text-md);
 }
 
-.panel__hint {
+.panel__icon {
+  color: var(--c-text-faint);
+}
+
+/* Names the underlying mechanism (e.g. the sandbox panel's "sandbox-exec ·
+ * Seatbelt"). Monospaced and at the far end of the head rule: it's a
+ * provenance note, not part of the title. */
+.panel__tag {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--c-text-muted);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--space-2); /* tokens-allow: hairline tag inset, below the space scale */
+}
+
+/* The one orienting line under the head, and the one closing note under the
+ * body. Anything longer than a line belongs behind a Hint (hint.css) rather
+ * than in either of these — a paragraph here pushes the panel's controls
+ * down as it grows. */
+.panel__lead {
   margin: 0 0 var(--space-3);
   font-size: var(--text-sm);
   color: var(--c-text-muted);
   line-height: var(--leading-normal);
 }
 
-.panel__hint code {
+.panel__foot {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
+}
+
+.panel__lead code,
+.panel__foot code {
   color: var(--c-text);
 }
 
@@ -137,26 +174,28 @@
   color: var(--c-danger);
 }
 
-/* --- settings sections --- */
+/* --- panel sections --- */
 
-/* Settings are grouped into labelled sections (SettingsPanel.tsx), each led by
- * a glyph so a group is findable by shape before its title is read. Separated
- * by a rule rather than boxed: the panel is already a card, and nested cards
- * would read as separate surfaces. */
-.settings-section + .settings-section {
+/* A panel with more than one group of controls splits into labelled sections,
+ * each led by a glyph so a group is findable by shape before its title is
+ * read. Separated by a rule rather than boxed: the panel is already a card,
+ * and nested cards would read as separate surfaces. Named for the panel
+ * rather than for Settings, because Settings is only the panel with the most
+ * of them. */
+.panel-section + .panel-section {
   margin-top: var(--space-5);
   padding-top: var(--space-5);
   border-top: 1px solid var(--c-border);
 }
 
-.settings-section__head {
+.panel-section__head {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   margin-bottom: var(--space-3);
 }
 
-.settings-section__icon {
+.panel-section__icon {
   color: var(--c-text-faint);
 }
 
@@ -164,11 +203,11 @@
  * title it belongs to: it's an escape hatch, not part of the label. Quiet
  * styling (see .btn--quiet) keeps three of them from reading as three calls to
  * action stacked down the panel. */
-.settings-section__reset {
+.panel-section__reset {
   margin-left: auto;
 }
 
-.settings-section__title {
+.panel-section__title {
   margin: 0;
   font-size: var(--text-sm);
   font-weight: 600;
@@ -462,12 +501,24 @@ button.surface-card:hover {
   letter-spacing: var(--tracking-tight);
 }
 
+/* A card's description is a sentence, so it gets two lines to be one in.
+ * Clamping a single nowrap line cut these mid-word ("with version dri…",
+ * "concurrency c…"), which reads as a rendering fault rather than as elision.
+ * The clamp wraps at word boundaries and puts the browser's own ellipsis at
+ * the end of the second line, so a description that doesn't fit still ends on
+ * a whole word. The two-line box is reserved whether or not the text fills
+ * it, so a one-line card and a two-line card keep their glyphs and titles on
+ * the same baselines across the grid. */
 .surface-card__desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   max-width: 100%;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
   font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  min-height: calc(2 * var(--text-sm) * var(--leading-normal));
   color: var(--c-text-muted);
 }
 
