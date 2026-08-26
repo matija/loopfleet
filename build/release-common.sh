@@ -95,6 +95,25 @@ require_clean_pushed_tree() {
 
 require_clean_pushed_tree
 
+# Runs the full test suite before any build starts. A release built on top
+# of failing checks/tests is worse than no release, so this must pass
+# before we touch signing, notarization, or GitHub.
+run_release_tests() {
+  step "Running frontend checks (npm run check)..."
+  (cd "$ROOT/frontend" && npm run check)
+  ok "Frontend checks passed"
+
+  step "Running frontend tests (npm test)..."
+  (cd "$ROOT/frontend" && npm test)
+  ok "Frontend tests passed"
+
+  step "Running Rust workspace tests (cargo test --workspace)..."
+  (cd "$ROOT" && cargo test --workspace)
+  ok "Rust tests passed"
+}
+
+run_release_tests
+
 command -v gh >/dev/null 2>&1 || { err "gh (GitHub CLI) is required to publish releases"; exit 1; }
 gh auth status >/dev/null 2>&1 || { err "gh is not authenticated. Run 'gh auth login' first."; exit 1; }
 
