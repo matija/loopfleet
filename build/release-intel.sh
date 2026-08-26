@@ -40,9 +40,10 @@ fi
 export TARGET_TRIPLE="x86_64-apple-darwin"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/release-common.sh"
 
-# Cross-compiling to x86_64 still requires an Apple Silicon host: that's the
-# only host that can codesign/notarize with the loopfleet signing identity.
-require_arm64_macos
+# Cross-compiling to x86_64 still requires a macOS host with the x86_64 Rust
+# target installed: macOS is the only host that can codesign/notarize with
+# the loopfleet signing identity.
+require_macos_target "$TARGET_TRIPLE"
 
 VERSION="$RELEASE_VERSION"
 banner "Release loopfleet $VERSION ($RELEASE_TAG) for $TARGET_TRIPLE"

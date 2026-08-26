@@ -48,7 +48,7 @@ if [ $# -eq 1 ]; then
   RELEASE_TAG="${_release_tag_override:-$RELEASE_VERSION}"
 fi
 
-require_arm64_macos
+require_macos_target "$TARGET_TRIPLE"
 
 VERSION="$RELEASE_VERSION"
 banner "Release loopfleet $VERSION ($RELEASE_TAG) for $TARGET_TRIPLE"

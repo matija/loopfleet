@@ -2,7 +2,7 @@
 # Shared validation + setup for build/release.sh.
 # Sourced by it; exports ROOT, TARGET_TRIPLE, BUNDLE_DIR, APPLE_*,
 # TAURI_SIGNING_PRIVATE_KEY, RELEASE_VERSION, RELEASE_TAG, GH_REPO, defines
-# require_arm64_macos(), notarize_dmg(), and the logging helpers below.
+# require_macos_target(), notarize_dmg(), and the logging helpers below.
 #
 # If RELEASE_PREFLIGHT_ONLY=1 (set by --preflight in the release scripts),
 # this file exits 0 right after validation instead of continuing on to a build.
@@ -54,11 +54,17 @@ expand_tilde() {
   esac
 }
 
-# Release builds only run on an Apple Silicon Mac: that's the only host that
-# can codesign/notarize for aarch64-apple-darwin.
-require_arm64_macos() {
+# Release builds only run on macOS (codesigning/notarization require it), and
+# the requested Rust target must be installed. Apple Silicon hosts can build
+# x86_64-apple-darwin too, via the Rust cross-compilation target.
+require_macos_target() {
+  local target="$1"
   [[ "$(uname -s)" == "Darwin" ]] || { err "release builds must run on macOS"; exit 1; }
-  [[ "$(uname -m)" == "arm64" ]] || { err "release builds must run on Apple Silicon (arm64)"; exit 1; }
+  rustup target list --installed | grep -Fqx "$target" || {
+    err "Rust target not installed: $target"
+    info "Run 'rustup target add $target' first."
+    exit 1
+  }
 }
 
 # Reads the version fresh from package.json (called both before and after a
