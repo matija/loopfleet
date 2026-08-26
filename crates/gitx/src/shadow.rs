@@ -19,7 +19,7 @@ use std::process::Command;
 /// fresh repo may have no identity set at all, and `commit-tree` needs one — this
 /// synthetic identity keeps snapshotting working in that case.
 const COMMIT_NAME: &str = "loopfleet";
-const COMMIT_EMAIL: &str = "loopfleet@localhost";
+const COMMIT_EMAIL: &str = "loopfleet@tandoku.hr";
 
 /// The shadow ref for iteration `iter` of `run_id`:
 /// `refs/agentapp/run-<id>/iter-<n>` (PRD "Git layer").

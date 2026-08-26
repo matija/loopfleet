@@ -25,27 +25,30 @@
 //! Either way the target gains exactly **one** new commit with a single parent
 //! (its previous tip): the run lands squashed, not as a merge commit.
 //!
-//! That commit is authored by loopfleet and committed by the repo's configured
-//! `user.name`/`user.email`, so history records both who produced the work and
-//! who chose to land it.
+//! That commit is both authored and committed by the repo's configured
+//! `user.name`/`user.email` — it is the user's work landing on the user's
+//! branch — with loopfleet credited through a `Co-authored-by:` trailer, the
+//! convention forges parse to show both contributors.
 
 use std::path::Path;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Identity stamped as the **author** of the squashed commit: the run's work was
-/// produced by loopfleet, so authorship records the tool, while the user (whoever
-/// pressed "use this run") is recorded as the committer — the same author/committer
-/// split git uses for applied patches. Also the committer fallback for a repo with
-/// no `user.*` configured, since `git commit` needs an identity either way.
+/// Loopfleet's own identity. Git has only two identity slots (author and
+/// committer) and both belong to the user — the run is their work, landing on
+/// their branch, and a synthetic author would keep these commits out of their
+/// contribution history. So loopfleet is credited in the message instead, via
+/// [`MERGE_COMMIT_TRAILER`]. This pair remains the identity a repo with no
+/// `user.*` configured falls back to, since `git commit` needs one either way.
 const AUTHOR_NAME: &str = "loopfleet";
-const AUTHOR_EMAIL: &str = "loopfleet@localhost";
+const AUTHOR_EMAIL: &str = "loopfleet@tandoku.hr";
 
-/// The trailer stamped at the bottom of every "use this run" squash commit. The
-/// work is a collaboration — loopfleet produced it, the user landed it — so the
-/// message ends by saying exactly that, matching the author/committer split
-/// above, while its subject and body describe what the run actually did.
-pub const MERGE_COMMIT_TRAILER: &str = "Co-authored by loopfleet";
+/// The trailer stamped at the bottom of every "use this run" squash commit: the
+/// work is a collaboration, so loopfleet is recorded as a co-author of a commit
+/// the user authored. Spelled as git's `Co-authored-by: Name <email>` trailer
+/// (the same shape `git commit --trailer` writes) so forges parse it and credit
+/// both contributors, rather than as a prose line they would ignore.
+pub const MERGE_COMMIT_TRAILER: &str = "Co-authored-by: loopfleet <loopfleet@tandoku.hr>";
 
 /// `message` with [`MERGE_COMMIT_TRAILER`] appended as its last paragraph: the
 /// commit keeps the run's own subject and body, and the shared origin of the
@@ -293,17 +296,18 @@ fn squash_merge(dir: &Path, source: &str, message: &str) -> Result<(bool, String
 
     // -m so the squashed commit carries the caller's message rather than the
     // SQUASH_MSG git assembled from the run's synthetic shadow commits. The
-    // identity is passed through the environment rather than `--author` so both
-    // halves (author and committer) are set explicitly, including the fallback.
-    let (committer_name, committer_email) = committer_identity(dir);
+    // identity is passed through the environment rather than left to git's own
+    // lookup so both halves are set explicitly, including the fallback for an
+    // unconfigured repo.
+    let (name, email) = commit_identity(dir);
     git_env(
         dir,
         &["commit", "-m", message],
         &[
-            ("GIT_AUTHOR_NAME", AUTHOR_NAME),
-            ("GIT_AUTHOR_EMAIL", AUTHOR_EMAIL),
-            ("GIT_COMMITTER_NAME", &committer_name),
-            ("GIT_COMMITTER_EMAIL", &committer_email),
+            ("GIT_AUTHOR_NAME", &name),
+            ("GIT_AUTHOR_EMAIL", &email),
+            ("GIT_COMMITTER_NAME", &name),
+            ("GIT_COMMITTER_EMAIL", &email),
         ],
     )?;
     Ok((false, head_commit(dir)?))
@@ -315,14 +319,15 @@ fn head_commit(dir: &Path) -> Result<String> {
     git(dir, &["rev-parse", "HEAD"])
 }
 
-/// The identity to record as the squashed commit's **committer**: the repo's
-/// configured `user.name`/`user.email`, so the merge is attributed to whoever
-/// used the run. Falls back to [`AUTHOR_NAME`]/[`AUTHOR_EMAIL`] when git has no
-/// identity configured — `git commit` needs one, and without this the merge
-/// would fail outright on a fresh repo. Both fields must be set to use the user
-/// identity; a half-configured repo falls back wholesale rather than mixing a
-/// real name with a synthetic email.
-fn committer_identity(dir: &Path) -> (String, String) {
+/// The identity to record as both **author and committer** of the squashed
+/// commit: the repo's configured `user.name`/`user.email`, so the run lands as
+/// the user's own commit (and counts as their contribution) with loopfleet
+/// credited by trailer. Falls back to [`AUTHOR_NAME`]/[`AUTHOR_EMAIL`] when git
+/// has no identity configured — `git commit` needs one, and without this the
+/// merge would fail outright on a fresh repo. Both fields must be set to use the
+/// user identity; a half-configured repo falls back wholesale rather than mixing
+/// a real name with a synthetic email.
+fn commit_identity(dir: &Path) -> (String, String) {
     match (git_config(dir, "user.name"), git_config(dir, "user.email")) {
         (Some(name), Some(email)) => (name, email),
         _ => (AUTHOR_NAME.to_string(), AUTHOR_EMAIL.to_string()),
@@ -537,9 +542,9 @@ mod tests {
         // The agent committed nothing, so the run's final snapshot supplies the wording.
         assert_squashed_onto(repo.path(), "review/x", &head_tip, head_count, "run merge-r1 iter 1");
         assert_ne!(git_out(repo.path(), &["rev-parse", "review/x"]), snap.commit);
-        // ...stamped with the same author/committer split as the other paths.
+        // ...stamped with the user's identity on both halves, as every path is.
         let (author, committer) = identity(repo.path(), "review/x");
-        assert_eq!(author, "loopfleet <loopfleet@localhost>");
+        assert_eq!(author, "t <t@t.test>");
         assert_eq!(committer, "t <t@t.test>");
         // The throwaway worktree used for the squash is gone.
         assert!(crate::worktree::list(repo.path())
@@ -747,11 +752,11 @@ mod tests {
         (author, committer)
     }
 
-    /// The squashed commit is authored by loopfleet (the run produced the work)
-    /// but committed by the repo's configured identity (the user chose to use
-    /// it) — the author/committer split git uses for applied patches.
+    /// The squashed commit is the user's own: their configured identity on both
+    /// the author and committer halves, so it counts as their contribution, with
+    /// loopfleet credited by the `Co-authored-by:` trailer instead.
     #[test]
-    fn squashed_commit_is_authored_by_loopfleet_and_committed_by_the_user() {
+    fn squashed_commit_is_the_users_with_loopfleet_as_co_author() {
         let (repo, _root, wt) = repo_with_worktree("merge-r11");
         std::fs::write(wt.path.join("out.txt"), "result\n").unwrap();
         let snap = snapshot(repo.path(), &wt.path, "merge-r11", 1).unwrap();
@@ -760,8 +765,11 @@ mod tests {
         merge_run(repo.path(), &snap.git_ref, None, scratch.path()).unwrap();
 
         let (author, committer) = identity(repo.path(), "main");
-        assert_eq!(author, "loopfleet <loopfleet@localhost>");
+        assert_eq!(author, "t <t@t.test>");
         assert_eq!(committer, "t <t@t.test>");
+        // Loopfleet's own credit rides in the message, as a parseable trailer.
+        let msg = git_out(repo.path(), &["log", "-1", "--format=%B", "main"]);
+        assert!(msg.ends_with("Co-authored-by: loopfleet <loopfleet@tandoku.hr>"), "got {msg:?}");
     }
 
     /// The same holds for a merge into an existing custom target, which commits
@@ -781,17 +789,17 @@ mod tests {
         merge_run(repo.path(), &snap.git_ref, Some("integration"), scratch.path()).unwrap();
 
         let (author, committer) = identity(repo.path(), "integration");
-        assert_eq!(author, "loopfleet <loopfleet@localhost>");
+        assert_eq!(author, "t <t@t.test>");
         assert_eq!(committer, "t <t@t.test>");
     }
 
     /// With no usable `user.*` in the repo, the loopfleet identity stands in for
-    /// the committer too — without it `git commit` would refuse to run at all
+    /// both halves — without it `git commit` would refuse to run at all
     /// ("Please tell me who you are"), failing the merge. Local empty values
     /// are used so the result does not depend on the machine's global git
     /// config, which the spawned `git` children would otherwise inherit.
     #[test]
-    fn falls_back_to_loopfleet_committer_when_repo_has_no_identity() {
+    fn falls_back_to_the_loopfleet_identity_when_repo_has_none() {
         let (repo, _root, wt) = repo_with_worktree("merge-r13");
         let run = |args: &[&str]| {
             let out = Command::new("git").arg("-C").arg(repo.path()).args(args).output().unwrap();
@@ -807,8 +815,8 @@ mod tests {
         merge_run(repo.path(), &snap.git_ref, None, scratch.path()).unwrap();
 
         let (author, committer) = identity(repo.path(), "main");
-        assert_eq!(author, "loopfleet <loopfleet@localhost>");
-        assert_eq!(committer, "loopfleet <loopfleet@localhost>");
+        assert_eq!(author, "loopfleet <loopfleet@tandoku.hr>");
+        assert_eq!(committer, "loopfleet <loopfleet@tandoku.hr>");
     }
 
     /// The squashed commit carries the run's own commit messages — what the work
@@ -834,7 +842,7 @@ mod tests {
         let msg = git_out(repo.path(), &["log", "-1", "--format=%B", "main"]);
         assert_eq!(
             msg,
-            "Add the widget\n\nWith a body explaining why.\n\nCo-authored by loopfleet"
+            "Add the widget\n\nWith a body explaining why.\n\nCo-authored-by: loopfleet <loopfleet@tandoku.hr>"
         );
     }
 
@@ -845,7 +853,7 @@ mod tests {
         let msg = with_trailer("Apply loopfleet run abc12345 (claude)\n\n- [ ] the task");
         assert_eq!(
             msg,
-            "Apply loopfleet run abc12345 (claude)\n\n- [ ] the task\n\nCo-authored by loopfleet"
+            "Apply loopfleet run abc12345 (claude)\n\n- [ ] the task\n\nCo-authored-by: loopfleet <loopfleet@tandoku.hr>"
         );
         // Already trailered (or empty) messages stay well-formed.
         assert_eq!(with_trailer(&msg), msg);
