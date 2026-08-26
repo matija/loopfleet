@@ -1,0 +1,114 @@
+/* Theme preview (ThemePreview.tsx): the settings picker's miniature of the
+ * app, painted in whichever theme is being considered.
+ *
+ * Only the frame and the card live here. The sample's contents — the status
+ * pill, the run row's glyph/task/meta — are the app's own classes from
+ * status.css and dock.css, so this file must not restate their colors; a
+ * duplicate here would be the one thing in the preview that *doesn't* track
+ * the app. What it does own is scale: the miniature is a fixed-width box
+ * sitting beside a 20ch dropdown, not a panel.
+ *
+ * The frame paints --c-bg itself rather than letting the panel's background
+ * show through. It's the piece that makes the box read as "the app in that
+ * theme": the canvas is the first thing a theme changes, and without it a
+ * rose-pine card would sit on a dark field and look wrong in a way the theme
+ * isn't responsible for. */
+
+.theme-preview {
+  /* Sized to the row it shares with the picker: wide enough for the pill's
+     8.5em min-width plus the card's insets, narrow enough that it reads as a
+     sample rather than a second panel. */
+  width: 30ch;
+  flex: none;
+  padding: var(--space-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-bg);
+  color: var(--c-text);
+  /* The sample is decorative and non-interactive; keep a stray click or drag
+     from selecting its invented text. */
+  user-select: none;
+  /* Theme switches settle rather than snap, matching how the app itself
+     recolors. Neutralized by the reduced-motion guard in tokens.css. */
+  transition: background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+
+/* The raised card: the app's card vocabulary (a surface step, a hairline, the
+ * faint top highlight) at panel-miniature scale. */
+.theme-preview__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface-2);
+  box-shadow: var(--shadow-card);
+}
+
+.theme-preview__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.theme-preview__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: var(--tracking-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--c-text);
+}
+
+/* The pill is status.css's, at preview scale: its 8.5em reservation exists so
+ * a live status change doesn't resize the row, which can't happen here and
+ * would push the pill past the card's edge. */
+.theme-preview .status-pill {
+  flex: none;
+  min-width: 0;
+}
+
+/* Run rows, echoing the dock's list: the glyph/task/meta parts are the dock's
+ * own classes, this only supplies the row box they sit in. */
+.theme-preview__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+/* One row shown selected, so the preview covers the state fill a theme has to
+ * get right — a row you can still read text on. */
+.theme-preview__row--selected {
+  background: var(--c-surface-3);
+}
+
+/* Monospace: the face the diff and log surfaces are set in, where a theme's
+ * text contrast is worked hardest. */
+.theme-preview__mono {
+  margin-top: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Under a narrow panel the picker and its preview stack; let the preview take
+ * the full width rather than sitting as a stranded column. */
+@media (max-width: 640px) {
+  .theme-preview {
+    width: 100%;
+  }
+}

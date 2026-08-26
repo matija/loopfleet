@@ -12,6 +12,7 @@
 // or closed, exactly like the control it replaces.
 
 import {
+  useEffect,
   useId,
   useRef,
   useState,
@@ -41,6 +42,11 @@ export type SelectProps<T extends string = string> = {
   placeholder?: string;
   className?: string;
   "aria-label"?: string;
+  /// Fires with the value of the option the listbox is highlighting — the one
+  /// Enter would commit — and with `undefined` while the popup is closed.
+  /// Lets a caller show what picking would do before it's picked (the theme
+  /// preview); nothing about the control's own behavior depends on it.
+  onHighlight?: (value: T | undefined) => void;
 };
 
 export function Select<T extends string = string>({
@@ -50,6 +56,7 @@ export function Select<T extends string = string>({
   disabled,
   placeholder = "Select…",
   className,
+  onHighlight,
   ...rest
 }: SelectProps<T>) {
   const [open, setOpen] = useState(false);
@@ -66,6 +73,14 @@ export function Select<T extends string = string>({
 
   const selected = options.find((o) => o.value === value);
   const enabled = enabledIndices(options);
+
+  // Reported from the rendered highlight rather than from each handler, so
+  // every way of moving it (arrows, Home/End, type-ahead, hover) is covered by
+  // one line and can't drift out of step with `aria-activedescendant`.
+  const highlighted = open ? options[activeIndex]?.value : undefined;
+  useEffect(() => {
+    onHighlight?.(highlighted);
+  }, [highlighted, onHighlight]);
 
   function openAt(index: number) {
     setActiveIndex(clampToEnabled(enabled, index));

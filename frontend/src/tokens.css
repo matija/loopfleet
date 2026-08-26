@@ -6,15 +6,23 @@
  * radii, layout, shadow *geometry*, and motion are theme-invariant and live in
  * the single :root block below — a theme retints the app, it doesn't re-lay it
  * out. Every color token lives in a per-theme block selected by
- * [data-theme="<id>"] on the document root. Adding a theme means adding one
- * such block and nothing else; a block that omits a token inherits nothing, so
- * each theme must define the full palette.
+ * [data-theme="<id>"]. Adding a theme means adding one such block and nothing
+ * else; a block that omits a token inherits nothing, so each theme must define
+ * the full palette.
+ *
+ * The theme selectors are deliberately *not* anchored to :root: they match any
+ * element carrying the attribute, so a subtree can be painted in a theme the
+ * document isn't wearing. themes.ts's applyTheme puts it on the document root
+ * for the app itself; the settings panel's theme preview puts it on one small
+ * box to show a theme before it's picked. A nested block wins over the root's
+ * for its own subtree by proximity — the tokens are inherited custom
+ * properties, and the nearest declaring ancestor supplies them.
  *
  * dark is the default theme — a supervisor/cockpit tool that
  * lives beside terminals reads best dark — so it also applies with no
- * data-theme attribute set at all. Its :root arm carries lower specificity
- * than any [data-theme] arm, so a future theme block wins regardless of
- * source order. */
+ * data-theme attribute set at all. Its :root arm and every [data-theme] arm
+ * share the same specificity (0,1,0), so on the root itself the later block in
+ * source order wins: theme blocks must stay below dark's. */
 
 :root {
   /* --- type scale (1.25 ratio off a 12px base) ---
@@ -123,7 +131,7 @@
 /* --- theme: dark (default) --- */
 
 :root,
-:root[data-theme="dark"] {
+[data-theme="dark"] {
   /* --- color: surfaces ---
    * One black field, not a stack of grey panels. --c-bg and --c-surface are the
    * same near-black: chrome (titlebar, sidebar, main) reads as a single sheet,
@@ -276,7 +284,7 @@
  * and canonical muted keeps its de-emphasis job as the hairline ink, where
  * the 3:1 UI-graphics floor applies instead. */
 
-:root[data-theme="rose-pine-moon"] {
+[data-theme="rose-pine-moon"] {
   /* --- color: surfaces ---
    * base is the single field (chrome and main share it); surface and overlay
    * are the state steps for hover fills, inputs, and the selected row. */

@@ -3,6 +3,7 @@ import {
   applyTheme,
   DEFAULT_THEME_ID,
   isThemeId,
+  previewThemeId,
   readStoredThemeId,
   resolveThemeId,
   storeThemeId,
@@ -124,6 +125,29 @@ describe("resolveThemeId", () => {
 describe("themeById", () => {
   it("returns the registry entry", () => {
     expect(themeById("rose-pine-moon").label).toBe("Rosé Pine Moon");
+  });
+});
+
+describe("previewThemeId", () => {
+  it("shows the highlighted theme while one is highlighted", () => {
+    expect(previewThemeId("rose-pine-moon", "dark")).toBe("rose-pine-moon");
+  });
+
+  it("falls back to the applied theme when nothing is highlighted", () => {
+    expect(previewThemeId(null, "rose-pine-moon")).toBe("rose-pine-moon");
+    expect(previewThemeId(undefined, "dark")).toBe("dark");
+  });
+
+  it("falls back to the applied theme for an unknown highlight", () => {
+    expect(previewThemeId("solarized", "rose-pine-moon")).toBe(
+      "rose-pine-moon",
+    );
+    expect(previewThemeId(7, "dark")).toBe("dark");
+  });
+
+  it("does not fall back to the default when the applied theme differs", () => {
+    // The preview shows what the app is wearing, not what it shipped with.
+    expect(previewThemeId(null, "rose-pine-moon")).not.toBe(DEFAULT_THEME_ID);
   });
 });
 

@@ -1,7 +1,12 @@
 // The theme registry. tokens.css defines one color block per theme, selected
-// by [data-theme="<id>"] on the document root; this module is the TypeScript
-// side of that contract — the list of ids a picker can offer, the validation a
-// stored id has to pass, and the one place that writes the attribute.
+// by [data-theme="<id>"]; this module is the TypeScript side of that contract
+// — the list of ids a picker can offer, the validation a stored id has to
+// pass, and the one place that writes the attribute.
+//
+// The attribute is normally worn by the document root, but the tokens.css
+// blocks match any element, so a subtree can be painted in a different theme
+// than the app is wearing (that's how the settings panel previews a theme
+// before it's picked — see ThemePreview.tsx).
 //
 // Adding a theme means adding its block to tokens.css and one entry here.
 // Nothing else in the app should hardcode a theme id or touch data-theme.
@@ -43,13 +48,22 @@ export function themeById(id: ThemeId): Theme {
   return THEMES.find((theme) => theme.id === id)!;
 }
 
-/// Applies a theme by setting data-theme on the document root, resolving the
+/// The theme a preview should paint while a picker is being browsed: the
+/// option currently under the cursor/keyboard if there is one, otherwise the
+/// theme in force. Kept here rather than in the picker so "what am I looking
+/// at" is one resolved id, and so a highlighted value that isn't a live theme
+/// id degrades to the applied theme instead of an unpainted box.
+export function previewThemeId(highlighted: unknown, applied: ThemeId): ThemeId {
+  return isThemeId(highlighted) ? highlighted : applied;
+}
+
+/// Applies a theme by setting data-theme on an element, resolving the
 /// value first so a stale stored id degrades to the default rather than
 /// leaving the root with an attribute tokens.css has no block for (which would
 /// inherit no color tokens at all). Returns the id actually applied.
 ///
 /// `root` defaults to document.documentElement; pass one explicitly to theme a
-/// detached tree or to test without a DOM.
+/// subtree, a detached tree, or to test without a DOM.
 export function applyTheme(
   stored: unknown,
   root: Element | undefined = typeof document === "undefined"

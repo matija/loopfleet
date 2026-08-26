@@ -32,6 +32,13 @@
 // display preference App owns and persists to localStorage, so it applies on
 // pick rather than on Save. It lives in this panel anyway because this is
 // where a user looks for app-wide preferences.
+//
+// Because there's no Save to undo a theme, the picker is paired with a live
+// miniature of the app (ThemePreview.tsx) that paints whichever option the
+// dropdown is highlighting — so "what does Rosé Pine Moon look like?" is
+// answered by looking rather than by picking it and picking back. With the
+// popup closed the miniature shows the applied theme, which makes it a
+// standing sample of the current one rather than a box that goes blank.
 
 import { useEffect, useState } from "react";
 import { getSettings, saveSettings, sweepWorktreesNow } from "../commands";
@@ -49,11 +56,18 @@ import {
   isThemeAtDefault,
   isWorktreesAtDefault,
 } from "../settingsDefaults";
-import { DEFAULT_THEME_ID, isThemeId, THEMES, type ThemeId } from "../themes";
+import {
+  DEFAULT_THEME_ID,
+  isThemeId,
+  previewThemeId,
+  THEMES,
+  type ThemeId,
+} from "../themes";
 import { Button } from "./Button";
 import { Select } from "./Select";
 import { Hint } from "./Hint";
 import { NumberField } from "./NumberField";
+import { ThemePreview } from "./ThemePreview";
 import { AgentIcon, DotIcon, FolderIcon } from "./Icon";
 
 // The v1 agent keys (matches the adapters' discovery set). A small stable list;
@@ -146,6 +160,10 @@ export function SettingsPanel({
   const [sweepMsg, setSweepMsg] = useState<{ text: string; ok: boolean } | null>(
     null,
   );
+  // The theme option the picker is currently highlighting, or null when its
+  // popup is closed. Only the preview reads it — highlighting is not picking,
+  // so nothing is applied or persisted until the option is committed.
+  const [highlightedTheme, setHighlightedTheme] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -402,9 +420,13 @@ export function SettingsPanel({
                 // to keep the cast honest.
                 if (isThemeId(v)) onThemeChange(v);
               }}
+              onHighlight={(v) => setHighlightedTheme(v ?? null)}
               options={THEMES.map((theme) => ({ value: theme.id, label: theme.label }))}
             />
           </label>
+          {/* Beside the picker rather than under it: the two are one decision,
+            * and the row already wraps on a narrow panel. */}
+          <ThemePreview themeId={previewThemeId(highlightedTheme, themeId)} />
         </div>
         {/* The summary carries the part a user acts on — there's no Save to
           * press for this one — and the reason why sits behind the affordance. */}
@@ -416,6 +438,11 @@ export function SettingsPanel({
             Theme is a per-device display preference rather than part of the
             settings above, so it takes effect the moment you pick it and
             “Save settings” doesn’t affect it.
+          </p>
+          <p>
+            The sample beside the list previews whichever theme you’re
+            hovering or arrowing over, so you can judge one without switching
+            to it.
           </p>
         </Hint>
       </section>

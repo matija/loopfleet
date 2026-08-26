@@ -19,6 +19,9 @@ import "./hint.css";
 import "./select.css";
 import "./number-field.css";
 import "./segmented-control.css";
+// After status.css and dock.css: the theme preview reuses their run-status
+// classes and tightens a couple of their layout rules for miniature scale.
+import "./theme-preview.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
