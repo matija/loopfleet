@@ -32,14 +32,17 @@ the frontend. Both rebuild on change.
 
 ## Release
 
-Release builds are **macOS / Apple Silicon (arm64) only** for now. The scripts
-in this directory are self-contained:
+Release builds run on an **Apple Silicon (arm64) macOS host**, which builds
+and notarizes both the native `aarch64-apple-darwin` bundle and, by
+cross-compiling, the `x86_64-apple-darwin` (Intel) bundle. The scripts in
+this directory are self-contained:
 
-| Script               | What it does                                                                                    |
-| -------------------- | ------------------------------------------------------------------------------------------------ |
-| `build/bump.sh`      | Set (or print) the version across every manifest.                                                |
-| `build/release.sh`   | Build, notarize, and publish the `aarch64-apple-darwin` release to GitHub.                       |
-| `release-common.sh`  | Shared helpers (sourced by `release.sh`, not run directly).                                      |
+| Script                   | What it does                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| `build/bump.sh`          | Set (or print) the version across every manifest.                                                |
+| `build/release.sh`       | Build, notarize, and publish the `aarch64-apple-darwin` release to GitHub.                       |
+| `build/release-intel.sh` | Build and notarize the `x86_64-apple-darwin` bundle, and add it to an *existing* release.         |
+| `release-common.sh`      | Shared helpers (sourced by the release scripts, not run directly).                               |
 
 ### Bump the version
 
@@ -81,3 +84,25 @@ It then:
    replacing it if one already exists, uploading the `.dmg`, the updater
    tarball, and `latest.json`. Release notes are a compare link against the
    previous release on GitHub.
+
+### Add the Intel build to a release
+
+```sh
+build/release-intel.sh              # build + publish the Intel bundle
+build/release-intel.sh --preflight  # validate env vars/tooling only, no build
+```
+
+`release-intel.sh` shares its environment requirements with `release.sh` and
+also requires `RELEASE_TAG` (defaulting to the current version) to already
+exist as a GitHub release — it does not create or replace releases. It then:
+
+1. Runs `tauri build --target x86_64-apple-darwin` (cross-compiled from the
+   arm64 host).
+2. Notarizes and staples the `.dmg`.
+3. Copies the updater tarball to an architecture-suffixed name (e.g.
+   `loopfleet-x86_64.app.tar.gz`) so it doesn't collide with the aarch64
+   tarball already on the release.
+4. Downloads the release's existing `latest.json` and adds a `darwin-x86_64`
+   platform entry to it, rather than replacing the file.
+5. Uploads the `.dmg`, the renamed tarball, and the updated `latest.json` to
+   the release with `--clobber`.

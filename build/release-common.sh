@@ -13,7 +13,7 @@ done
 unset _release_arg
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TARGET_TRIPLE="aarch64-apple-darwin"
+TARGET_TRIPLE="${TARGET_TRIPLE:-aarch64-apple-darwin}"
 BUNDLE_DIR="$ROOT/target/$TARGET_TRIPLE/release/bundle"
 
 # --- pretty output -------------------------------------------------------
