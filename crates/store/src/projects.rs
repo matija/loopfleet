@@ -2,6 +2,7 @@
 
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 /// A registered project: a git repo the app supervises runs against.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,6 +113,73 @@ pub fn delete_project(conn: &Connection, project_id: &str) -> rusqlite::Result<D
             Err(e)
         }
     }
+}
+
+/// Counts a delete confirmation dialog needs, gathered without deleting
+/// anything (see [`delete_project`] for the actual deletion).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectRemovalPreview {
+    pub plans: usize,
+    /// Distinct tasks that have at least one run against them.
+    pub tasks_with_runs: usize,
+    pub total_runs: usize,
+    /// Runs still `queued` or `running`; the caller may want to warn before
+    /// removing a project with in-flight work.
+    pub active_runs: usize,
+    /// Of the project's runs' worktree paths, how many still exist on disk.
+    pub worktrees_on_disk: usize,
+}
+
+/// Gather the counts a removal confirmation shows, read-only.
+pub fn project_removal_preview(
+    conn: &Connection,
+    project_id: &str,
+) -> rusqlite::Result<ProjectRemovalPreview> {
+    let plans = conn.query_row(
+        "SELECT COUNT(*) FROM plans WHERE project_id = ?1",
+        params![project_id],
+        |r| r.get::<_, i64>(0),
+    )? as usize;
+
+    let tasks_with_runs = conn.query_row(
+        "SELECT COUNT(*) FROM (
+             SELECT DISTINCT r.plan_id, r.task_anchor
+             FROM runs r JOIN plans p ON p.id = r.plan_id
+             WHERE p.project_id = ?1
+         )",
+        params![project_id],
+        |r| r.get::<_, i64>(0),
+    )? as usize;
+
+    let total_runs = conn.query_row(
+        "SELECT COUNT(*) FROM runs r JOIN plans p ON p.id = r.plan_id WHERE p.project_id = ?1",
+        params![project_id],
+        |r| r.get::<_, i64>(0),
+    )? as usize;
+
+    let active_runs = conn.query_row(
+        "SELECT COUNT(*) FROM runs r JOIN plans p ON p.id = r.plan_id
+         WHERE p.project_id = ?1 AND r.status IN ('queued', 'running')",
+        params![project_id],
+        |r| r.get::<_, i64>(0),
+    )? as usize;
+
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT r.worktree_path FROM runs r JOIN plans p ON p.id = r.plan_id
+         WHERE p.project_id = ?1 AND r.worktree_path IS NOT NULL",
+    )?;
+    let worktree_paths = stmt
+        .query_map(params![project_id], |r| r.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let worktrees_on_disk = worktree_paths.iter().filter(|p| Path::new(p).exists()).count();
+
+    Ok(ProjectRemovalPreview {
+        plans,
+        tasks_with_runs,
+        total_runs,
+        active_runs,
+        worktrees_on_disk,
+    })
 }
 
 #[cfg(test)]
@@ -256,6 +324,37 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM runs WHERE id = 'p2-run'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(run_count, 1, "other project's run must survive");
+    }
+
+    #[test]
+    fn removal_preview_counts_without_deleting() {
+        let conn = crate::open(":memory:").unwrap();
+        seed_full_project(&conn, "p1");
+
+        let preview = project_removal_preview(&conn, "p1").unwrap();
+        assert_eq!(
+            preview,
+            ProjectRemovalPreview {
+                plans: 1,
+                tasks_with_runs: 1,
+                total_runs: 1,
+                active_runs: 1,
+                worktrees_on_disk: 0, // "/tmp/wt" from seed_full_project doesn't exist
+            }
+        );
+
+        // Read-only: nothing was removed.
+        assert_eq!(list_projects(&conn).unwrap().len(), 1);
+        let run_count: i64 =
+            conn.query_row("SELECT COUNT(*) FROM runs", [], |r| r.get(0)).unwrap();
+        assert_eq!(run_count, 1);
+    }
+
+    #[test]
+    fn removal_preview_missing_project_is_all_zero() {
+        let conn = crate::open(":memory:").unwrap();
+        let preview = project_removal_preview(&conn, "nope").unwrap();
+        assert_eq!(preview, ProjectRemovalPreview::default());
     }
 
     #[test]
