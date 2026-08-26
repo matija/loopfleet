@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Shared validation + setup for build/release.sh.
-# Sourced by it; exports APPLE_*, TAURI_SIGNING_PRIVATE_KEY, RELEASE_VERSION,
-# RELEASE_TAG, GH_REPO, defines notarize_dmg(), and the logging helpers below.
+# Sourced by it; exports ROOT, TARGET_TRIPLE, BUNDLE_DIR, APPLE_*,
+# TAURI_SIGNING_PRIVATE_KEY, RELEASE_VERSION, RELEASE_TAG, GH_REPO, defines
+# require_arm64_macos(), notarize_dmg(), and the logging helpers below.
 #
 # If RELEASE_PREFLIGHT_ONLY=1 (set by --preflight in the release scripts),
 # this file exits 0 right after validation instead of continuing on to a build.
@@ -10,6 +11,10 @@ for _release_arg in "$@"; do
   [[ "$_release_arg" == "--preflight" ]] && RELEASE_PREFLIGHT_ONLY=1
 done
 unset _release_arg
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TARGET_TRIPLE="aarch64-apple-darwin"
+BUNDLE_DIR="$ROOT/target/$TARGET_TRIPLE/release/bundle"
 
 # --- pretty output -------------------------------------------------------
 # Colors only when attached to a terminal and NO_COLOR is unset.
@@ -49,6 +54,19 @@ expand_tilde() {
   esac
 }
 
+# Release builds only run on an Apple Silicon Mac: that's the only host that
+# can codesign/notarize for aarch64-apple-darwin.
+require_arm64_macos() {
+  [[ "$(uname -s)" == "Darwin" ]] || { err "release builds must run on macOS"; exit 1; }
+  [[ "$(uname -m)" == "arm64" ]] || { err "release builds must run on Apple Silicon (arm64)"; exit 1; }
+}
+
+# Reads the version fresh from package.json (called both before and after a
+# version bump, so it must not rely on a cached value).
+release_version() {
+  node -e 'process.stdout.write(require(process.argv[1]).version)' "$ROOT/package.json"
+}
+
 # Refuse to release from a dirty tree or an unpushed HEAD. GitHub rejects
 # `gh release create --target <sha>` (HTTP 422) if the SHA isn't on the remote,
 # and a dirty tree means the built artifacts don't correspond to any commit.
@@ -70,6 +88,9 @@ require_clean_pushed_tree() {
 }
 
 require_clean_pushed_tree
+
+command -v gh >/dev/null 2>&1 || { err "gh (GitHub CLI) is required to publish releases"; exit 1; }
+gh auth status >/dev/null 2>&1 || { err "gh is not authenticated. Run 'gh auth login' first."; exit 1; }
 
 require_env APPLE_SIGNING_IDENTITY APPLE_API_KEY_PATH APPLE_API_ISSUER
 APPLE_API_KEY="${APPLE_API_KEY:-${APPLE_API_KEY_ID:-}}"
@@ -118,7 +139,7 @@ export APPLE_SIGNING_IDENTITY APPLE_API_KEY APPLE_API_KEY_PATH APPLE_API_ISSUER
 export TAURI_SIGNING_PRIVATE_KEY
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
 
-RELEASE_VERSION=$(node -e 'process.stdout.write(require("./package.json").version)')
+RELEASE_VERSION="$(release_version)"
 RELEASE_TAG="${RELEASE_TAG:-$RELEASE_VERSION}"
 GH_REPO="${GH_REPO:-matija/loopfleet}"
 export RELEASE_VERSION RELEASE_TAG GH_REPO

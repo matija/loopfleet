@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 #
-# build/release.sh — build a macOS release bundle for Apple Silicon (arm64).
+# build/release.sh — build, notarize, and publish a macOS release for
+# Apple Silicon (arm64).
 #
-# Produces the .app and .dmg for aarch64-apple-darwin via `tauri build`,
-# which also runs the frontend build (see beforeBuildCommand in
-# src-tauri/tauri.conf.json).
+# Builds the .app/.dmg/updater-tarball for aarch64-apple-darwin via
+# `tauri build` (which also runs the frontend build, see
+# beforeBuildCommand in src-tauri/tauri.conf.json), notarizes and staples
+# the .dmg, writes latest.json for the Tauri updater, and creates (or
+# replaces) the GitHub release at RELEASE_TAG with all three artifacts.
 #
 # Usage:
 #   build/release.sh               # build the current version
@@ -27,6 +30,10 @@ else
   set --
 fi
 
+# Capture any explicit override before release-common.sh defaults it to the
+# (pre-bump) current version.
+_release_tag_override="${RELEASE_TAG:-}"
+
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/release-common.sh"
 
 if [ $# -gt 1 ]; then
@@ -37,19 +44,79 @@ fi
 # Optional version bump before building, so every manifest stays in sync.
 if [ $# -eq 1 ]; then
   "$ROOT/build/bump.sh" "$1"
+  RELEASE_VERSION="$(release_version)"
+  RELEASE_TAG="${_release_tag_override:-$RELEASE_VERSION}"
 fi
 
 require_arm64_macos
 
-VERSION="$(release_version)"
-log "Building loopfleet $VERSION for $TARGET_TRIPLE"
+VERSION="$RELEASE_VERSION"
+banner "Release loopfleet $VERSION ($RELEASE_TAG) for $TARGET_TRIPLE"
 
 cd "$ROOT"
 npm run tauri build -- --target "$TARGET_TRIPLE"
 
-log "Release artifacts:"
-if [ -d "$BUNDLE_DIR" ]; then
-  find "$BUNDLE_DIR" -maxdepth 2 \( -name '*.app' -o -name '*.dmg' \) -print
+DMG="$(find "$BUNDLE_DIR/dmg" -maxdepth 1 -name '*.dmg' -print -quit)"
+[[ -n "$DMG" ]] || { err "no .dmg found under $BUNDLE_DIR/dmg"; exit 1; }
+
+TARBALL="$(find "$BUNDLE_DIR/macos" -maxdepth 1 -name '*.app.tar.gz' -print -quit)"
+[[ -n "$TARBALL" ]] || { err "no updater tarball found under $BUNDLE_DIR/macos"; exit 1; }
+
+SIGNATURE_FILE="$TARBALL.sig"
+[[ -f "$SIGNATURE_FILE" ]] || { err "no updater signature found at $SIGNATURE_FILE"; exit 1; }
+
+notarize_dmg "$DMG"
+
+step "Resolving previous release for changelog..."
+PREV_TAG="$(gh release list --repo "$GH_REPO" --limit 50 --json tagName \
+  --jq "[.[] | select(.tagName != \"$RELEASE_TAG\")][0].tagName" 2>/dev/null || true)"
+
+if [[ -n "$PREV_TAG" ]]; then
+  NOTES="**Full Changelog**: https://github.com/$GH_REPO/compare/$PREV_TAG...$RELEASE_TAG"
+  info "Previous release: $PREV_TAG"
 else
-  warn "no bundle directory at $BUNDLE_DIR"
+  NOTES="**Full Changelog**: https://github.com/$GH_REPO/commits/$RELEASE_TAG"
+  info "No previous release found; this is the first one."
 fi
+
+step "Writing latest.json..."
+LATEST_JSON="$BUNDLE_DIR/latest.json"
+PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+SIGNATURE="$(<"$SIGNATURE_FILE")"
+TARBALL_URL="https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/$(basename "$TARBALL")"
+
+jq -n \
+  --arg version "$VERSION" \
+  --arg notes "$NOTES" \
+  --arg pub_date "$PUB_DATE" \
+  --arg signature "$SIGNATURE" \
+  --arg url "$TARBALL_URL" \
+  '{
+    version: $version,
+    notes: $notes,
+    pub_date: $pub_date,
+    platforms: {
+      "darwin-aarch64": { signature: $signature, url: $url }
+    }
+  }' > "$LATEST_JSON"
+ok "Wrote $LATEST_JSON"
+
+if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+  step "Release $RELEASE_TAG already exists; replacing it..."
+  gh release delete "$RELEASE_TAG" --repo "$GH_REPO" --yes --cleanup-tag
+fi
+
+step "Creating GitHub release $RELEASE_TAG..."
+gh release create "$RELEASE_TAG" \
+  --repo "$GH_REPO" \
+  --title "$RELEASE_TAG" \
+  --notes "$NOTES" \
+  --target "$(git rev-parse HEAD)" \
+  "$DMG" "$TARBALL" "$LATEST_JSON"
+ok "Published https://github.com/$GH_REPO/releases/tag/$RELEASE_TAG"
+
+banner "Release complete"
+info "Artifacts:"
+info "  $DMG"
+info "  $TARBALL"
+info "  $LATEST_JSON"
