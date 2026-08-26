@@ -22,6 +22,12 @@
 // a user thinks in here, and it's disabled while the section already holds its
 // defaults, so it never claims there's something to undo when there isn't.
 //
+// The panel's commands share one footer row instead of a button per section:
+// Save (primary) and Clean up now (quiet). Clean up now used to sit under
+// Worktrees in a row of its own, which read as a second call to action of
+// equal weight — the retention hint above it already says what it does, and
+// pressing it is a chore rather than the point of the panel.
+//
 // Theme is the one field here that is *not* backend state: it's a per-device
 // display preference App owns and persists to localStorage, so it applies on
 // pick rather than on Save. It lives in this panel anyway because this is
@@ -354,7 +360,7 @@ export function SettingsPanel({
           * trade-off (disk vs. being able to revisit a finished run) is
           * legible without cycling the dropdown. That's four sentences, which
           * is why it's disclosed rather than printed inline: at full length it
-          * would push "Clean up now" and the Appearance section down the
+          * would push the Appearance section and the action row down the
           * panel. */}
         <Hint
           summary="Measured from when a run finished."
@@ -369,20 +375,6 @@ export function SettingsPanel({
             Accepted runs are always swept — their diff has already landed.
           </p>
         </Hint>
-        <div className="panel__actions">
-          <button
-            className="btn btn--secondary"
-            onClick={cleanUpNow}
-            disabled={sweeping || !loaded}
-          >
-            {sweeping ? "Cleaning up…" : "Clean up now"}
-          </button>
-          {sweepMsg && (
-            <span className={`msg ${sweepMsg.ok ? "msg--ok" : "msg--err"}`}>
-              {sweepMsg.text}
-            </span>
-          )}
-        </div>
       </section>
 
       <section className="settings-section">
@@ -428,10 +420,23 @@ export function SettingsPanel({
         </Hint>
       </section>
 
+      {/* One action row for the panel’s two commands, ranked rather than
+        * stacked: Save is the reason the panel is open, so it takes the filled
+        * primary; Clean up now is a maintenance chore you may never press, so
+        * it rides beside Save at text weight. Each keeps its own message,
+        * printed after the pair so neither result is mistaken for the other. */}
       <div className="panel__actions">
-        <button className="btn btn--primary" onClick={save} disabled={saving || !loaded}>
+        <Button variant="primary" onClick={save} disabled={saving || !loaded}>
           {saving ? "Saving…" : "Save settings"}
-        </button>
+        </Button>
+        <Button
+          variant="quiet"
+          onClick={cleanUpNow}
+          disabled={sweeping || !loaded}
+          title="Delete finished worktrees that are past their retention window"
+        >
+          {sweeping ? "Cleaning up…" : "Clean up now"}
+        </Button>
         {msg ? (
           <span className={`msg ${msg.ok ? "msg--ok" : "msg--err"}`}>
             {msg.text}
@@ -439,6 +444,11 @@ export function SettingsPanel({
         ) : resetNote ? (
           <span className="msg">{resetNote}</span>
         ) : null}
+        {sweepMsg && (
+          <span className={`msg ${sweepMsg.ok ? "msg--ok" : "msg--err"}`}>
+            {sweepMsg.text}
+          </span>
+        )}
       </div>
     </section>
   );
