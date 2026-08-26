@@ -14,6 +14,14 @@
 // explanations sit behind an info affordance instead of pushing the controls
 // under them down the panel.
 //
+// Each section's head carries a quiet Reset that puts that section's defaults
+// (settingsDefaults.ts, mirroring `store::Settings::default`) back into the
+// form without saving — the user reads the restored values next to everything
+// else and presses Save to commit them, so a mis-aimed Reset costs nothing.
+// It's per section rather than one panel-wide button because sections are what
+// a user thinks in here, and it's disabled while the section already holds its
+// defaults, so it never claims there's something to undo when there isn't.
+//
 // Theme is the one field here that is *not* backend state: it's a per-device
 // display preference App owns and persists to localStorage, so it applies on
 // pick rather than on Save. It lives in this panel anyway because this is
@@ -28,7 +36,15 @@ import {
   retentionValue,
   type RetentionMode,
 } from "../retention";
-import { isThemeId, THEMES, type ThemeId } from "../themes";
+import {
+  DEFAULT_RUN_DEFAULTS,
+  DEFAULT_WORKTREES,
+  isRunDefaultsAtDefault,
+  isThemeAtDefault,
+  isWorktreesAtDefault,
+} from "../settingsDefaults";
+import { DEFAULT_THEME_ID, isThemeId, THEMES, type ThemeId } from "../themes";
+import { Button } from "./Button";
 import { Select } from "./Select";
 import { Hint } from "./Hint";
 import { NumberField } from "./NumberField";
@@ -50,6 +66,40 @@ function formatBytes(bytes: number): string {
     unit += 1;
   }
   return `${value.toFixed(1)} ${units[unit]}`;
+}
+
+// The per-section Reset. Text-weight (`quiet`) so it reads as an escape hatch
+// beside the section title rather than competing with Save; the accessible
+// name says which section it resets, since three buttons labelled "Reset"
+// would otherwise be indistinguishable to a screen reader.
+function SectionReset({
+  section,
+  disabled,
+  onReset,
+}: {
+  section: string;
+  disabled: boolean;
+  onReset: () => void;
+}) {
+  return (
+    <Button
+      variant="quiet"
+      className="settings-section__reset"
+      onClick={onReset}
+      disabled={disabled}
+      aria-label={`Reset ${section} to defaults`}
+      // Section-neutral wording: the accessible name already says which
+      // section this is, and "Appearance"/"Run defaults" don't share a verb
+      // form that would read well in one sentence.
+      title={
+        disabled
+          ? "This section is already at its defaults"
+          : "Restore this section's defaults"
+      }
+    >
+      Reset
+    </Button>
+  );
 }
 
 export function SettingsPanel({
@@ -82,6 +132,10 @@ export function SettingsPanel({
   );
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  // A reset changes the form and nothing else, so the panel says so once —
+  // otherwise the restored values look indistinguishable from saved ones and
+  // a user could close the panel believing the reset had taken.
+  const [resetNote, setResetNote] = useState<string | null>(null);
   const [sweeping, setSweeping] = useState(false);
   const [sweepMsg, setSweepMsg] = useState<{ text: string; ok: boolean } | null>(
     null,
@@ -118,6 +172,7 @@ export function SettingsPanel({
     };
     setSaving(true);
     setMsg(null);
+    setResetNote(null);
     try {
       await saveSettings(next);
       setSettings(next);
@@ -132,6 +187,29 @@ export function SettingsPanel({
     } finally {
       setSaving(false);
     }
+  }
+
+  // Each reset writes defaults into the draft state only. `msg` is cleared
+  // alongside: a "Saved" from a moment ago would otherwise sit next to values
+  // that haven't been saved.
+  function resetRunDefaults() {
+    setSettings({ ...settings, ...DEFAULT_RUN_DEFAULTS });
+    setMsg(null);
+    setResetNote("Run defaults restored — review, then save.");
+  }
+
+  function resetWorktrees() {
+    setRetentionMode(DEFAULT_WORKTREES.mode);
+    setRetentionHours(DEFAULT_WORKTREES.hours);
+    setMsg(null);
+    setResetNote("Worktree defaults restored — review, then save.");
+  }
+
+  // Appearance is the exception: theme isn't part of what Save writes, so its
+  // reset applies at once, exactly like picking the default from the list.
+  // No note either — there's nothing left for the user to commit.
+  function resetAppearance() {
+    onThemeChange(DEFAULT_THEME_ID);
   }
 
   async function cleanUpNow() {
@@ -170,6 +248,11 @@ export function SettingsPanel({
         <div className="settings-section__head">
           <AgentIcon size={16} className="icon settings-section__icon" />
           <h4 className="settings-section__title">Run defaults</h4>
+          <SectionReset
+            section="Run defaults"
+            disabled={!loaded || isRunDefaultsAtDefault(settings)}
+            onReset={resetRunDefaults}
+          />
         </div>
         <div className="settings-row">
           <label className="field">
@@ -227,6 +310,14 @@ export function SettingsPanel({
         <div className="settings-section__head">
           <FolderIcon size={16} className="icon settings-section__icon" />
           <h4 className="settings-section__title">Worktrees</h4>
+          <SectionReset
+            section="Worktree settings"
+            disabled={
+              !loaded ||
+              isWorktreesAtDefault({ mode: retentionMode, hours: retentionHours })
+            }
+            onReset={resetWorktrees}
+          />
         </div>
         {/* The hour count is an argument to the "after a delay" mode, not a
           * setting of its own, so it sits beside the mode it qualifies. */}
@@ -300,6 +391,13 @@ export function SettingsPanel({
             * family to "how this looks". */}
           <DotIcon size={16} className="icon settings-section__icon" />
           <h4 className="settings-section__title">Appearance</h4>
+          {/* Not gated on `loaded`: theme comes from localStorage, not the
+            * settings load this panel waits on. */}
+          <SectionReset
+            section="Appearance"
+            disabled={isThemeAtDefault(themeId)}
+            onReset={resetAppearance}
+          />
         </div>
         <div className="settings-row">
           <label className="field">
@@ -334,11 +432,13 @@ export function SettingsPanel({
         <button className="btn btn--primary" onClick={save} disabled={saving || !loaded}>
           {saving ? "Saving…" : "Save settings"}
         </button>
-        {msg && (
+        {msg ? (
           <span className={`msg ${msg.ok ? "msg--ok" : "msg--err"}`}>
             {msg.text}
           </span>
-        )}
+        ) : resetNote ? (
+          <span className="msg">{resetNote}</span>
+        ) : null}
       </div>
     </section>
   );

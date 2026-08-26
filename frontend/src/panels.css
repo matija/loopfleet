@@ -160,6 +160,14 @@
   color: var(--c-text-faint);
 }
 
+/* The section's Reset sits at the far end of its head rule, away from the
+ * title it belongs to: it's an escape hatch, not part of the label. Quiet
+ * styling (see .btn--quiet) keeps three of them from reading as three calls to
+ * action stacked down the panel. */
+.settings-section__reset {
+  margin-left: auto;
+}
+
 .settings-section__title {
   margin: 0;
   font-size: var(--text-sm);
