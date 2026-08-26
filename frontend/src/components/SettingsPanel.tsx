@@ -1,5 +1,11 @@
 // Global app settings: default agent, default iteration count, concurrency
 // cap, worktree retention.
+//
+// Laid out as labelled sections (run defaults / worktrees / appearance), each
+// led by a glyph so a group is findable by shape before its title is read.
+// Within a section, controls are sized to what they hold — an hour count is a
+// few digits wide, an agent name a word — and related fields share a row, so
+// the panel reads as a handful of decisions rather than one long column.
 // Loaded on mount, saved through the unchanged `get_settings`/`save_settings`
 // commands. The launch control (a later M7 task) reads these defaults.
 //
@@ -20,6 +26,7 @@ import {
 import { isThemeId, THEMES, type ThemeId } from "../themes";
 import { Select } from "./Select";
 import { NumberField } from "./NumberField";
+import { AgentIcon, DotIcon, FolderIcon } from "./Icon";
 
 // The v1 agent keys (matches the adapters' discovery set). A small stable list;
 // no need to derive it from `agent_status` here.
@@ -153,100 +160,153 @@ export function SettingsPanel({
       ) : !loaded ? (
         <p className="panel__loading">Loading settings…</p>
       ) : null}
-      <div className="form-grid">
-        <label className="field">
-          <span>Default agent</span>
-          <Select
-            value={settings.default_agent}
-            disabled={!loaded}
-            onChange={(v) => setSettings({ ...settings, default_agent: v })}
-            options={AGENTS.map((a) => ({ value: a, label: a }))}
-          />
-        </label>
-        <label className="field">
-          <span>Default iterations</span>
-          <NumberField
-            min={1}
-            max={50}
-            value={settings.default_iterations}
-            disabled={!loaded}
-            onChange={(v) =>
-              setSettings({
-                ...settings,
-                default_iterations: v,
-              })
-            }
-          />
-        </label>
-        <label className="field">
-          <span>
-            Concurrency cap <em>(0 = unlimited)</em>
-          </span>
-          <NumberField
-            min={0}
-            max={20}
-            value={settings.concurrency_cap}
-            disabled={!loaded}
-            onChange={(v) =>
-              setSettings({
-                ...settings,
-                concurrency_cap: v,
-              })
-            }
-          />
-        </label>
-        <label className="field">
-          <span>Worktree retention</span>
-          <Select
-            value={retentionMode}
-            disabled={!loaded}
-            onChange={(v) => setRetentionMode(v as RetentionMode)}
-            options={[
-              { value: "immediately", label: "Immediately" },
-              { value: "after", label: "After a number of hours" },
-              { value: "never", label: "Never" },
-            ]}
-          />
-          {retentionMode === "after" && (
-            <NumberField
-              min={1}
-              aria-label="Retention hours"
-              value={Number(retentionHours) || 0}
+      <section className="settings-section">
+        <div className="settings-section__head">
+          <AgentIcon size={16} className="icon settings-section__icon" />
+          <h4 className="settings-section__title">Run defaults</h4>
+        </div>
+        <div className="settings-row">
+          <label className="field">
+            <span>Default agent</span>
+            <Select
+              className="control--name"
+              value={settings.default_agent}
               disabled={!loaded}
-              onChange={(v) => setRetentionHours(String(v))}
+              onChange={(v) => setSettings({ ...settings, default_agent: v })}
+              options={AGENTS.map((a) => ({ value: a, label: a }))}
             />
+          </label>
+        </div>
+        {/* Iterations and concurrency answer one question together — how much
+          * work a launch does at once — so they sit on a single row. */}
+        <div className="settings-row">
+          <label className="field">
+            <span>Default iterations</span>
+            <NumberField
+              className="control--count"
+              min={1}
+              max={50}
+              value={settings.default_iterations}
+              disabled={!loaded}
+              onChange={(v) =>
+                setSettings({
+                  ...settings,
+                  default_iterations: v,
+                })
+              }
+            />
+          </label>
+          <label className="field">
+            <span>
+              Concurrency cap <em>(0 = unlimited)</em>
+            </span>
+            <NumberField
+              className="control--count"
+              min={0}
+              max={20}
+              value={settings.concurrency_cap}
+              disabled={!loaded}
+              onChange={(v) =>
+                setSettings({
+                  ...settings,
+                  concurrency_cap: v,
+                })
+              }
+            />
+          </label>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <div className="settings-section__head">
+          <FolderIcon size={16} className="icon settings-section__icon" />
+          <h4 className="settings-section__title">Worktrees</h4>
+        </div>
+        {/* The hour count is an argument to the "after a delay" mode, not a
+          * setting of its own, so it sits beside the mode it qualifies. */}
+        <div className="settings-row">
+          <label className="field">
+            <span>Delete finished worktrees</span>
+            <Select
+              className="control--mode"
+              value={retentionMode}
+              disabled={!loaded}
+              onChange={(v) => setRetentionMode(v as RetentionMode)}
+              options={[
+                { value: "immediately", label: "Immediately" },
+                { value: "after", label: "After a delay" },
+                { value: "never", label: "Never" },
+              ]}
+            />
+          </label>
+          {retentionMode === "after" && (
+            <label className="field">
+              <span>Hours</span>
+              <NumberField
+                className="control--count"
+                min={1}
+                aria-label="Retention hours"
+                value={Number(retentionHours) || 0}
+                disabled={!loaded}
+                onChange={(v) => setRetentionHours(String(v))}
+              />
+            </label>
           )}
-          {/* All three modes spelled out, not just the selected one, so the
-            * trade-off (disk vs. being able to revisit a finished run) is
-            * legible without cycling the dropdown. */}
-          <span className="field__hint">
-            When a finished run’s worktree is deleted, measured from when it
-            finished. <em>Immediately</em> reclaims disk as soon as a run ends;{" "}
-            <em>after a number of hours</em> keeps it that long so you can still
-            open the diff; <em>never</em> keeps it indefinitely. Accepted runs
-            are always swept — their diff has already landed.
-          </span>
-        </label>
-      </div>
-      <div className="form-grid">
-        <label className="field">
-          <span>Theme</span>
-          <Select
-            value={themeId}
-            onChange={(v) => {
-              // The option values are exactly THEMES ids; the guard is only
-              // to keep the cast honest.
-              if (isThemeId(v)) onThemeChange(v);
-            }}
-            options={THEMES.map((theme) => ({ value: theme.id, label: theme.label }))}
-          />
-          <span className="field__hint">
-            Applies immediately and is remembered on this device only — it
-            isn’t part of the settings above, so “Save settings” doesn’t
-            affect it.
-          </span>
-        </label>
-      </div>
+        </div>
+        {/* All three modes spelled out, not just the selected one, so the
+          * trade-off (disk vs. being able to revisit a finished run) is
+          * legible without cycling the dropdown. */}
+        <p className="settings-section__hint">
+          Measured from when a run finished. <em>Immediately</em> reclaims disk
+          as soon as a run ends; <em>after a delay</em> keeps the worktree that
+          many hours so you can still open the diff; <em>never</em> keeps it
+          indefinitely. Accepted runs are always swept — their diff has already
+          landed.
+        </p>
+        <div className="panel__actions">
+          <button
+            className="btn btn--secondary"
+            onClick={cleanUpNow}
+            disabled={sweeping || !loaded}
+          >
+            {sweeping ? "Cleaning up…" : "Clean up now"}
+          </button>
+          {sweepMsg && (
+            <span className={`msg ${sweepMsg.ok ? "msg--ok" : "msg--err"}`}>
+              {sweepMsg.text}
+            </span>
+          )}
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <div className="settings-section__head">
+          {/* A filled dot reads as a color swatch — the closest glyph in the
+            * family to "how this looks". */}
+          <DotIcon size={16} className="icon settings-section__icon" />
+          <h4 className="settings-section__title">Appearance</h4>
+        </div>
+        <div className="settings-row">
+          <label className="field">
+            <span>Theme</span>
+            <Select
+              className="control--name"
+              value={themeId}
+              onChange={(v) => {
+                // The option values are exactly THEMES ids; the guard is only
+                // to keep the cast honest.
+                if (isThemeId(v)) onThemeChange(v);
+              }}
+              options={THEMES.map((theme) => ({ value: theme.id, label: theme.label }))}
+            />
+          </label>
+        </div>
+        <p className="settings-section__hint">
+          Applies immediately and is remembered on this device only — it isn’t
+          part of the settings above, so “Save settings” doesn’t affect it.
+        </p>
+      </section>
+
       <div className="panel__actions">
         <button className="btn btn--primary" onClick={save} disabled={saving || !loaded}>
           {saving ? "Saving…" : "Save settings"}
@@ -254,20 +314,6 @@ export function SettingsPanel({
         {msg && (
           <span className={`msg ${msg.ok ? "msg--ok" : "msg--err"}`}>
             {msg.text}
-          </span>
-        )}
-      </div>
-      <div className="panel__actions">
-        <button
-          className="btn btn--secondary"
-          onClick={cleanUpNow}
-          disabled={sweeping || !loaded}
-        >
-          {sweeping ? "Cleaning up…" : "Clean up now"}
-        </button>
-        {sweepMsg && (
-          <span className={`msg ${sweepMsg.ok ? "msg--ok" : "msg--err"}`}>
-            {sweepMsg.text}
           </span>
         )}
       </div>

@@ -137,13 +137,83 @@
   color: var(--c-danger);
 }
 
-/* --- form fields --- */
+/* --- settings sections --- */
 
-.form-grid {
-  display: grid;
-  gap: var(--space-4);
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+/* Settings are grouped into labelled sections (SettingsPanel.tsx), each led by
+ * a glyph so a group is findable by shape before its title is read. Separated
+ * by a rule rather than boxed: the panel is already a card, and nested cards
+ * would read as separate surfaces. */
+.settings-section + .settings-section {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--c-border);
 }
+
+.settings-section__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.settings-section__icon {
+  color: var(--c-text-faint);
+}
+
+.settings-section__title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--c-text);
+}
+
+/* Section-level note, below a row rather than inside one label — the same
+ * quiet voice as .field__hint, but a <p> since it sits outside any <label>. */
+.settings-section__hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--c-text-faint);
+  line-height: var(--leading-normal);
+}
+
+.settings-section__hint em {
+  color: var(--c-text-muted);
+  font-style: normal;
+}
+
+/* Related fields share a row (retention mode beside its hour count,
+ * concurrency beside iterations). No equal columns: each field takes the
+ * width of its own control, and the row wraps when the panel is too narrow to
+ * hold them side by side. */
+.settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.settings-row + .settings-row {
+  margin-top: var(--space-4);
+}
+
+/* Control widths, in characters of the content they hold: an hour count or an
+ * iteration count is a few digits, an agent or theme name a word, a retention
+ * mode a short phrase. Both primitives default to width:100% (select.css,
+ * number-field.css, loaded after this file), so these need the extra class of
+ * weight to win. */
+.field .control--count {
+  width: 10ch;
+}
+
+.field .control--name {
+  width: 20ch;
+}
+
+.field .control--mode {
+  width: 26ch;
+}
+
+/* --- form fields --- */
 
 .field {
   display: flex;
