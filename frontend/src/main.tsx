@@ -15,6 +15,7 @@ import "./grid.css";
 import "./palette.css";
 import "./toolbar.css";
 import "./popover.css";
+import "./hint.css";
 import "./select.css";
 import "./number-field.css";
 import "./segmented-control.css";

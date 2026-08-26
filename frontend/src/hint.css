@@ -1,0 +1,71 @@
+/* Hint — progressive-disclosure explanatory copy (Hint.tsx). One quiet line
+ * beside the control it explains, with the full text behind an info button.
+ *
+ * The summary is deliberately held to a single line: the whole point of the
+ * primitive is that the hint's footprint doesn't change with the length of
+ * what it explains, so the controls below it never move. `min-width: 0` lets
+ * the line ellipsize rather than wrap if a caller's summary runs long — a
+ * wrapped summary would give back exactly the vertical drift this avoids. */
+
+.hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.hint__summary {
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--c-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The affordance sits at the quietest weight in the button family — it is an
+ * offer to read more, never an action the panel wants taken. It warms to the
+ * accent on hover so it reads as pressable before it's pressed. */
+.hint__more {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--c-text-faint);
+  cursor: pointer;
+}
+
+.hint__more:hover,
+.hint__more[aria-expanded="true"] {
+  color: var(--c-accent);
+}
+
+/* Wide enough for a few sentences to break naturally, narrow enough to stay
+ * a note rather than a second panel. */
+.hint__detail {
+  max-width: 42ch;
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--c-text-muted);
+}
+
+.hint__detail p {
+  margin: 0;
+}
+
+.hint__detail p + p {
+  margin-top: var(--space-2);
+}
+
+/* Same convention as the settings fields: <em> marks a control's own option
+ * names inside prose, picked out by color rather than by italics. */
+.hint__detail em {
+  color: var(--c-text);
+  font-style: normal;
+}

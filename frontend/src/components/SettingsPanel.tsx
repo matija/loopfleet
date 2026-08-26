@@ -9,6 +9,11 @@
 // Loaded on mount, saved through the unchanged `get_settings`/`save_settings`
 // commands. The launch control (a later M7 task) reads these defaults.
 //
+// The two settings that need more than a label to explain them — worktree
+// retention and theme — carry a `Hint` rather than a paragraph, so their
+// explanations sit behind an info affordance instead of pushing the controls
+// under them down the panel.
+//
 // Theme is the one field here that is *not* backend state: it's a per-device
 // display preference App owns and persists to localStorage, so it applies on
 // pick rather than on Save. It lives in this panel anyway because this is
@@ -25,6 +30,7 @@ import {
 } from "../retention";
 import { isThemeId, THEMES, type ThemeId } from "../themes";
 import { Select } from "./Select";
+import { Hint } from "./Hint";
 import { NumberField } from "./NumberField";
 import { AgentIcon, DotIcon, FolderIcon } from "./Icon";
 
@@ -255,14 +261,23 @@ export function SettingsPanel({
         </div>
         {/* All three modes spelled out, not just the selected one, so the
           * trade-off (disk vs. being able to revisit a finished run) is
-          * legible without cycling the dropdown. */}
-        <p className="settings-section__hint">
-          Measured from when a run finished. <em>Immediately</em> reclaims disk
-          as soon as a run ends; <em>after a delay</em> keeps the worktree that
-          many hours so you can still open the diff; <em>never</em> keeps it
-          indefinitely. Accepted runs are always swept — their diff has already
-          landed.
-        </p>
+          * legible without cycling the dropdown. That's four sentences, which
+          * is why it's disclosed rather than printed inline: at full length it
+          * would push "Clean up now" and the Appearance section down the
+          * panel. */}
+        <Hint
+          summary="Measured from when a run finished."
+          label="worktree deletion"
+        >
+          <p>
+            <em>Immediately</em> reclaims disk as soon as a run ends;{" "}
+            <em>after a delay</em> keeps the worktree that many hours so you can
+            still open the diff; <em>never</em> keeps it indefinitely.
+          </p>
+          <p>
+            Accepted runs are always swept — their diff has already landed.
+          </p>
+        </Hint>
         <div className="panel__actions">
           <button
             className="btn btn--secondary"
@@ -301,10 +316,18 @@ export function SettingsPanel({
             />
           </label>
         </div>
-        <p className="settings-section__hint">
-          Applies immediately and is remembered on this device only — it isn’t
-          part of the settings above, so “Save settings” doesn’t affect it.
-        </p>
+        {/* The summary carries the part a user acts on — there's no Save to
+          * press for this one — and the reason why sits behind the affordance. */}
+        <Hint
+          summary="Applies immediately, on this device only."
+          label="the theme setting"
+        >
+          <p>
+            Theme is a per-device display preference rather than part of the
+            settings above, so it takes effect the moment you pick it and
+            “Save settings” doesn’t affect it.
+          </p>
+        </Hint>
       </section>
 
       <div className="panel__actions">

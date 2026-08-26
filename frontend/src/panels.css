@@ -167,20 +167,6 @@
   color: var(--c-text);
 }
 
-/* Section-level note, below a row rather than inside one label — the same
- * quiet voice as .field__hint, but a <p> since it sits outside any <label>. */
-.settings-section__hint {
-  margin: var(--space-2) 0 0;
-  font-size: var(--text-sm);
-  color: var(--c-text-faint);
-  line-height: var(--leading-normal);
-}
-
-.settings-section__hint em {
-  color: var(--c-text-muted);
-  font-style: normal;
-}
-
 /* Related fields share a row (retention mode beside its hour count,
  * concurrency beside iterations). No equal columns: each field takes the
  * width of its own control, and the row wraps when the panel is too narrow to
