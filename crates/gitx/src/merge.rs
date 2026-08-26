@@ -5,7 +5,8 @@
 //!
 //! The default target is the repo's **currently checked-out branch** — the run's
 //! work lands where the user is working, as a single squashed commit under a
-//! descriptive message. The caller may instead name a custom target branch.
+//! commit carrying the run's own commit messages. The caller may instead name a
+//! custom target branch.
 //!
 //! The run's work lives in an app-owned shadow commit (the agent never commits),
 //! so `source_rev` is that final shadow ref. Three cases:
@@ -40,10 +41,26 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const AUTHOR_NAME: &str = "loopfleet";
 const AUTHOR_EMAIL: &str = "loopfleet@localhost";
 
-/// The message stamped on every "use this run" squash commit. The work is a
-/// collaboration — loopfleet produced it, the user landed it — so the message
-/// says exactly that, matching the author/committer split above.
-pub const MERGE_COMMIT_MESSAGE: &str = "Co-authored by loopfleet";
+/// The trailer stamped at the bottom of every "use this run" squash commit. The
+/// work is a collaboration — loopfleet produced it, the user landed it — so the
+/// message ends by saying exactly that, matching the author/committer split
+/// above, while its subject and body describe what the run actually did.
+pub const MERGE_COMMIT_TRAILER: &str = "Co-authored by loopfleet";
+
+/// `message` with [`MERGE_COMMIT_TRAILER`] appended as its last paragraph: the
+/// commit keeps the run's own subject and body, and the shared origin of the
+/// work is recorded at the bottom where trailers belong. A message that already
+/// ends with the trailer is returned unchanged, so composing twice is harmless.
+pub fn with_trailer(message: &str) -> String {
+    let body = message.trim_end();
+    if body.is_empty() {
+        return MERGE_COMMIT_TRAILER.to_string();
+    }
+    if body.lines().next_back() == Some(MERGE_COMMIT_TRAILER) {
+        return body.to_string();
+    }
+    format!("{body}\n\n{MERGE_COMMIT_TRAILER}")
+}
 
 /// The outcome of a "use this run" merge.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,35 +119,70 @@ type Result<T> = std::result::Result<T, MergeError>;
 ///
 /// `Some(target)` names a custom branch: branched off the repo's HEAD first if it
 /// doesn't exist, then squash-merged in a throwaway worktree under `scratch_root`
-/// so the user's own checkout is never touched. `commit_message` is the squashed
-/// commit's message — every path lands the run as one described commit.
+/// so the user's own checkout is never touched. Every path lands the run as one
+/// commit carrying the source commit's own message (see [`squash_message`]).
 pub fn merge_run(
     repo: &Path,
     source_rev: &str,
     target_branch: Option<&str>,
-    commit_message: &str,
     scratch_root: &Path,
 ) -> Result<MergeResult> {
     // Resolve the source ref to a concrete commit sha (also validates it exists).
     let source = git(repo, &["rev-parse", "--verify", &format!("{source_rev}^{{commit}}")])?;
 
     match target_branch {
-        None => merge_into_current(repo, &source, commit_message),
-        Some(target) => merge_into_named(repo, &source, target, commit_message, scratch_root),
+        None => merge_into_current(repo, &source),
+        Some(target) => merge_into_named(repo, &source, target, scratch_root),
     }
+}
+
+/// The message for the squashed commit: the messages of the run's own commits in
+/// `base..source` — what the work already says about itself — newest first, with
+/// [`MERGE_COMMIT_TRAILER`] appended at the bottom. The squash is that same work
+/// landing on the user's branch, so it keeps the original wording rather than
+/// inventing a subject of its own.
+///
+/// loopfleet's per-iteration shadow snapshots are skipped: they are bookkeeping
+/// (`run <id> iter <n>`), not something the user wrote. When the agent committed
+/// nothing itself, there is no other wording available and the final snapshot's
+/// message is used as-is.
+fn squash_message(repo: &Path, base: &str, source: &str) -> Result<String> {
+    let log = git(repo, &["log", "--format=%B%x00", &format!("{base}..{source}")])?;
+    let messages: Vec<&str> = log
+        .split('\0')
+        .map(str::trim)
+        .filter(|m| !m.is_empty() && !is_snapshot_message(m))
+        .collect();
+    let original = if messages.is_empty() {
+        git(repo, &["log", "-1", "--format=%B", source])?
+    } else {
+        messages.join("\n\n")
+    };
+    Ok(with_trailer(&original))
+}
+
+/// True for a loopfleet shadow-snapshot message (`run <id> iter <n>`, written by
+/// `shadow::snapshot`) — app bookkeeping rather than a message about the work.
+fn is_snapshot_message(message: &str) -> bool {
+    let mut parts = message.split_whitespace();
+    matches!(
+        (parts.next(), parts.next(), parts.next(), parts.next(), parts.next()),
+        (Some("run"), Some(_), Some("iter"), Some(n), None) if n.chars().all(|c| c.is_ascii_digit())
+    )
 }
 
 /// Default path: squash-merge into the currently checked-out branch, in the main
 /// worktree. The current branch can only move where it's checked out, so the
 /// throwaway-worktree trick the named-target path uses does not apply here.
-fn merge_into_current(repo: &Path, source: &str, message: &str) -> Result<MergeResult> {
+fn merge_into_current(repo: &Path, source: &str) -> Result<MergeResult> {
     let branch = current_branch(repo)?;
     if !working_tree_clean(repo)? {
         return Err(MergeError::Git(
             "working tree is dirty; commit or stash before using this run".into(),
         ));
     }
-    let (up_to_date, merged_commit) = squash_merge(repo, source, message)?;
+    let message = squash_message(repo, &branch, source)?;
+    let (up_to_date, merged_commit) = squash_merge(repo, source, &message)?;
     Ok(MergeResult {
         target_branch: branch,
         merged_commit,
@@ -150,7 +202,6 @@ fn merge_into_named(
     repo: &Path,
     source: &str,
     target_branch: &str,
-    message: &str,
     scratch_root: &Path,
 ) -> Result<MergeResult> {
     let created = !branch_exists(repo, target_branch)?;
@@ -176,9 +227,13 @@ fn merge_into_named(
     // path for that).
     git(repo, &["worktree", "add", &tmp_str, target_branch])?;
 
+    // The message covers what the target is about to gain, so it is computed
+    // against the target's own tip.
+    let message = squash_message(repo, target_branch, source)?;
+
     // Squash the run onto the target inside the throwaway worktree. Whatever the
     // outcome, the worktree is torn down before returning.
-    let squashed = squash_merge(&tmp, source, message);
+    let squashed = squash_merge(&tmp, source, &message);
     cleanup_worktree(repo, &tmp_str);
     let (up_to_date, merged_commit) = match squashed {
         Ok(outcome) => outcome,
@@ -463,7 +518,6 @@ mod tests {
             repo.path(),
             &snap.git_ref,
             Some("review/x"),
-            "Apply loopfleet run r1",
             scratch.path(),
         )
         .unwrap();
@@ -480,7 +534,8 @@ mod tests {
         assert_eq!(show(repo.path(), "review/x", "README.md"), "hi\n");
         // One squashed commit on top of HEAD, under the supplied message — the
         // shadow commit is not the branch tip and is not a parent.
-        assert_squashed_onto(repo.path(), "review/x", &head_tip, head_count, "Apply loopfleet run r1");
+        // The agent committed nothing, so the run's final snapshot supplies the wording.
+        assert_squashed_onto(repo.path(), "review/x", &head_tip, head_count, "run merge-r1 iter 1");
         assert_ne!(git_out(repo.path(), &["rev-parse", "review/x"]), snap.commit);
         // ...stamped with the same author/committer split as the other paths.
         let (author, committer) = identity(repo.path(), "review/x");
@@ -509,7 +564,6 @@ mod tests {
             repo.path(),
             &snap.git_ref,
             Some("review/z"),
-            "Apply loopfleet run r14",
             scratch.path(),
         )
         .unwrap_err();
@@ -537,7 +591,6 @@ mod tests {
             repo.path(),
             &snap.git_ref,
             Some("integration"),
-            "apply run",
             scratch.path(),
         )
         .unwrap();
@@ -548,7 +601,7 @@ mod tests {
         assert_eq!(show(repo.path(), "integration", "feature.txt"), "feature\n");
         assert_eq!(show(repo.path(), "integration", "README.md"), "hi\n");
         // ...as a single squashed commit on top of the old tip, not a merge commit.
-        assert_squashed_onto(repo.path(), "integration", &before_tip, before_count, "apply run");
+        assert_squashed_onto(repo.path(), "integration", &before_tip, before_count, "run merge-r2 iter 1");
         // The throwaway worktree is gone (only the main worktree remains).
         let listed = crate::worktree::list(repo.path()).unwrap();
         assert!(listed.iter().all(|w| !w.path.starts_with(scratch.path())));
@@ -570,7 +623,7 @@ mod tests {
 
         let scratch = tempfile::tempdir().unwrap();
         let merge = || {
-            merge_run(repo.path(), &snap.git_ref, Some("integration"), "apply run", scratch.path()).unwrap()
+            merge_run(repo.path(), &snap.git_ref, Some("integration"), scratch.path()).unwrap()
         };
         assert!(!merge().up_to_date);
         let after_first = git_out(repo.path(), &["rev-parse", "integration"]);
@@ -608,7 +661,6 @@ mod tests {
             repo.path(),
             &snap.git_ref,
             Some("integration"),
-            "apply run",
             scratch.path(),
         )
         .unwrap_err();
@@ -631,7 +683,6 @@ mod tests {
             repo.path(),
             "refs/agentapp/run-nope/iter-9",
             Some("review/y"),
-            "apply run",
             scratch.path(),
         )
         .unwrap_err();
@@ -650,7 +701,7 @@ mod tests {
         let snap = snapshot(repo.path(), &wt.path, "merge-r5", 1).unwrap();
 
         let scratch = tempfile::tempdir().unwrap();
-        let res = merge_run(repo.path(), &snap.git_ref, None, "Apply loopfleet run r5", scratch.path()).unwrap();
+        let res = merge_run(repo.path(), &snap.git_ref, None, scratch.path()).unwrap();
 
         assert_eq!(res.target_branch, "main");
         assert!(!res.created);
@@ -660,7 +711,7 @@ mod tests {
         assert!(repo.path().join("out.txt").exists());
         // Exactly one new commit, single-parented on main's old tip, carrying the
         // supplied message — a squash, not a merge commit.
-        assert_squashed_onto(repo.path(), "main", &before_tip, before_count, "Apply loopfleet run r5");
+        assert_squashed_onto(repo.path(), "main", &before_tip, before_count, "run merge-r5 iter 1");
         // ...and that new commit is what the result reports, not the shadow commit.
         assert_eq!(res.merged_commit, git_out(repo.path(), &["rev-parse", "main"]));
         assert_ne!(res.merged_commit, snap.commit);
@@ -677,7 +728,7 @@ mod tests {
         // An untracked file in the main worktree makes it dirty.
         std::fs::write(repo.path().join("uncommitted.txt"), "local\n").unwrap();
         let scratch = tempfile::tempdir().unwrap();
-        let err = merge_run(repo.path(), &snap.git_ref, None, "Apply loopfleet run r6", scratch.path()).unwrap_err();
+        let err = merge_run(repo.path(), &snap.git_ref, None, scratch.path()).unwrap_err();
         assert!(matches!(err, MergeError::Git(ref msg) if msg.contains("dirty")), "got {err:?}");
         // main never moved: out.txt is not on it.
         let show_out = Command::new("git")
@@ -706,7 +757,7 @@ mod tests {
         let snap = snapshot(repo.path(), &wt.path, "merge-r11", 1).unwrap();
 
         let scratch = tempfile::tempdir().unwrap();
-        merge_run(repo.path(), &snap.git_ref, None, "Apply loopfleet run r11", scratch.path()).unwrap();
+        merge_run(repo.path(), &snap.git_ref, None, scratch.path()).unwrap();
 
         let (author, committer) = identity(repo.path(), "main");
         assert_eq!(author, "loopfleet <loopfleet@localhost>");
@@ -727,7 +778,7 @@ mod tests {
         let snap = snapshot(repo.path(), &wt.path, "merge-r12", 1).unwrap();
 
         let scratch = tempfile::tempdir().unwrap();
-        merge_run(repo.path(), &snap.git_ref, Some("integration"), "Apply loopfleet run r12", scratch.path()).unwrap();
+        merge_run(repo.path(), &snap.git_ref, Some("integration"), scratch.path()).unwrap();
 
         let (author, committer) = identity(repo.path(), "integration");
         assert_eq!(author, "loopfleet <loopfleet@localhost>");
@@ -753,11 +804,52 @@ mod tests {
         run(&["config", "--local", "user.email", ""]);
 
         let scratch = tempfile::tempdir().unwrap();
-        merge_run(repo.path(), &snap.git_ref, None, "Apply loopfleet run r13", scratch.path()).unwrap();
+        merge_run(repo.path(), &snap.git_ref, None, scratch.path()).unwrap();
 
         let (author, committer) = identity(repo.path(), "main");
         assert_eq!(author, "loopfleet <loopfleet@localhost>");
         assert_eq!(committer, "loopfleet <loopfleet@localhost>");
+    }
+
+    /// The squashed commit carries the run's own commit messages — what the work
+    /// says about itself — with loopfleet's per-iteration snapshot bookkeeping
+    /// skipped and the co-author trailer at the bottom.
+    #[test]
+    fn squashed_commit_carries_the_runs_own_commit_messages() {
+        let (repo, _root, wt) = repo_with_worktree("merge-r15");
+        let wt_git = |args: &[&str]| {
+            let out = Command::new("git").arg("-C").arg(&wt.path).args(args).output().unwrap();
+            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        };
+        // The agent commits its own work in the run worktree, then loopfleet
+        // snapshots whatever is left over on top.
+        std::fs::write(wt.path.join("out.txt"), "result\n").unwrap();
+        wt_git(&["add", "-A"]);
+        wt_git(&["commit", "-qm", "Add the widget\n\nWith a body explaining why."]);
+        let snap = snapshot(repo.path(), &wt.path, "merge-r15", 1).unwrap();
+
+        let scratch = tempfile::tempdir().unwrap();
+        merge_run(repo.path(), &snap.git_ref, None, scratch.path()).unwrap();
+
+        let msg = git_out(repo.path(), &["log", "-1", "--format=%B", "main"]);
+        assert_eq!(
+            msg,
+            "Add the widget\n\nWith a body explaining why.\n\nCo-authored by loopfleet"
+        );
+    }
+
+    /// The trailer lands as the message's last paragraph, leaving the subject and
+    /// body — what the run actually did — intact above it.
+    #[test]
+    fn trailer_is_appended_below_the_message() {
+        let msg = with_trailer("Apply loopfleet run abc12345 (claude)\n\n- [ ] the task");
+        assert_eq!(
+            msg,
+            "Apply loopfleet run abc12345 (claude)\n\n- [ ] the task\n\nCo-authored by loopfleet"
+        );
+        // Already trailered (or empty) messages stay well-formed.
+        assert_eq!(with_trailer(&msg), msg);
+        assert_eq!(with_trailer("  "), MERGE_COMMIT_TRAILER);
     }
 
     /// A detached HEAD has no current branch to merge into, so the default flow
@@ -774,7 +866,7 @@ mod tests {
         run(&["checkout", "-q", "--detach", "main"]);
 
         let scratch = tempfile::tempdir().unwrap();
-        let err = merge_run(repo.path(), &snap.git_ref, None, "Apply loopfleet run r7", scratch.path()).unwrap_err();
+        let err = merge_run(repo.path(), &snap.git_ref, None, scratch.path()).unwrap_err();
         assert!(matches!(err, MergeError::Git(ref msg) if msg.contains("detached")), "got {err:?}");
     }
 }

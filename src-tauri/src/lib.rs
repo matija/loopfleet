@@ -1865,8 +1865,8 @@ struct UseRunResult {
 /// "Use this run": merge the run's final state into a target branch and mark
 /// the run accepted. `target_branch = None` (or empty) merges into the repo's
 /// currently checked-out branch — the default, landing the run's work where the
-/// user is working as a single squashed commit. A
-/// non-empty `target_branch`
+/// user is working as a single squashed commit carrying the run's own commit
+/// message plus a "Co-authored by loopfleet" trailer. A non-empty `target_branch`
 /// names a custom branch (created if absent). The merge runs through the
 /// serialized git actor; the current-branch default merges in the main worktree
 /// (guarded by a clean tree), a custom target uses a throwaway worktree so the
@@ -1896,11 +1896,6 @@ async fn use_run(
         (detail.repo_path, source_ref)
     };
 
-    // The squashed commit message records the shared origin of the work: loopfleet
-    // produced it (and is its author), the user chose to land it (and is its
-    // committer). See `MERGE_COMMIT_MESSAGE`.
-    let message = loopfleet_gitx::MERGE_COMMIT_MESSAGE.to_string();
-
     let scratch_root = state.data_dir.join("worktrees");
     let merge = state
         .git
@@ -1908,7 +1903,6 @@ async fn use_run(
             PathBuf::from(&repo_path),
             source_ref,
             target,
-            message,
             scratch_root,
         )
         .await

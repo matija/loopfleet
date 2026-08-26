@@ -16,7 +16,7 @@ pub use diff::{
     diff_refs, iteration_diff, iteration_diff_at, run_cumulative_diff, run_cumulative_diff_at,
     ChangeStatus, DiffError, DiffResult, FileChange,
 };
-pub use merge::{merge_run, MergeError, MergeResult, MERGE_COMMIT_MESSAGE};
+pub use merge::{merge_run, with_trailer, MergeError, MergeResult, MERGE_COMMIT_TRAILER};
 pub use shadow::{shadow_ref, Snapshot, SnapshotError};
 pub use status::worktree_changes;
 pub use worktree::{Worktree, WorktreeError};
