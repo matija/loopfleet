@@ -10,7 +10,7 @@ pub use event_log::{
 };
 
 mod projects;
-pub use projects::{insert_project, list_projects, Project};
+pub use projects::{delete_project, insert_project, list_projects, DeleteProjectSummary, Project};
 
 mod settings;
 pub use settings::{
