@@ -56,21 +56,75 @@ build/bump.sh            # print the current version
 build/bump.sh 0.2.0      # set every manifest to 0.2.0
 ```
 
-### Build and publish a release
+### Required environment variables
+
+`release.sh` and `release-intel.sh` share the same five required variables
+(validated up front by `release-common.sh`, before anything is built):
+
+| Variable                                     | What it is                                                                 |
+| --------------------------------------------- | --------------------------------------------------------------------------- |
+| `APPLE_SIGNING_IDENTITY`                      | Codesigning identity name, must already be in the login keychain.          |
+| `APPLE_API_KEY_PATH`                          | Path to the App Store Connect API key (`.p8`) used for notarization.       |
+| `APPLE_API_KEY` (or `APPLE_API_KEY_ID`)       | The API key's ID, from App Store Connect.                                  |
+| `APPLE_API_ISSUER`                            | The API key's issuer ID, from App Store Connect.                           |
+| `TAURI_SIGNING_PRIVATE_KEY` (or `_PATH`)      | The Tauri updater signing key — inline (base64 or plaintext minisign secret) or a path to a key file. |
+
+Both scripts also require an authenticated `gh` CLI (`gh auth login`), and
+must run on an arm64 macOS host with the relevant Rust target installed.
+`release.sh` additionally refuses to run from a dirty or unpushed tree (a
+release must correspond to a real, pushed commit).
+
+### Generate and store the updater key
+
+The updater key is a minisign keypair Tauri uses to sign update artifacts,
+independent of Apple codesigning. Generate it once and keep the private half
+somewhere durable and secret (a password manager, or a restricted-permission
+file outside the repo):
 
 ```sh
-build/release.sh              # build + publish the current version
-build/release.sh 0.2.0        # bump to 0.2.0, then build + publish
-build/release.sh --preflight  # validate env vars/tooling only, no build
+npm run tauri signer generate -- --ci -w ~/.tauri/loopfleet.key
 ```
 
-`release.sh` requires `APPLE_SIGNING_IDENTITY`, `APPLE_API_KEY_PATH`,
-`APPLE_API_KEY`/`APPLE_API_KEY_ID`, `APPLE_API_ISSUER`, a Tauri updater
-signing key (`TAURI_SIGNING_PRIVATE_KEY` or `_PATH`), and an authenticated
-`gh` CLI. It runs on an arm64 macOS host only, and refuses to run from a
-dirty or unpushed tree.
+This writes the private key to `~/.tauri/loopfleet.key` (and prints the
+public key, which belongs in `src-tauri/tauri.conf.json`'s
+`plugins.updater.pubkey` — replace the `REPLACE_WITH_MINISIGN_PUBLIC_KEY`
+placeholder there and commit it; it's public and safe to check in). To use
+the private key in a release, either:
 
-It then:
+- point `TAURI_SIGNING_PRIVATE_KEY_PATH` at the key file, or
+- put the key's contents directly in `TAURI_SIGNING_PRIVATE_KEY` (e.g. from a
+  secrets manager in CI).
+
+`release-common.sh` accepts either the plaintext minisign secret
+(`untrusted comment: ...`) or its base64 encoding in either variable, and
+normalizes it. The key has no password (`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+is set to `""` for you) — don't set one when generating it.
+
+### Release sequence
+
+A release is two commands, run in order on an arm64 macOS host:
+
+```sh
+build/release.sh 0.2.0        # bump to 0.2.0, build, notarize, publish aarch64
+build/release-intel.sh        # build, notarize, add the Intel bundle to the same release
+```
+
+If you're already on the right version, drop the version argument:
+`build/release.sh` alone builds and publishes the current version. Either
+script also accepts `--preflight`:
+
+```sh
+build/release.sh --preflight        # validate env vars/tooling only, no build
+build/release-intel.sh --preflight  # same, for the Intel prerequisites
+```
+
+`--preflight` runs every check in `release-common.sh` — env vars, keychain
+identity, updater key, `gh` auth, clean/pushed tree, macOS target — and exits
+0 without building or touching GitHub. Run it before a release to catch a
+missing variable or expired credential early, especially after rotating any
+of the five variables above.
+
+`build/release.sh` then:
 
 1. Runs `tauri build --target aarch64-apple-darwin`, which also builds the
    frontend (`beforeBuildCommand`). Artifacts land under
@@ -85,16 +139,9 @@ It then:
    tarball, and `latest.json`. Release notes are a compare link against the
    previous release on GitHub.
 
-### Add the Intel build to a release
-
-```sh
-build/release-intel.sh              # build + publish the Intel bundle
-build/release-intel.sh --preflight  # validate env vars/tooling only, no build
-```
-
-`release-intel.sh` shares its environment requirements with `release.sh` and
-also requires `RELEASE_TAG` (defaulting to the current version) to already
-exist as a GitHub release — it does not create or replace releases. It then:
+`build/release-intel.sh` requires `RELEASE_TAG` (defaulting to the current
+version) to already exist as a GitHub release — it does not create or
+replace releases, only adds to one. It then:
 
 1. Runs `tauri build --target x86_64-apple-darwin` (cross-compiled from the
    arm64 host).
@@ -106,3 +153,29 @@ exist as a GitHub release — it does not create or replace releases. It then:
    platform entry to it, rather than replacing the file.
 5. Uploads the `.dmg`, the renamed tarball, and the updated `latest.json` to
    the release with `--clobber`.
+
+### When a release half-fails
+
+Both scripts are safe to just re-run — do that first.
+
+- **`release.sh` fails partway** (build error, failed notarization, network
+  blip during upload): nothing durable has happened until the GitHub release
+  is created near the end. Fix the underlying problem and re-run
+  `build/release.sh` with the same version; if a release at that tag already
+  exists (e.g. it got created but a later step failed), the script deletes
+  and replaces it rather than erroring.
+- **`release.sh` succeeds but `release-intel.sh` fails or is never run**: the
+  GitHub release exists with only the aarch64 `.dmg` and a `latest.json`
+  containing just the `darwin-aarch64` platform entry. Intel users have no
+  installer and no update path until you run `build/release-intel.sh`. This
+  is a safe, visible half-state — arm64 users are unaffected — so there's no
+  need to delete the release; just fix the problem and re-run
+  `build/release-intel.sh`. It re-downloads `latest.json` fresh and uploads
+  with `--clobber`, so re-running is idempotent even after a partial upload.
+- **`release-intel.sh` fails after renaming the tarball but before
+  uploading**: re-running rebuilds and re-notarizes, which is slower but
+  always correct — there's no partial state on GitHub to clean up, since
+  nothing is uploaded until the final step.
+- **Wrong bits already uploaded to a public release**: delete the bad
+  release (`gh release delete <tag> --cleanup-tag`) and re-run
+  `build/release.sh <version>` from scratch, then `build/release-intel.sh`.
