@@ -7,15 +7,30 @@
 # src-tauri/tauri.conf.json).
 #
 # Usage:
-#   build/release.sh             # build the current version
-#   build/release.sh <version>   # bump every manifest to <version>, then build
+#   build/release.sh               # build the current version
+#   build/release.sh <version>     # bump every manifest to <version>, then build
+#   build/release.sh --preflight   # validate the environment and exit, without building
 #
 set -euo pipefail
+
+args=()
+for arg in "$@"; do
+  if [ "$arg" = "--preflight" ]; then
+    export RELEASE_PREFLIGHT_ONLY=1
+  else
+    args+=("$arg")
+  fi
+done
+if [ "${#args[@]}" -gt 0 ]; then
+  set -- "${args[@]}"
+else
+  set --
+fi
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/release-common.sh"
 
 if [ $# -gt 1 ]; then
-  echo "Usage: ${0##*/} [version]" >&2
+  echo "Usage: ${0##*/} [version] [--preflight]" >&2
   exit 1
 fi
 

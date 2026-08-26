@@ -2,6 +2,14 @@
 # Shared validation + setup for build/release.sh.
 # Sourced by it; exports APPLE_*, TAURI_SIGNING_PRIVATE_KEY, RELEASE_VERSION,
 # RELEASE_TAG, GH_REPO, defines notarize_dmg(), and the logging helpers below.
+#
+# If RELEASE_PREFLIGHT_ONLY=1 (set by --preflight in the release scripts),
+# this file exits 0 right after validation instead of continuing on to a build.
+
+for _release_arg in "$@"; do
+  [[ "$_release_arg" == "--preflight" ]] && RELEASE_PREFLIGHT_ONLY=1
+done
+unset _release_arg
 
 # --- pretty output -------------------------------------------------------
 # Colors only when attached to a terminal and NO_COLOR is unset.
@@ -116,6 +124,11 @@ GH_REPO="${GH_REPO:-matija/loopfleet}"
 export RELEASE_VERSION RELEASE_TAG GH_REPO
 
 ok "Environment validated ${_c_dim}(repo ${GH_REPO}, tag ${RELEASE_TAG})${_c_reset}"
+
+if [[ "${RELEASE_PREFLIGHT_ONLY:-}" == "1" ]]; then
+  ok "Preflight checks passed."
+  exit 0
+fi
 
 notarize_dmg() {
   local dmg="$1"
