@@ -650,6 +650,60 @@
   color: var(--c-text);
 }
 
+/* --- app-update notice ---
+ * Fixed overlay, top-center, one at a time — an available update is not an
+ * error, so it gets its own band rather than joining the toast stack. */
+
+.update-notice {
+  position: fixed;
+  top: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  color: var(--c-text);
+  font-size: var(--text-sm);
+}
+
+.update-notice__msg {
+  overflow-wrap: anywhere;
+}
+
+.update-notice__action {
+  flex: none;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface-3);
+  color: var(--c-text);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.update-notice__action:hover {
+  background: var(--c-surface-hover);
+}
+
+.update-notice__dismiss {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--c-text-muted);
+  padding: 0;
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+
+.update-notice__dismiss:hover {
+  color: var(--c-text);
+}
+
 /* --- sandbox-boundary trust panel ---
  * PRD calls this "a trust feature, not a footnote": state the boundary plainly,
  * do not overstate "sandboxed".

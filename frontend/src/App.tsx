@@ -49,6 +49,7 @@ import { LiveRunView } from "./components/LiveRunView";
 import { RunTimeline } from "./components/RunTimeline";
 import { CompareView } from "./components/CompareView";
 import { Toasts, useToasts } from "./components/Toasts";
+import { UpdateNotice, useAppUpdater } from "./components/UpdateNotice";
 import { Toolbar } from "./components/Toolbar";
 import { IconButton } from "./components/Button";
 import {
@@ -147,6 +148,7 @@ export default function App() {
   // App-level command errors surface as transient toasts, not a persistent
   // banner. Contextual form errors stay inline in their own components.
   const { toasts, push: pushError, dismiss: dismissToast } = useToasts();
+  const updater = useAppUpdater(pushError);
   // Session-scoped registry of launched runs (the global run surface). Runs do
   // not survive a restart in v1, so this is complete for the session.
   const [runs, setRuns] = useState<ActiveRun[]>([]);
@@ -867,6 +869,11 @@ export default function App() {
       }
     >
       <Toasts toasts={toasts} onDismiss={dismissToast} />
+      <UpdateNotice
+        state={updater.state}
+        onInstall={updater.install}
+        onDismiss={updater.dismiss}
+      />
       <Toolbar
         filterRef={setToolbarFilterEl}
         actionsRef={setToolbarActionsEl}
