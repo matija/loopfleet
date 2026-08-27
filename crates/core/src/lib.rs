@@ -47,8 +47,8 @@ pub use timeline::{
     TimelineEvent,
 };
 pub use usage::{
-    fold_rate_limit, is_stale, resolve_display, resolve_display_opt, RateLimitNotice, UsageDisplay,
-    UsageSnapshot, UsageSource, UsageThresholds,
+    fold_rate_limit, is_stale, launch_decision, resolve_display, resolve_display_opt,
+    LaunchDecision, RateLimitNotice, UsageDisplay, UsageSnapshot, UsageSource, UsageThresholds,
 };
 
 /// Why a project could not be registered.

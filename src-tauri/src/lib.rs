@@ -5,9 +5,9 @@ use std::sync::{Arc, Mutex};
 
 use loopfleet_adapters::{ClaudeAdapter, CursorAdapter, PiAdapter};
 use loopfleet_core::{
-    fold_rate_limit, resolve_display, run_loop, AgentAdapter, CompareView, LoopConfig,
-    NormalizedEvent, PlanView, RateLimitNotice, RunSpec, RunState, RunTimeline, UsageDisplay,
-    UsageSnapshot, UsageSource, UsageThresholds,
+    fold_rate_limit, launch_decision, resolve_display, run_loop, AgentAdapter, CompareView,
+    LaunchDecision, LoopConfig, NormalizedEvent, PlanView, RateLimitNotice, RunSpec, RunState,
+    RunTimeline, UsageDisplay, UsageSnapshot, UsageSource, UsageThresholds,
 };
 use loopfleet_gitx::GitActor;
 use loopfleet_sandbox::{confine_prefix, RenderParams};
@@ -2238,6 +2238,49 @@ async fn agent_usage(app: AppHandle) -> Result<Vec<UsageSnapshot>, String> {
     Ok(out)
 }
 
+/// The result of [`check_agent_usage`]: the resolved snapshot alongside
+/// whether it's safe to launch that agent right now.
+#[derive(Clone, serde::Serialize)]
+struct AgentUsageCheck {
+    snapshot: UsageSnapshot,
+    decision: LaunchDecision,
+}
+
+/// Probe a single named agent's current usage and say whether a launch should
+/// proceed — the on-demand counterpart to [`agent_usage`]'s full sweep, for a
+/// caller (e.g. the launch dialog) that only cares about one agent and wants
+/// an answer without waiting on every other adapter's probe.
+///
+/// Resolved through the same three-tier fallback as `agent_usage` and
+/// `resolve_agent_usage`: a fresh adapter probe (bounded by that adapter's own
+/// timeout), then the stored rate-limit observation, then `unknown`. The
+/// resolved snapshot is published on `agent_usage` like every other resolved
+/// snapshot, so any listener sees it too — this command isn't a side channel.
+#[tauri::command]
+async fn check_agent_usage(agent: String, app: AppHandle) -> Result<AgentUsageCheck, String> {
+    let now = now_ms();
+    let probed = match build_adapter(&agent) {
+        Some(adapter) => adapter.usage_snapshot(now).await.ok(),
+        None => None,
+    };
+    let stored = {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().map_err(|_| "database lock poisoned")?;
+        loopfleet_store::load_agent_usage(&conn, &agent).map_err(|e| e.to_string())?
+    };
+    let snapshot = probed
+        .filter(|s| s.source != UsageSource::Unknown)
+        .or_else(|| {
+            let usage = stored?;
+            let notice = rate_limit_notice(&agent, usage.reset_at.as_deref(), usage.observed_at);
+            Some(fold_rate_limit(None, &notice))
+        })
+        .unwrap_or_else(|| UsageSnapshot::unknown(&agent, now));
+    let snapshot = publish_usage(&app, snapshot);
+    let decision = launch_decision(Some(&snapshot), now, UsageThresholds::default());
+    Ok(AgentUsageCheck { snapshot, decision })
+}
+
 /// The v1 agents, dispatched by name. Boxed so the loop holds a `dyn` adapter.
 fn build_adapter(agent: &str) -> Option<Box<dyn AgentAdapter>> {
     match agent {
@@ -2356,6 +2399,7 @@ pub fn run() {
             project_removal_preview,
             agent_status,
             agent_usage,
+            check_agent_usage,
             get_settings,
             save_settings,
             project_sandbox_writes,
