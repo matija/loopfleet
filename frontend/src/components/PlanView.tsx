@@ -653,19 +653,6 @@ export function LaunchControl({
       >
         {launching ? "Launching…" : justLaunched ? "Launched" : "Run"}
       </SplitButton>
-      {/* Inline, this chip is a warning rather than a readout: a percentage on
-          every task row would be noise, and "usage unknown" (most agents, most
-          of the time) doubly so. Only a window worth hesitating over earns the
-          space — the full figure is one click away in the menu. */}
-      {!noAgents &&
-        (headroom.display === "low" || headroom.display === "exhausted") && (
-          <span
-            className={`launch__headroom launch__headroom--${headroom.display}`}
-            title={headroom.warning ?? headroom.title}
-          >
-            {headroom.label}
-          </span>
-        )}
       <Popover
         open={menuOpen}
         onClose={() => setMenuOpen(false)}

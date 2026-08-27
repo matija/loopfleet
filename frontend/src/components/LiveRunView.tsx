@@ -11,7 +11,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useAgentUsage } from "../agentUsage";
 import { agentStatus } from "../commands";
 import { onRunEvent } from "../events";
 import type { AgentStatus } from "../types";
@@ -52,10 +51,6 @@ export function LiveRunView({
   const [filter, setFilter] = useState("");
   const [lastAt, setLastAt] = useState(() => Date.now());
   const [agents, setAgents] = useState<AgentStatus[]>([]);
-  // The agent pill's headroom, from the store the agents panel and the launch
-  // control read — the run in front of you and the next one you start quote
-  // the same figure.
-  const { snapshots: usage, now } = useAgentUsage();
   // The Events / Diff / Files subtab. Panels stay mounted (toggled with
   // `hidden`) so switching preserves each panel's scroll — and the one live
   // `run_event` subscription lives on the parent effect, untouched by the switch.
@@ -177,8 +172,6 @@ export function LiveRunView({
                 connected: agents.some(
                   (a) => a.key === run.agent && a.installed,
                 ),
-                usage: usage[run.agent] ?? null,
-                now,
               }
             : undefined
         }

@@ -4,7 +4,6 @@ import {
   DEFAULT_LOW_FRACTION,
   DEFAULT_STALE_AFTER_MS,
   formatCountdown,
-  formatRemainingPercent,
   formatResetTime,
   formatStaleness,
   formatUsedPercent,
@@ -115,12 +114,6 @@ describe("formatUsedPercent", () => {
     expect(formatUsedPercent(1.7)).toBe("100%");
     expect(formatUsedPercent(-0.5)).toBe("0%");
     expect(formatUsedPercent(Number.NaN)).toBe("0%");
-  });
-
-  it("counts down as well as up", () => {
-    expect(formatRemainingPercent(0.25)).toBe("75%");
-    expect(formatRemainingPercent(1)).toBe("0%");
-    expect(formatRemainingPercent(0)).toBe("100%");
   });
 });
 

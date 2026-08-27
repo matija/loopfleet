@@ -105,15 +105,6 @@ export function formatUsedPercent(fraction: number): string {
   return `${percent}%`;
 }
 
-/// The headroom left, as a whole-percent string — the complement of
-/// `formatUsedPercent`, for surfaces that count down rather than up.
-export function formatRemainingPercent(fraction: number): string {
-  const clamped = Number.isFinite(fraction)
-    ? Math.min(Math.max(fraction, 0), EXHAUSTED_FRACTION)
-    : 0;
-  return formatUsedPercent(EXHAUSTED_FRACTION - clamped);
-}
-
 const MINUTE_MS = 60 * 1_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
