@@ -154,6 +154,10 @@ export default function App() {
   // open at a time, so a single anchor ref suffices for the Popover.
   const [removeTarget, setRemoveTarget] = useState<Project | null>(null);
   const removeAnchorRef = useRef<HTMLButtonElement | null>(null);
+  // Every sidebar row's trash button, keyed by project id — populated as rows
+  // mount. Lets the ⌘K palette's "Remove project" action anchor the same
+  // confirmation to the matching row without needing a click event of its own.
+  const removeButtonsRef = useRef<Map<string, HTMLButtonElement>>(new Map());
   // The counts fetched for `removeTarget` (plans/runs/worktrees), loaded on
   // open so the dialog can name what's about to go. Undefined while loading,
   // null on fetch failure (the dialog still lets the user cancel).
@@ -743,6 +747,16 @@ export default function App() {
     () => setView({ kind: "overview" }),
     [],
   );
+  // Opens the same remove-project confirmation as the sidebar's trash icon,
+  // anchored to that project's own (always-mounted) sidebar row button.
+  const paletteRemoveProject = useCallback(
+    (id: string) => {
+      const p = projects.find((x) => x.id === id);
+      const anchor = removeButtonsRef.current.get(id);
+      if (p && anchor) openRemoveProject(p, anchor);
+    },
+    [projects],
+  );
 
   return (
     <AppShell
@@ -901,6 +915,10 @@ export default function App() {
                       icon={TrashIcon}
                       aria-label={`Remove ${repoName(p.repo_path)}`}
                       className="project-row__remove"
+                      buttonRef={(el) => {
+                        if (el) removeButtonsRef.current.set(p.id, el);
+                        else removeButtonsRef.current.delete(p.id);
+                      }}
                       onClick={(e) =>
                         openRemoveProject(p, e.currentTarget)
                       }
@@ -1121,6 +1139,7 @@ export default function App() {
         onOpenRun={paletteOpenRun}
         onAddProject={paletteAddProject}
         onOpenOverview={paletteOpenOverview}
+        onRemoveProject={paletteRemoveProject}
       />
     </AppShell>
   );

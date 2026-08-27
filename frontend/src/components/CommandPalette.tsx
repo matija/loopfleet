@@ -22,7 +22,7 @@ import { fuzzyMatch } from "../fuzzy";
 import type { PlanView as Plan, Project } from "../types";
 import { RUN_STATUS_LABEL } from "../status";
 import type { ActiveRun } from "./RunDock";
-import { ChecklistIcon, ComposeIcon, FolderIcon, PlayIcon, SearchIcon } from "./Icon";
+import { ChecklistIcon, ComposeIcon, FolderIcon, PlayIcon, SearchIcon, TrashIcon } from "./Icon";
 
 /// One glyph per result group, so a row's type reads at a glance before its
 /// title does.
@@ -51,6 +51,9 @@ export type CommandPaletteProps = {
   onOpenRun: (runId: string) => void;
   onAddProject: () => void;
   onOpenOverview: () => void;
+  /// Opens the sidebar's remove-project confirmation for the given project,
+  /// mirroring the trash icon on its sidebar row.
+  onRemoveProject: (projectId: string) => void;
 };
 
 type Item = {
@@ -60,6 +63,10 @@ type Item = {
   subtitle?: string;
   hint?: string;
   run: () => void;
+  /// Overrides the group's default icon (e.g. a per-project "Remove
+  /// project" row still living in the Projects group, but drawn with a
+  /// trash glyph so it doesn't read as another way to open the project).
+  icon?: typeof FolderIcon;
 };
 
 function repoName(path: string): string {
@@ -77,6 +84,7 @@ export function CommandPalette({
   onOpenRun,
   onAddProject,
   onOpenOverview,
+  onRemoveProject,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
@@ -157,6 +165,15 @@ export function CommandPalette({
       hint: "project",
       run: () => onOpenProject(p.id),
     }));
+    const removeProjectItems: Item[] = projects.map((p) => ({
+      id: `proj-remove:${p.id}`,
+      group: "Projects",
+      title: `Remove ${repoName(p.repo_path)}…`,
+      subtitle: p.repo_path,
+      hint: "remove",
+      icon: TrashIcon,
+      run: () => onRemoveProject(p.id),
+    }));
     const taskItems: Item[] = tasks.map((t) => ({
       id: `task:${t.projectId}:${t.planId}:${t.anchor}`,
       group: "Tasks",
@@ -179,8 +196,18 @@ export function CommandPalette({
       hint: r.status,
       run: () => onOpenRun(r.runId),
     }));
-    return [...actions, ...projectItems, ...taskItems, ...runItems];
-  }, [projects, tasks, runs, onAddProject, onOpenOverview, onOpenProject, onOpenTask, onOpenRun]);
+    return [...actions, ...projectItems, ...removeProjectItems, ...taskItems, ...runItems];
+  }, [
+    projects,
+    tasks,
+    runs,
+    onAddProject,
+    onOpenOverview,
+    onOpenProject,
+    onRemoveProject,
+    onOpenTask,
+    onOpenRun,
+  ]);
 
   // Filter + rank by the best match against the title or subtitle.
   const results = useMemo(() => {
@@ -287,7 +314,7 @@ export function CommandPalette({
                 {g.rows.map((item) => {
                   const idx = results.indexOf(item);
                   const active = idx === selected;
-                  const GroupIcon = GROUP_ICON[item.group];
+                  const GroupIcon = item.icon ?? GROUP_ICON[item.group];
                   return (
                     <button
                       key={item.id}

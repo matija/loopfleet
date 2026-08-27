@@ -11,7 +11,7 @@
 // icon-only button for the trailing slot, and a split button whose chevron
 // opens a separate menu from the main action.
 
-import type { ButtonHTMLAttributes, JSX, ReactNode, RefObject } from "react";
+import type { ButtonHTMLAttributes, JSX, ReactNode, Ref, RefObject } from "react";
 import { ChevronDownIcon } from "./Icon";
 
 type IconComponent = (props: { size?: number; className?: string }) => JSX.Element;
@@ -41,14 +41,18 @@ type IconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   icon: IconComponent;
   /// Required: an icon-only button carries no visible label.
   "aria-label": string;
+  /// Forwarded to the underlying button so callers can anchor a Popover to
+  /// it (e.g. the sidebar's remove-project trash button, also anchored from
+  /// the ⌘K palette's "Remove project" action).
+  buttonRef?: Ref<HTMLButtonElement>;
 };
 
-export function IconButton({ icon: Icon, className, ...rest }: IconButtonProps) {
+export function IconButton({ icon: Icon, className, buttonRef, ...rest }: IconButtonProps) {
   const cls = className
     ? `toolbar-btn toolbar-btn--icon ${className}`
     : "toolbar-btn toolbar-btn--icon";
   return (
-    <button type="button" className={cls} {...rest}>
+    <button type="button" ref={buttonRef} className={cls} {...rest}>
       <Icon size={16} className="icon" />
     </button>
   );
