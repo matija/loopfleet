@@ -409,6 +409,16 @@
   background: var(--c-surface-3);
 }
 
+/* The countdown beside the headroom figure, once the CLI's prose resolves a
+   reset instant — quieter than the usage chip since it's a supporting fact,
+   not the number the user acts on first. */
+.agent-chip__reset {
+  color: var(--c-text-faint);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+}
+
 .agent-chip__warn {
   color: var(--c-warn);
   font-size: var(--text-xs);

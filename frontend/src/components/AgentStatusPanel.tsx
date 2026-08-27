@@ -19,7 +19,7 @@ import { useEffect, useState } from "react";
 import { refreshAgentUsage, useAgentUsage } from "../agentUsage";
 import { agentStatus } from "../commands";
 import type { AgentStatus, UsageSnapshot } from "../types";
-import { usageIndicator } from "../usage";
+import { formatCountdown, formatResetTime, usageIndicator } from "../usage";
 import { AgentIcon } from "./Icon";
 
 export function AgentStatusPanel() {
@@ -129,16 +129,28 @@ function AgentChip({
 }
 
 /// The compact headroom readout: a percentage while the figure holds, the state
-/// in words once it doesn't. The full story — window, model, reset time,
-/// whether the figure was inferred — rides the tooltip.
+/// in words once it doesn't, plus — once the CLI's prose resolves one — a
+/// reset countdown beside it. The full story — window, model, exact reset
+/// instant, whether the figure was inferred — still rides the tooltip.
 function Headroom({ usage, now }: { usage: UsageSnapshot | null; now: number }) {
   const { display, label, title } = usageIndicator(usage, now);
+  const resetAtMs = display !== "unknown" ? (usage?.reset_at_ms ?? null) : null;
   return (
-    <span
-      className={`agent-chip__usage agent-chip__usage--${display}`}
-      title={title}
-    >
-      {label}
-    </span>
+    <>
+      <span
+        className={`agent-chip__usage agent-chip__usage--${display}`}
+        title={title}
+      >
+        {label}
+      </span>
+      {resetAtMs !== null && (
+        <span
+          className="agent-chip__reset"
+          title={`Resets ${formatResetTime(resetAtMs, now)}`}
+        >
+          resets {formatCountdown(resetAtMs, now)}
+        </span>
+      )}
+    </>
   );
 }
