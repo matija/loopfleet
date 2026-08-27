@@ -74,6 +74,11 @@ import {
 } from "./components/CommandPalette";
 import { useSidebarCollapsed } from "./sidebarCollapse";
 import {
+  readLastProject,
+  writeLastProject,
+  clearLastProject,
+} from "./lastProject";
+import {
   applyTheme,
   readStoredThemeId,
   storeThemeId,
@@ -219,17 +224,32 @@ export default function App() {
       .then((ps) => {
         setProjects(ps);
         setProjectsLoaded(true);
-        setSelectedId((cur) => {
-          const next = cur ?? ps[0]?.id ?? null;
-          if (next) setView({ kind: "plan", projectId: next });
-          return next;
-        });
+        const lastId = readLastProject();
+        const restored = lastId ? ps.find((p) => p.id === lastId) : undefined;
+        if (restored) {
+          setSelectedId(restored.id);
+          setView({ kind: "plan", projectId: restored.id });
+        } else {
+          setSelectedId(null);
+          setView({ kind: "overview" });
+          clearLastProject();
+        }
       })
       .catch((e) => {
         setProjectsError(String(e));
         setProjectsLoaded(true);
       });
   }, []);
+
+  // Mirrors the sidebar selection into localStorage so a reload can restore
+  // it (see the `listProjects` effect above) — gated on `projectsLoaded` so
+  // the initial `selectedId === null` before the first load doesn't clear a
+  // previously stored id out from under the restore read.
+  useEffect(() => {
+    if (!projectsLoaded) return;
+    if (selectedId) writeLastProject(selectedId);
+    else clearLastProject();
+  }, [selectedId, projectsLoaded]);
 
   // Classify every project's plans so a repo with no plan file — or a plan
   // with no tasks — is visible in the list without clicking into it. Each

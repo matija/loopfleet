@@ -28,3 +28,13 @@ export function writeLastProject(projectId: string): void {
     // doesn't persist across reloads.
   }
 }
+
+/// Clears the last-selected project, e.g. once it's confirmed gone from the
+/// loaded project list so a stale id isn't retried on the next restore.
+export function clearLastProject(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // localStorage unavailable — nothing to clear.
+  }
+}
