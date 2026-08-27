@@ -41,9 +41,12 @@
 
 use std::collections::HashSet;
 use std::path::Path;
+use std::str::FromStr;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use chrono::{Datelike, LocalResult, NaiveDate, NaiveTime, TimeZone, Utc};
+use chrono_tz::Tz;
 use loopfleet_core::{NormalizedEvent, Usage, UsageSnapshot};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -254,6 +257,141 @@ fn split_label(label: &str) -> (String, Option<String>) {
         .filter(|q| !q.eq_ignore_ascii_case("all models"))
         .map(str::to_string);
     (window, model)
+}
+
+/// Resolves the `resets <Mon> <D> at <h:mm><am|pm> (<IANA zone>)` clause found
+/// in `text` (the full `/usage` prose or a single row of it) into epoch
+/// milliseconds, relative to `now_ms`.
+///
+/// The clause names a month, day and time of day but never a year, so the
+/// year is chosen as whichever of *this* year or the next lands the resulting
+/// instant nearest in the future relative to `now_ms` — the CLI always means
+/// the next upcoming reset, never one already past. The zone is read from the
+/// trailing `(...)` when present; when the clause names none, the host's
+/// local zone is used instead, matching what a user reading the prose without
+/// a zone annotation would assume.
+///
+/// Answers `None` for anything the clause does not resolve unambiguously:
+/// no `resets` clause, an unrecognized month, an out-of-range day (e.g. Feb
+/// 29 landing on a non-leap year in both candidate years), an unparseable
+/// time, a zone name `chrono-tz` does not know, or a local time that a DST
+/// transition makes ambiguous or nonexistent in the resolved zone.
+pub fn parse_reset_at(text: &str, now_ms: i64) -> Option<i64> {
+    let now = Utc.timestamp_millis_opt(now_ms).single()?;
+    let clause = text.split("resets ").nth(1)?;
+
+    let mut rest = clause.trim_start();
+    let (month_word, r) = take_token(rest)?;
+    let month = month_number(month_word)?;
+    rest = r.trim_start();
+
+    let (day_word, r) = take_token(rest)?;
+    let day: u32 = day_word.parse().ok()?;
+    rest = r.trim_start();
+
+    rest = rest.strip_prefix("at ")?.trim_start();
+    let (time_word, r) = take_token(rest)?;
+    let time = parse_time(time_word)?;
+    rest = r;
+
+    let zone_name = rest
+        .trim_start()
+        .strip_prefix('(')
+        .and_then(|r| r.split(')').next());
+
+    // Only the same or the following year are ever candidates: the clause
+    // names a month/day/time that repeats annually, so the nearest future
+    // occurrence is either still to come this year or is next year's.
+    let this_year = now.year();
+    let candidates = [this_year, this_year + 1]
+        .into_iter()
+        .filter_map(|year| resolve_instant(year, month, day, time, zone_name));
+
+    candidates
+        .filter(|instant| *instant >= now)
+        .min()
+        .map(|instant| instant.timestamp_millis())
+}
+
+/// Builds the UTC instant for `year`-`month`-`day` `time` in `zone_name`
+/// (falling back to the host's local zone when `zone_name` is `None`),
+/// answering `None` if the date is invalid or the local time is ambiguous or
+/// nonexistent in that zone.
+fn resolve_instant(
+    year: i32,
+    month: u32,
+    day: u32,
+    time: NaiveTime,
+    zone_name: Option<&str>,
+) -> Option<chrono::DateTime<Utc>> {
+    let date = NaiveDate::from_ymd_opt(year, month, day)?;
+    let naive = date.and_time(time);
+    match zone_name {
+        Some(name) => {
+            let tz = Tz::from_str(name).ok()?;
+            match tz.from_local_datetime(&naive) {
+                LocalResult::Single(dt) => Some(dt.with_timezone(&Utc)),
+                _ => None,
+            }
+        }
+        None => match chrono::Local.from_local_datetime(&naive) {
+            LocalResult::Single(dt) => Some(dt.with_timezone(&Utc)),
+            _ => None,
+        },
+    }
+}
+
+/// Splits the next whitespace-delimited token off `s`, returning it along
+/// with what follows.
+fn take_token(s: &str) -> Option<(&str, &str)> {
+    let s = s.trim_start();
+    if s.is_empty() {
+        return None;
+    }
+    match s.split_once(char::is_whitespace) {
+        Some((word, rest)) => Some((word, rest)),
+        None => Some((s, "")),
+    }
+}
+
+/// Maps a three-letter English month abbreviation to its 1-based number.
+fn month_number(word: &str) -> Option<u32> {
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    MONTHS
+        .iter()
+        .position(|m| m.eq_ignore_ascii_case(word))
+        .map(|i| i as u32 + 1)
+}
+
+/// Parses a clock reading of the form `<h>[:<mm>]<am|pm>` (the CLI omits the
+/// minutes when they are `:00`, e.g. `1pm`) into a [`NaiveTime`].
+fn parse_time(word: &str) -> Option<NaiveTime> {
+    let lower = word.to_ascii_lowercase();
+    let (digits, is_pm) = if let Some(d) = lower.strip_suffix("am") {
+        (d, false)
+    } else if let Some(d) = lower.strip_suffix("pm") {
+        (d, true)
+    } else {
+        return None;
+    };
+    let (hour_str, minute_str) = match digits.split_once(':') {
+        Some((h, m)) => (h, m),
+        None => (digits, "0"),
+    };
+    let hour12: u32 = hour_str.parse().ok()?;
+    let minute: u32 = minute_str.parse().ok()?;
+    if !(1..=12).contains(&hour12) {
+        return None;
+    }
+    let hour24 = match (hour12, is_pm) {
+        (12, false) => 0,  // 12am is midnight.
+        (12, true) => 12,  // 12pm is noon.
+        (h, false) => h,
+        (h, true) => h + 12,
+    };
+    NaiveTime::from_hms_opt(hour24, minute, 0)
 }
 
 /// Reads the process's stdout line by line, maps each into normalized events,
@@ -889,6 +1027,132 @@ mod tests {
         );
         assert_eq!(parse_usage_row("  Top skills: /to-prd 4%"), None);
         assert_eq!(parse_usage_row("Current session: lots% used"), None);
+    }
+
+    // --- parse_reset_at -----------------------------------------------------
+
+    /// Builds epoch millis for a UTC date/time, for expected values below.
+    fn utc_ms(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> i64 {
+        Utc.with_ymd_and_hms(year, month, day, hour, minute, 0)
+            .unwrap()
+            .timestamp_millis()
+    }
+
+    /// A clause whose date has not yet happened this year resolves in the
+    /// zone it names, converted to UTC.
+    #[test]
+    fn resolves_named_zone_within_the_same_year() {
+        let now = utc_ms(2025, 8, 20, 0, 0);
+        let got = parse_reset_at("resets Aug 25 at 12:20pm (Europe/Zagreb)", now);
+        // Europe/Zagreb is UTC+2 (CEST) in August.
+        assert_eq!(got, Some(utc_ms(2025, 8, 25, 10, 20)));
+    }
+
+    /// A clause naming no minutes (`1pm`, not `1:00pm`) is still parsed.
+    #[test]
+    fn resolves_bare_hour_with_no_minutes() {
+        let now = utc_ms(2025, 8, 20, 0, 0);
+        let got = parse_reset_at("resets Aug 25 at 1pm (Europe/Zagreb)", now);
+        assert_eq!(got, Some(utc_ms(2025, 8, 25, 11, 0)));
+    }
+
+    /// When this year's occurrence of the date has already passed relative to
+    /// `now`, the next year's is chosen instead — the nearest instance still
+    /// in the future.
+    #[test]
+    fn rolls_over_to_next_year_once_the_date_has_passed() {
+        let now = utc_ms(2025, 9, 1, 0, 0);
+        let got = parse_reset_at("resets Aug 25 at 12:20pm (Europe/Zagreb)", now);
+        assert_eq!(got, Some(utc_ms(2026, 8, 25, 10, 20)));
+    }
+
+    /// A clause with no `(<zone>)` falls back to the host's local zone rather
+    /// than assuming UTC.
+    #[test]
+    fn falls_back_to_local_zone_when_none_named() {
+        let now = utc_ms(2025, 8, 20, 0, 0);
+        let naive = NaiveDate::from_ymd_opt(2025, 8, 25)
+            .unwrap()
+            .and_hms_opt(13, 0, 0)
+            .unwrap();
+        let expected = match chrono::Local.from_local_datetime(&naive) {
+            LocalResult::Single(dt) => dt.with_timezone(&Utc).timestamp_millis(),
+            other => panic!("host local zone made a plain date ambiguous: {other:?}"),
+        };
+        assert_eq!(parse_reset_at("resets Aug 25 at 1pm", now), Some(expected));
+    }
+
+    /// A zone name `chrono-tz` does not recognize is unresolvable, not a
+    /// silent UTC or local guess.
+    #[test]
+    fn unknown_zone_name_is_none() {
+        let now = utc_ms(2025, 8, 20, 0, 0);
+        assert_eq!(
+            parse_reset_at("resets Aug 25 at 1pm (Nowhere/Nowhere)", now),
+            None
+        );
+    }
+
+    /// Prose with no `resets` clause at all resolves nothing.
+    #[test]
+    fn no_resets_clause_is_none() {
+        let now = utc_ms(2025, 8, 20, 0, 0);
+        assert_eq!(
+            parse_reset_at("Current session: 17% used", now),
+            None
+        );
+    }
+
+    /// A day the named month never has (Feb 30) is invalid in every
+    /// candidate year, so it never resolves.
+    #[test]
+    fn impossible_date_is_none() {
+        let now = utc_ms(2025, 8, 20, 0, 0);
+        assert_eq!(
+            parse_reset_at("resets Feb 30 at 1pm (Europe/Zagreb)", now),
+            None
+        );
+    }
+
+    /// A whole `/usage`-style prose blob is scanned the same as a single row:
+    /// the first `resets` clause found is the one resolved.
+    #[test]
+    fn resolves_the_clause_out_of_full_prose() {
+        let now = utc_ms(2025, 8, 20, 0, 0);
+        let text = "Current session: 17% used · resets Aug 25 at 12:20pm (Europe/Zagreb)\n\
+                    Current week (all models): 56% used · resets Aug 25 at 1pm (Europe/Zagreb)";
+        assert_eq!(parse_reset_at(text, now), Some(utc_ms(2025, 8, 25, 10, 20)));
+    }
+
+    /// A local time a DST transition skips over (spring-forward) or repeats
+    /// (fall-back) is ambiguous in the named zone, so it does not resolve
+    /// even though the date and time are individually well formed.
+    #[test]
+    fn dst_transition_local_times_are_none() {
+        let zone = Tz::from_str("America/New_York").unwrap();
+        // 2023-03-12: clocks sprang forward from 2:00am to 3:00am; 2:30am
+        // never happened.
+        let gap = NaiveDate::from_ymd_opt(2023, 3, 12)
+            .unwrap()
+            .and_hms_opt(2, 30, 0)
+            .unwrap();
+        assert!(matches!(
+            zone.from_local_datetime(&gap),
+            LocalResult::None
+        ));
+        assert_eq!(resolve_instant(2023, 3, 12, gap.time(), Some("America/New_York")), None);
+
+        // 2023-11-05: clocks fell back from 2:00am to 1:00am; 1:30am
+        // happened twice.
+        let doubled = NaiveDate::from_ymd_opt(2023, 11, 5)
+            .unwrap()
+            .and_hms_opt(1, 30, 0)
+            .unwrap();
+        assert!(matches!(
+            zone.from_local_datetime(&doubled),
+            LocalResult::Ambiguous(_, _)
+        ));
+        assert_eq!(resolve_instant(2023, 11, 5, doubled.time(), Some("America/New_York")), None);
     }
 
     /// The probe against the real `claude` binary. Ignored by default: it needs
