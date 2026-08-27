@@ -1324,13 +1324,21 @@ fn stop_run(run_id: String, state: State<'_, AppState>) -> Result<(), String> {
 /// it — since deleting out from under that process would break it. Detected
 /// via `lsof` just before the delete; the run is left for the next sweep
 /// pass rather than reaped now.
+///
+/// When the `cleanup_after_merge` setting is on, also deletes the run's
+/// `agent/<run-id>` branch and prunes the now-stale worktree administrative
+/// metadata (`git worktree prune`) once the worktree itself is gone. The
+/// run's shadow refs (`refs/agentapp/run-<id>/iter-*`) are never touched —
+/// they're the durable record of the run's diff history. A failed branch
+/// delete is logged as a warning rather than failing the whole reap, since
+/// the worktree and on-disk footprint are already cleaned up by that point.
 async fn reap_run(
     db: &Arc<Mutex<Connection>>,
     git: &GitActor,
     data_dir: &std::path::Path,
     run_id: &str,
 ) -> Result<(), String> {
-    let (repo_path, worktree_path) = {
+    let (repo_path, worktree_path, cleanup_after_merge) = {
         let conn = db.lock().unwrap();
         let detail = loopfleet_store::load_run(&conn, run_id)
             .map_err(|e| e.to_string())?
@@ -1341,7 +1349,10 @@ async fn reap_run(
         if loopfleet_store::has_pending_resume(&conn, run_id).map_err(|e| e.to_string())? {
             return Err(format!("cannot reap a run with a pending resume: {run_id}"));
         }
-        (PathBuf::from(detail.repo_path), detail.worktree_path)
+        let cleanup_after_merge = loopfleet_store::load_settings(&conn)
+            .map(|s| s.cleanup_after_merge)
+            .unwrap_or(true);
+        (PathBuf::from(detail.repo_path), detail.worktree_path, cleanup_after_merge)
     };
 
     if let Some(worktree_path) = worktree_path {
@@ -1352,9 +1363,19 @@ async fn reap_run(
             return Ok(());
         }
         let worktrees_root = data_dir.join("worktrees");
-        git.reap(repo_path, worktrees_root, PathBuf::from(worktree_path))
+        git.reap(repo_path.clone(), worktrees_root, PathBuf::from(worktree_path))
             .await
             .map_err(|e| e.to_string())?;
+
+        if cleanup_after_merge {
+            let branch = loopfleet_gitx::worktree::branch_for(run_id);
+            if let Err(e) = git.delete_branch(repo_path.clone(), branch).await {
+                eprintln!("reap_run: failed to delete branch for run {run_id}: {e}");
+            }
+            if let Err(e) = git.cleanup_orphans(repo_path).await {
+                eprintln!("reap_run: failed to prune worktree metadata for run {run_id}: {e}");
+            }
+        }
     }
 
     let profile_path = data_dir.join("profiles").join(format!("{run_id}.sb"));
