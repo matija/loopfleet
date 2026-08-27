@@ -305,6 +305,38 @@ pub fn resolve_display_opt(
     }
 }
 
+/// Whether a launch should proceed, given an agent's usage state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LaunchDecision {
+    /// Nothing stands in the way of launching.
+    Proceed,
+    /// The window is exhausted; launching would hit the limit. Carries the
+    /// reset instant when known, so callers can say when it'll clear.
+    Blocked { reset_at_ms: Option<i64> },
+}
+
+/// Resolve a snapshot we may hold none of into a launch decision, as of `now`.
+///
+/// Only [`UsageDisplay::Exhausted`] blocks a launch. [`UsageDisplay::Unknown`]
+/// (never reported, gone stale, or no snapshot at all) and
+/// [`UsageDisplay::Low`] both proceed — a warning belongs in the meter, not in
+/// the gate.
+pub fn launch_decision(
+    snapshot: Option<&UsageSnapshot>,
+    now_ms: i64,
+    thresholds: UsageThresholds,
+) -> LaunchDecision {
+    match resolve_display_opt(snapshot, now_ms, thresholds) {
+        UsageDisplay::Exhausted => LaunchDecision::Blocked {
+            reset_at_ms: snapshot.and_then(|s| s.reset_at_ms),
+        },
+        UsageDisplay::Unknown | UsageDisplay::Low | UsageDisplay::Available => {
+            LaunchDecision::Proceed
+        }
+    }
+}
+
 /// Clamp a reported fraction into `0.0..=1.0`; `NaN` reads as zero.
 fn clamp_fraction(fraction: f64) -> f64 {
     if fraction.is_nan() {
@@ -538,6 +570,64 @@ mod tests {
         assert_eq!(json, "\"exhausted\"");
         let json = serde_json::to_string(&UsageSource::Inferred).unwrap();
         assert_eq!(json, "\"inferred\"");
+    }
+
+    // --- launch_decision ---
+
+    #[test]
+    fn no_snapshot_proceeds() {
+        assert_eq!(
+            launch_decision(None, NOW, UsageThresholds::default()),
+            LaunchDecision::Proceed
+        );
+    }
+
+    #[test]
+    fn unknown_source_proceeds() {
+        let snap = UsageSnapshot::unknown("claude", NOW);
+        assert_eq!(
+            launch_decision(Some(&snap), NOW, UsageThresholds::default()),
+            LaunchDecision::Proceed
+        );
+    }
+
+    #[test]
+    fn stale_snapshot_proceeds_even_when_exhausted() {
+        let snap = snapshot(1.0, UsageSource::Reported);
+        assert_eq!(
+            launch_decision(Some(&snap), NOW + 60 * MINUTE, UsageThresholds::default()),
+            LaunchDecision::Proceed
+        );
+    }
+
+    #[test]
+    fn low_usage_proceeds() {
+        let snap = snapshot(DEFAULT_LOW_FRACTION, UsageSource::Reported);
+        assert_eq!(
+            launch_decision(Some(&snap), NOW, UsageThresholds::default()),
+            LaunchDecision::Proceed
+        );
+    }
+
+    #[test]
+    fn exhausted_blocks_and_carries_reset() {
+        let mut snap = snapshot(1.0, UsageSource::Reported);
+        snap.reset_at_ms = Some(NOW + MINUTE);
+        assert_eq!(
+            launch_decision(Some(&snap), NOW, UsageThresholds::default()),
+            LaunchDecision::Blocked {
+                reset_at_ms: Some(NOW + MINUTE)
+            }
+        );
+    }
+
+    #[test]
+    fn exhausted_without_reset_blocks_with_none() {
+        let snap = snapshot(1.0, UsageSource::Inferred);
+        assert_eq!(
+            launch_decision(Some(&snap), NOW, UsageThresholds::default()),
+            LaunchDecision::Blocked { reset_at_ms: None }
+        );
     }
 
     #[test]
