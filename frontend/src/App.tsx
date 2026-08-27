@@ -716,6 +716,7 @@ export default function App() {
       const removedId = removeTarget.id;
       setProjects((prev) => prev.filter((p) => p.id !== removedId));
       setSelectedId((cur) => (cur === removedId ? null : cur));
+      if (readLastProject() === removedId) clearLastProject();
       setView({ kind: "overview" });
       closeRemoveProject();
     } catch (e) {
