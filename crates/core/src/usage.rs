@@ -601,6 +601,15 @@ mod tests {
     }
 
     #[test]
+    fn available_usage_proceeds() {
+        let snap = snapshot(0.2, UsageSource::Reported);
+        assert_eq!(
+            launch_decision(Some(&snap), NOW, UsageThresholds::default()),
+            LaunchDecision::Proceed
+        );
+    }
+
+    #[test]
     fn low_usage_proceeds() {
         let snap = snapshot(DEFAULT_LOW_FRACTION, UsageSource::Reported);
         assert_eq!(
