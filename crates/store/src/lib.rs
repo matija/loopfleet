@@ -10,7 +10,10 @@ pub use event_log::{
 };
 
 mod projects;
-pub use projects::{delete_project, insert_project, list_projects, DeleteProjectSummary, Project};
+pub use projects::{
+    delete_project, insert_project, list_projects, project_removal_preview, DeleteProjectSummary,
+    Project, ProjectRemovalPreview,
+};
 
 mod settings;
 pub use settings::{

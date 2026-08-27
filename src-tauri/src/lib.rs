@@ -338,6 +338,18 @@ async fn remove_project(project_id: String, app: AppHandle, state: State<'_, App
     Ok(())
 }
 
+/// Counts a removal confirmation dialog shows for a project — plans, runs,
+/// active runs, and worktrees still on disk — gathered without deleting
+/// anything.
+#[tauri::command]
+fn project_removal_preview(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<loopfleet_store::ProjectRemovalPreview, String> {
+    let conn = state.db.lock().unwrap();
+    loopfleet_store::project_removal_preview(&conn, &project_id).map_err(|e| e.to_string())
+}
+
 /// The global app settings (default agent, default iteration count, concurrency
 /// cap, worktree retention). Unset fields fall back to code defaults.
 #[tauri::command]
@@ -2303,6 +2315,7 @@ pub fn run() {
             register_project,
             list_projects,
             remove_project,
+            project_removal_preview,
             agent_status,
             agent_usage,
             get_settings,
