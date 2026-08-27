@@ -1159,6 +1159,88 @@ mod tests {
         assert_eq!(resolve_instant(2023, 11, 5, doubled.time(), Some("America/New_York")), None);
     }
 
+    /// Table-driven coverage of `parse_reset_at`'s outcome across the clause
+    /// shapes it must handle: a named zone, a fallback to the local zone, a
+    /// rollover across a December year boundary, a DST spring-forward gap
+    /// that never exists in either candidate year, a clause the grammar
+    /// can't parse, and prose with no `resets` clause at all.
+    #[test]
+    fn parse_reset_at_cases() {
+        let local_zone_expected = {
+            let naive = NaiveDate::from_ymd_opt(2025, 8, 25)
+                .unwrap()
+                .and_hms_opt(13, 0, 0)
+                .unwrap();
+            match chrono::Local.from_local_datetime(&naive) {
+                LocalResult::Single(dt) => dt.with_timezone(&Utc).timestamp_millis(),
+                other => panic!("host local zone made a plain date ambiguous: {other:?}"),
+            }
+        };
+
+        struct Case {
+            name: &'static str,
+            now: i64,
+            text: &'static str,
+            expected: Option<i64>,
+        }
+
+        let cases = [
+            Case {
+                name: "named zone",
+                now: utc_ms(2025, 8, 20, 0, 0),
+                text: "resets Aug 25 at 12:20pm (Europe/Zagreb)",
+                expected: Some(utc_ms(2025, 8, 25, 10, 20)),
+            },
+            Case {
+                name: "missing zone falls back to local",
+                now: utc_ms(2025, 8, 20, 0, 0),
+                text: "resets Aug 25 at 1pm",
+                expected: Some(local_zone_expected),
+            },
+            Case {
+                // "now" is the last day of the year, and the clause names a
+                // date in January: the only future candidate is next year's,
+                // not this year's (already-past) January.
+                name: "year rollover across December",
+                now: utc_ms(2025, 12, 31, 0, 0),
+                text: "resets Jan 5 at 1pm (Europe/Zagreb)",
+                expected: Some(utc_ms(2026, 1, 5, 12, 0)),
+            },
+            Case {
+                // US DST springs forward on the second Sunday of March. In
+                // 2024 that's Mar 10, so Mar 9 2024 2:30am is an ordinary
+                // (but already-past-`now`) instant; in 2025 DST falls on
+                // Mar 9, so that same clock reading never exists. Both
+                // candidate years are therefore excluded.
+                name: "DST spring-forward gap never resolves",
+                now: utc_ms(2024, 3, 15, 0, 0),
+                text: "resets Mar 9 at 2:30am (America/New_York)",
+                expected: None,
+            },
+            Case {
+                name: "unparseable clause",
+                now: utc_ms(2025, 8, 20, 0, 0),
+                text: "resets tomorrow (Europe/Zagreb)",
+                expected: None,
+            },
+            Case {
+                name: "prose with no resets clause",
+                now: utc_ms(2025, 8, 20, 0, 0),
+                text: "Current session: 17% used",
+                expected: None,
+            },
+        ];
+
+        for case in cases {
+            assert_eq!(
+                parse_reset_at(case.text, case.now),
+                case.expected,
+                "case: {}",
+                case.name
+            );
+        }
+    }
+
     /// The probe against the real `claude` binary. Ignored by default: it needs
     /// the CLI installed and logged in. `/usage` is answered locally, so unlike
     /// `live_run` below it costs no tokens.
