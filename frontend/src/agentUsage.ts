@@ -3,10 +3,10 @@
 // `agentUsage()` probes the agent CLIs, so it is not something each component
 // can call for itself: the agents panel, the run toolbar and the launch control
 // would each spawn their own probes and could then disagree about the same
-// agent. This module fetches once per session, keeps the newest snapshot per
-// agent as `agent_usage` events push updates, and hands every subscriber the
-// same map — so the figure beside the Run button is, by construction, the
-// figure the agents panel is showing.
+// agent. This module keeps the newest snapshot per agent as `agent_usage`
+// events push updates and as explicit refreshes come in, and hands every
+// subscriber the same map — so the figure beside the Run button is, by
+// construction, the figure the agents panel is showing.
 
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
@@ -26,26 +26,20 @@ export type UsageByAgent = Record<string, UsageSnapshot>;
 let snapshots: UsageByAgent = {};
 const subscribers = new Set<(s: UsageByAgent) => void>();
 let listener: Promise<UnlistenFn> | null = null;
-let probed = false;
 
 function publish(next: UsageByAgent): void {
   snapshots = next;
   for (const notify of subscribers) notify(snapshots);
 }
 
-/// Begin listening (once) and take the opening reading (once). Kept alive for
-/// the app's lifetime rather than torn down with the last subscriber: dropping
-/// the subscription would silently miss the pushes that keep the cache honest,
-/// and re-taking it on every mount would re-probe the CLIs.
+/// Begin listening (once). Kept alive for the app's lifetime rather than torn
+/// down with the last subscriber: dropping the subscription would silently
+/// miss the pushes that keep the cache honest.
 function begin(): void {
   if (listener === null) {
     listener = onAgentUsage((snapshot) =>
       publish({ ...snapshots, [snapshot.agent_key]: snapshot }),
     );
-  }
-  if (!probed) {
-    probed = true;
-    void refreshAgentUsage();
   }
 }
 
