@@ -32,10 +32,11 @@
 //! Current week (all models): 56% used · resets Aug 25 at 1pm (Europe/Zagreb)
 //! ```
 //!
-//! [`map_usage`] reads the `<label>: <n>% used` rows out of that prose. Because
-//! prose is not a contract, every way it can disappoint us — the CLI missing,
-//! the probe failing, JSON we cannot parse, wording we do not recognize — maps
-//! to [`UsageSnapshot::unknown`] rather than an error: the snapshot's
+//! [`map_usage`] reads the `<label>: <n>% used` rows out of that prose, and the
+//! fullest row's `resets …` clause through [`parse_reset_at`]. Because prose is
+//! not a contract, every way it can disappoint us — the CLI missing, the probe
+//! failing, JSON we cannot parse, wording we do not recognize — maps to
+//! [`UsageSnapshot::unknown`] rather than an error: the snapshot's
 //! [`UsageSource::Unknown`](loopfleet_core::UsageSource::Unknown) already says "nothing is known", and a limit query
 //! is not worth failing a caller over.
 
@@ -182,11 +183,10 @@ struct UsageWindow {
 /// A snapshot carries one fraction, and the fullest window is the one that will
 /// stop the next run, so it is the one a scheduler has to see.
 ///
-/// The `resets …` half of each row is deliberately not mapped:
-/// "Aug 25 at 12:19pm (Europe/Zagreb)" names neither a year nor a UTC offset,
-/// so producing the epoch millis [`UsageSnapshot::reset_at_ms`] wants would
-/// mean guessing at both. It stays `None`, and staleness falls back to the
-/// snapshot's age.
+/// The fullest row's own `resets …` clause is resolved through
+/// [`parse_reset_at`] into [`UsageSnapshot::reset_at_ms`]. A row with no clause,
+/// or one [`parse_reset_at`] cannot resolve unambiguously, leaves it `None`, and
+/// staleness falls back to the snapshot's age.
 fn map_usage(text: Option<&str>, now_ms: i64) -> UsageSnapshot {
     let unknown = UsageSnapshot::unknown(AGENT_KEY, now_ms);
     let Some(text) = text else {
@@ -194,10 +194,10 @@ fn map_usage(text: Option<&str>, now_ms: i64) -> UsageSnapshot {
     };
     let fullest = text
         .lines()
-        .filter_map(parse_usage_row)
-        .max_by(|a, b| a.used_fraction.total_cmp(&b.used_fraction));
+        .filter_map(|line| parse_usage_row(line).map(|row| (line, row)))
+        .max_by(|(_, a), (_, b)| a.used_fraction.total_cmp(&b.used_fraction));
     // Prose we recognize nothing in tells us exactly as much as no prose.
-    let Some(fullest) = fullest else {
+    let Some((line, fullest)) = fullest else {
         return unknown;
     };
 
@@ -205,6 +205,9 @@ fn map_usage(text: Option<&str>, now_ms: i64) -> UsageSnapshot {
         .with_limit_window(fullest.window);
     if let Some(model) = fullest.model {
         snapshot = snapshot.with_model(model);
+    }
+    if let Some(reset_at_ms) = parse_reset_at(line, now_ms) {
+        snapshot = snapshot.with_reset_at(reset_at_ms);
     }
     snapshot
 }
@@ -908,7 +911,8 @@ mod tests {
 
     /// The captured `/usage` payload maps to the fullest of its two windows:
     /// the 56% week, not the 20% session. No model (the row says "all models"),
-    /// and no reset instant (the prose names no year or offset).
+    /// and the reset instant is the week row's own `resets …` clause resolved
+    /// through [`parse_reset_at`], not the session row's.
     #[test]
     fn maps_captured_usage_payload() {
         let text = usage_text(include_str!("../fixtures/claude_usage.json"));
@@ -919,7 +923,7 @@ mod tests {
                 model: None,
                 limit_window: Some("weekly".into()),
                 used_fraction: 0.56,
-                reset_at_ms: None,
+                reset_at_ms: Some(1_787_655_540_000),
                 observed_at_ms: NOW,
                 source: UsageSource::Reported,
             }
