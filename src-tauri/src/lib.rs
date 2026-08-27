@@ -253,6 +253,91 @@ fn list_projects(state: State<'_, AppState>) -> Result<Vec<Project>, String> {
     loopfleet_store::list_projects(&conn).map_err(|e| e.to_string())
 }
 
+/// A project was removed entirely, pushed so any open surface (plan view, run
+/// timeline, …) showing it drops it rather than pointing at deleted rows.
+#[derive(Clone, serde::Serialize)]
+struct ProjectRemovedPayload {
+    project_id: String,
+}
+
+/// Remove a project and everything under it.
+///
+/// Refuses (without touching anything) while any of the project's runs are
+/// still `queued`/`running` — an active run's background task, cancel
+/// channel, and worktree would be orphaned out from under it.
+///
+/// Otherwise: aborts and deletes every pending resume and scheduled launch
+/// bound to the project — both their in-memory timer handles (so a stale
+/// sleep-then-relaunch/sleep-then-launch task can't fire into a project that
+/// no longer exists) and their persisted rows — then reaps each of the
+/// project's runs' worktrees (same path as `reap_run`: sandbox profile and
+/// progress dir included, and it defers rather than deletes out from under a
+/// worktree some live process still has open) and deletes each run's
+/// `agent/<run-id>` branch. Worktree/branch cleanup is best-effort per run —
+/// logged, not fatal — so one stuck run's checkout can't block the rest of
+/// the removal. Finally deletes the project's rows via the store's
+/// `delete_project` and emits `project_removed`.
+#[tauri::command]
+async fn remove_project(project_id: String, app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let repo_path = {
+        let conn = state.db.lock().unwrap();
+        let project = get_project(&conn, &project_id)?;
+        if loopfleet_store::has_active_runs_for_project(&conn, &project_id).map_err(|e| e.to_string())? {
+            return Err(format!(
+                "cannot remove project {project_id}: it has runs still queued or running"
+            ));
+        }
+        project.repo_path
+    };
+    let repo_path = PathBuf::from(repo_path);
+
+    let (resumes, launches, runs) = {
+        let conn = state.db.lock().unwrap();
+        (
+            loopfleet_store::list_pending_resumes_for_project(&conn, &project_id)
+                .map_err(|e| e.to_string())?,
+            loopfleet_store::list_scheduled_launches_for_project(&conn, &project_id)
+                .map_err(|e| e.to_string())?,
+            loopfleet_store::list_runs_for_project(&conn, &project_id).map_err(|e| e.to_string())?,
+        )
+    };
+
+    for resume in &resumes {
+        if let Some(handle) = state.scheduled_resumes.lock().unwrap().remove(&resume.run_id) {
+            handle.abort();
+        }
+        let conn = state.db.lock().unwrap();
+        let _ = loopfleet_store::delete_pending_resume(&conn, &resume.run_id);
+    }
+
+    for launch in &launches {
+        if let Some(handle) = state.scheduled_launches.lock().unwrap().remove(&launch.id) {
+            handle.abort();
+        }
+        let conn = state.db.lock().unwrap();
+        let _ = loopfleet_store::delete_scheduled_launch(&conn, launch.id);
+    }
+
+    for run in &runs {
+        if let Err(e) = reap_run(&state.db, &state.git, &state.data_dir, &run.id).await {
+            eprintln!("remove_project: failed to reap run {}: {e}", run.id);
+        }
+        let branch = loopfleet_gitx::worktree::branch_for(&run.id);
+        if let Err(e) = state.git.delete_branch(repo_path.clone(), branch).await {
+            eprintln!("remove_project: failed to delete branch for run {}: {e}", run.id);
+        }
+    }
+
+    {
+        let conn = state.db.lock().unwrap();
+        loopfleet_store::delete_project(&conn, &project_id).map_err(|e| e.to_string())?;
+    }
+
+    let _ = app.emit("project_removed", ProjectRemovedPayload { project_id });
+
+    Ok(())
+}
+
 /// The global app settings (default agent, default iteration count, concurrency
 /// cap, worktree retention). Unset fields fall back to code defaults.
 #[tauri::command]
@@ -2217,6 +2302,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             register_project,
             list_projects,
+            remove_project,
             agent_status,
             agent_usage,
             get_settings,

@@ -80,6 +80,14 @@ impl GitActor {
         self.exec(move || worktree::cleanup_orphans(&repo)).await
     }
 
+    /// Delete a run's `agent/<run-id>` branch (`worktree::delete_branch`)
+    /// through the actor. Used when a project is removed entirely and its
+    /// runs' branches have no further reason to stick around.
+    pub async fn delete_branch(&self, repo: PathBuf, branch: String) -> Result<(), WorktreeError> {
+        self.exec(move || worktree::delete_branch(&repo, &branch))
+            .await
+    }
+
     /// Snapshot a worktree to its iteration shadow ref (`shadow::snapshot`)
     /// through the actor.
     pub async fn snapshot(

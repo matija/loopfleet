@@ -139,6 +139,19 @@ pub fn reap(repo: &Path, worktrees_root: &Path, path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Delete a run's `agent/<run-id>` branch, e.g. after its worktree has been
+/// reaped and the project it belongs to is being removed entirely. `-D`
+/// force-deletes since by this point the branch's commits live only in
+/// app-owned shadow refs, not necessarily merged anywhere else. Idempotent: a
+/// branch that's already gone is not an error.
+pub fn delete_branch(repo: &Path, branch: &str) -> Result<()> {
+    match git(repo, &["branch", "-D", branch]) {
+        Ok(_) => Ok(()),
+        Err(WorktreeError::Git(msg)) if msg.contains("not found") => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
 /// List this app's run worktrees (those on an `agent/` branch), parsed from
 /// `git worktree list --porcelain`. The repo's own main worktree and any
 /// unrelated ones are filtered out.
@@ -256,6 +269,33 @@ mod tests {
         reap(repo.path(), root.path(), &wt.path).unwrap();
         assert!(!wt.path.exists(), "worktree dir removed");
         assert!(list(repo.path()).unwrap().is_empty(), "no worktree left");
+    }
+
+    #[test]
+    fn delete_branch_removes_it_after_worktree_is_gone() {
+        let repo = repo_with_commit();
+        let root = tempfile::tempdir().unwrap();
+        let wt = add(repo.path(), root.path(), "run-branch-1").unwrap();
+        remove(repo.path(), &wt.path).unwrap();
+
+        delete_branch(repo.path(), &wt.branch).unwrap();
+
+        let branches = Command::new("git")
+            .arg("-C")
+            .arg(repo.path())
+            .args(["branch", "--list", &wt.branch])
+            .output()
+            .unwrap();
+        assert!(
+            String::from_utf8_lossy(&branches.stdout).trim().is_empty(),
+            "branch deleted"
+        );
+    }
+
+    #[test]
+    fn delete_branch_is_idempotent_when_already_gone() {
+        let repo = repo_with_commit();
+        delete_branch(repo.path(), "agent/never-existed").unwrap();
     }
 
     #[test]

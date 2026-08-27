@@ -314,6 +314,50 @@ pub fn list_runs_for_plan(conn: &Connection, plan_id: &str) -> rusqlite::Result<
     Ok(rows)
 }
 
+/// A run's id and worktree path, scoped to one project, for `remove_project`
+/// to reap each run's worktree before the project row goes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectRun {
+    pub id: String,
+    pub worktree_path: Option<String>,
+}
+
+/// Every run bound to any plan in `project_id`, regardless of status —
+/// `remove_project` reaps each one's worktree itself rather than relying on
+/// the sweep, since the project (and its runs' rows) are about to be deleted
+/// outright.
+pub fn list_runs_for_project(conn: &Connection, project_id: &str) -> rusqlite::Result<Vec<ProjectRun>> {
+    let mut stmt = conn.prepare(
+        "SELECT r.id, r.worktree_path
+         FROM runs r
+         JOIN plans pl ON r.plan_id = pl.id
+         WHERE pl.project_id = ?1",
+    )?;
+    let rows = stmt
+        .query_map([project_id], |r| {
+            Ok(ProjectRun {
+                id: r.get(0)?,
+                worktree_path: r.get(1)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// Whether `project_id` has any run still `queued` or `running`. Removing a
+/// project out from under an in-flight run would orphan its background task
+/// and cancel channel, so callers refuse removal while this is true.
+pub fn has_active_runs_for_project(conn: &Connection, project_id: &str) -> rusqlite::Result<bool> {
+    conn.query_row(
+        "SELECT EXISTS(
+             SELECT 1 FROM runs r JOIN plans pl ON r.plan_id = pl.id
+             WHERE pl.project_id = ?1 AND r.status IN ('queued', 'running')
+         )",
+        [project_id],
+        |r| r.get::<_, bool>(0),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -487,6 +531,53 @@ mod tests {
         // guards the "leave untouched" behavior) doesn't clear or bump it.
         update_run_status(&conn, "r1", "running").unwrap();
         assert_eq!(finished_at(&conn, "r1"), Some(first));
+    }
+
+    /// Seed a second project ("p2") with its own plan/task, for tests that
+    /// need to confirm project-scoped queries don't leak across projects.
+    fn seed_second_project(conn: &Connection) -> String {
+        conn.execute(
+            "INSERT INTO projects (id, repo_path, plan_convention) VALUES ('p2','/r2','prd')",
+            [],
+        )
+        .unwrap();
+        let pid = crate::plan_id("p2", "PRD.md");
+        crate::upsert_plan(conn, &pid, "p2", "PRD.md").unwrap();
+        crate::upsert_task(conn, &pid, "task b", 1, "Task B", false).unwrap();
+        pid
+    }
+
+    #[test]
+    fn list_runs_for_project_is_scoped_and_ignores_status() {
+        let conn = crate::open(":memory:").unwrap();
+        let pid = seed(&conn);
+        let pid2 = seed_second_project(&conn);
+        insert_run(&conn, &new_run("r1", &pid, "task a", "completed")).unwrap();
+        insert_run(&conn, &new_run("r2", &pid, "task a", "running")).unwrap();
+        insert_run(&conn, &new_run("r3", &pid2, "task b", "completed")).unwrap();
+
+        let mut runs = list_runs_for_project(&conn, "p").unwrap();
+        runs.sort_by(|a, b| a.id.cmp(&b.id));
+        assert_eq!(
+            runs,
+            vec![
+                ProjectRun { id: "r1".into(), worktree_path: Some("/wt".into()) },
+                ProjectRun { id: "r2".into(), worktree_path: Some("/wt".into()) },
+            ]
+        );
+    }
+
+    #[test]
+    fn has_active_runs_for_project_checks_queued_and_running_only() {
+        let conn = crate::open(":memory:").unwrap();
+        let pid = seed(&conn);
+        let pid2 = seed_second_project(&conn);
+        insert_run(&conn, &new_run("r1", &pid, "task a", "completed")).unwrap();
+        assert!(!has_active_runs_for_project(&conn, "p").unwrap());
+
+        insert_run(&conn, &new_run("r2", &pid2, "task b", "queued")).unwrap();
+        assert!(!has_active_runs_for_project(&conn, "p").unwrap());
+        assert!(has_active_runs_for_project(&conn, "p2").unwrap());
     }
 
     #[test]

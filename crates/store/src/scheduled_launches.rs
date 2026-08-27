@@ -89,6 +89,38 @@ pub fn list_scheduled_launches(conn: &Connection) -> rusqlite::Result<Vec<Schedu
     Ok(rows)
 }
 
+/// Every scheduled launch for a task in `project_id`. Used by `remove_project`
+/// to find the in-memory timer handles it must abort before the project is
+/// deleted.
+pub fn list_scheduled_launches_for_project(
+    conn: &Connection,
+    project_id: &str,
+) -> rusqlite::Result<Vec<ScheduledLaunch>> {
+    let mut stmt = conn.prepare(
+        "SELECT sl.id, sl.plan_id, sl.task_anchor, sl.agent, sl.model, sl.pass_count,
+                sl.launch_at, sl.created_at, sl.reschedule_count
+         FROM scheduled_launches sl
+         JOIN plans pl ON sl.plan_id = pl.id
+         WHERE pl.project_id = ?1",
+    )?;
+    let rows = stmt
+        .query_map([project_id], |r| {
+            Ok(ScheduledLaunch {
+                id: r.get(0)?,
+                plan_id: r.get(1)?,
+                task_anchor: r.get(2)?,
+                agent: r.get(3)?,
+                model: r.get(4)?,
+                pass_count: r.get(5)?,
+                launch_at: r.get(6)?,
+                created_at: r.get(7)?,
+                reschedule_count: r.get(8)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
 /// Clear one scheduled launch by its row id, whether because it fired or was
 /// cancelled. A no-op if none exists.
 pub fn delete_scheduled_launch(conn: &Connection, id: i64) -> rusqlite::Result<()> {
@@ -176,6 +208,31 @@ mod tests {
         let launches = list_scheduled_launches(&conn).unwrap();
         assert_eq!(launches[0].launch_at, 5_000);
         assert_eq!(launches[0].reschedule_count, 1);
+    }
+
+    #[test]
+    fn list_for_project_is_scoped_to_that_projects_plans() {
+        let conn = crate::open(":memory:").unwrap();
+        let pid = seed(&conn);
+        conn.execute(
+            "INSERT INTO projects (id, repo_path, plan_convention) VALUES ('p2','/r2','prd')",
+            [],
+        )
+        .unwrap();
+        let pid2 = crate::plan_id("p2", "PRD.md");
+        crate::upsert_plan(&conn, &pid2, "p2", "PRD.md").unwrap();
+        crate::upsert_task(&conn, &pid2, "task c", 1, "Task C", false).unwrap();
+
+        insert_scheduled_launch(&conn, &new_launch(&pid, "task a", 1_000)).unwrap();
+        insert_scheduled_launch(&conn, &new_launch(&pid2, "task c", 2_000)).unwrap();
+
+        let for_p1 = list_scheduled_launches_for_project(&conn, "p").unwrap();
+        assert_eq!(for_p1.len(), 1);
+        assert_eq!(for_p1[0].plan_id, pid);
+
+        let for_p2 = list_scheduled_launches_for_project(&conn, "p2").unwrap();
+        assert_eq!(for_p2.len(), 1);
+        assert_eq!(for_p2[0].plan_id, pid2);
     }
 
     #[test]

@@ -22,10 +22,11 @@ pub use plans::{load_task, plan_file_path, plan_id, upsert_plan, upsert_task, Ta
 
 mod runs;
 pub use runs::{
-    all_run_ids, count_active_runs, fail_interrupted_runs, insert_iteration, insert_run,
-    list_runs_for_plan, list_sweep_candidates, load_iterations, load_run, mark_run_reaped,
-    project_id_for_run, set_run_accepted, update_run_status, IterationRow, NewRun, RunDetail,
-    RunSummary, SweepCandidate,
+    all_run_ids, count_active_runs, fail_interrupted_runs, has_active_runs_for_project,
+    insert_iteration, insert_run, list_runs_for_plan, list_runs_for_project,
+    list_sweep_candidates, load_iterations, load_run, mark_run_reaped, project_id_for_run,
+    set_run_accepted, update_run_status, IterationRow, NewRun, ProjectRun, RunDetail, RunSummary,
+    SweepCandidate,
 };
 
 mod agent_usage;
@@ -34,13 +35,13 @@ pub use agent_usage::{list_agent_usage, load_agent_usage, record_agent_usage, Ag
 mod pending_resumes;
 pub use pending_resumes::{
     delete_pending_resume, has_pending_resume, insert_pending_resume, list_pending_resumes,
-    NewPendingResume, PendingResume,
+    list_pending_resumes_for_project, NewPendingResume, PendingResume,
 };
 
 mod scheduled_launches;
 pub use scheduled_launches::{
     delete_scheduled_launch, insert_scheduled_launch, list_scheduled_launches,
-    reschedule_launch, NewScheduledLaunch, ScheduledLaunch,
+    list_scheduled_launches_for_project, reschedule_launch, NewScheduledLaunch, ScheduledLaunch,
 };
 
 /// Ordered list of migrations. Each entry is `(name, sql)`; names double as the

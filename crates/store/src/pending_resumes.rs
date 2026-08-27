@@ -84,6 +84,36 @@ pub fn delete_pending_resume(conn: &Connection, run_id: &str) -> rusqlite::Resul
     Ok(())
 }
 
+/// Every pending resume for a run bound to any plan in `project_id`. Used by
+/// `remove_project` to find the in-memory timer handles it must abort before
+/// the project's runs are reaped.
+pub fn list_pending_resumes_for_project(
+    conn: &Connection,
+    project_id: &str,
+) -> rusqlite::Result<Vec<PendingResume>> {
+    let mut stmt = conn.prepare(
+        "SELECT pr.run_id, pr.task_anchor, pr.agent, pr.model, pr.pass_count, pr.resume_at, pr.attempt
+         FROM pending_resumes pr
+         JOIN runs r ON pr.run_id = r.id
+         JOIN plans pl ON r.plan_id = pl.id
+         WHERE pl.project_id = ?1",
+    )?;
+    let rows = stmt
+        .query_map([project_id], |r| {
+            Ok(PendingResume {
+                run_id: r.get(0)?,
+                task_anchor: r.get(1)?,
+                agent: r.get(2)?,
+                model: r.get(3)?,
+                pass_count: r.get(4)?,
+                resume_at: r.get(5)?,
+                attempt: r.get(6)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
 /// Whether `run_id` has an outstanding scheduled resume. Reaping a run's
 /// worktree would pull the ground out from under that resume, so callers must
 /// check this before deleting anything.
@@ -212,6 +242,52 @@ mod tests {
 
         conn.execute("DELETE FROM runs WHERE id = 'r1'", []).unwrap();
         assert!(list_pending_resumes(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn list_for_project_is_scoped_to_that_projects_runs() {
+        let conn = crate::open(":memory:").unwrap();
+        seed(&conn);
+        conn.execute(
+            "INSERT INTO projects (id, repo_path, plan_convention) VALUES ('p2','/r2','prd')",
+            [],
+        )
+        .unwrap();
+        let pid2 = crate::plan_id("p2", "PRD.md");
+        crate::upsert_plan(&conn, &pid2, "p2", "PRD.md").unwrap();
+        crate::upsert_task(&conn, &pid2, "task b", 1, "Task B", false).unwrap();
+        crate::insert_run(
+            &conn,
+            &crate::NewRun {
+                id: "r2".into(),
+                plan_id: pid2,
+                task_anchor: "task b".into(),
+                agent: "claude".into(),
+                model: None,
+                worktree_path: "/wt2".into(),
+                branch: "agent/r2".into(),
+                sb_profile: "/prof2.sb".into(),
+                progress_path: "/prog2/progress.md".into(),
+                max_iterations: 5,
+                status: "running".into(),
+            },
+        )
+        .unwrap();
+
+        insert_pending_resume(&conn, &new_resume("r1", 1)).unwrap();
+        insert_pending_resume(
+            &conn,
+            &NewPendingResume { run_id: "r2".into(), ..new_resume("r2", 1) },
+        )
+        .unwrap();
+
+        let for_p1 = list_pending_resumes_for_project(&conn, "p").unwrap();
+        assert_eq!(for_p1.len(), 1);
+        assert_eq!(for_p1[0].run_id, "r1");
+
+        let for_p2 = list_pending_resumes_for_project(&conn, "p2").unwrap();
+        assert_eq!(for_p2.len(), 1);
+        assert_eq!(for_p2[0].run_id, "r2");
     }
 
     #[test]
