@@ -24,6 +24,9 @@ pub struct Settings {
     /// `-1` means never (the sweep skips age-based reaping entirely, though
     /// accepted runs are still swept regardless).
     pub worktree_retention_hours: i64,
+    /// Whether a run's worktree is cleaned up automatically after its branch
+    /// is merged.
+    pub cleanup_after_merge: bool,
 }
 
 impl Default for Settings {
@@ -33,6 +36,7 @@ impl Default for Settings {
             default_iterations: 1,
             concurrency_cap: 3,
             worktree_retention_hours: 48,
+            cleanup_after_merge: true,
         }
     }
 }
@@ -52,6 +56,9 @@ pub fn load_settings(conn: &Connection) -> rusqlite::Result<Settings> {
     if let Some(v) = get(conn, "worktree_retention_hours")?.and_then(|v| v.parse().ok()) {
         s.worktree_retention_hours = v;
     }
+    if let Some(v) = get(conn, "cleanup_after_merge")?.and_then(|v| v.parse().ok()) {
+        s.cleanup_after_merge = v;
+    }
     Ok(s)
 }
 
@@ -64,6 +71,11 @@ pub fn save_settings(conn: &Connection, s: &Settings) -> rusqlite::Result<()> {
         conn,
         "worktree_retention_hours",
         &s.worktree_retention_hours.to_string(),
+    )?;
+    set(
+        conn,
+        "cleanup_after_merge",
+        &s.cleanup_after_merge.to_string(),
     )?;
     Ok(())
 }
@@ -147,6 +159,7 @@ mod tests {
             default_iterations: 10,
             concurrency_cap: 1,
             worktree_retention_hours: -1,
+            cleanup_after_merge: false,
         };
         save_settings(&conn, &s).unwrap();
         assert_eq!(load_settings(&conn).unwrap(), s);
