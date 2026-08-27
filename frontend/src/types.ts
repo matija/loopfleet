@@ -366,3 +366,17 @@ export type ScheduledLaunchDroppedPayload = {
 /// `agent_key`. Emitted only when the snapshot says something different from
 /// what the UI was last told, so `observed_at_ms` alone moving is not an event.
 export type AgentUsagePayload = UsageSnapshot;
+
+/// Whether a launch should proceed, given an agent's usage state.
+/// `core::usage::LaunchDecision` — externally tagged, so `"proceed"` is a bare
+/// string and the blocked variant is `{ blocked: { reset_at_ms } }`.
+export type LaunchDecision =
+  | "proceed"
+  | { blocked: { reset_at_ms: number | null } };
+
+/// The result of `check_agent_usage`: the resolved snapshot alongside whether
+/// it's safe to launch that agent right now.
+export type AgentUsageCheck = {
+  snapshot: UsageSnapshot;
+  decision: LaunchDecision;
+};

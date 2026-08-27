@@ -615,6 +615,48 @@
   white-space: nowrap;
 }
 
+/* The blocked-launch prompt: opened when `check_agent_usage` comes back
+ * "blocked" instead of proceeding straight to the run. */
+.launch__blocked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 30ch;
+}
+
+.launch__blocked-text {
+  margin: 0;
+  color: var(--c-text);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.launch__blocked-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.launch__blocked-actions button {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-bg-raised);
+  color: var(--c-text);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.launch__blocked-actions button:hover {
+  background: var(--c-accent-quiet);
+  color: var(--c-accent-text);
+}
+
+.launch__blocked-actions .launch__blocked-launch {
+  border-color: var(--c-danger);
+  color: var(--c-danger);
+}
+
 /* --- single-task tab (opened from the plan tree) --- */
 
 .task-tab {

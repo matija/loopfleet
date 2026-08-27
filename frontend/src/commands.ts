@@ -6,6 +6,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AgentStatus,
+  AgentUsageCheck,
   CompareView,
   PlanEditProposal,
   PlanView,
@@ -59,6 +60,15 @@ export function agentStatus(): Promise<AgentStatus[]> {
 /// subscribe with `onAgentUsage` — every change, here or mid-run, is pushed.
 export function agentUsage(): Promise<UsageSnapshot[]> {
   return invoke("agent_usage");
+}
+
+/// Probe a single agent's current usage and say whether a launch should
+/// proceed right now — the on-demand counterpart to `agentUsage` for a caller
+/// (the launch control) that only cares about one agent. Resolved the same
+/// way `agentUsage` resolves each snapshot; the result is also pushed through
+/// `onAgentUsage` like any other resolved snapshot.
+export function checkAgentUsage(agent: string): Promise<AgentUsageCheck> {
+  return invoke("check_agent_usage", { agent });
 }
 
 /// The global app settings.

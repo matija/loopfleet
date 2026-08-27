@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { useAgentUsage } from "../agentUsage";
 import {
   agentStatus,
+  checkAgentUsage,
   exportPlanReport,
   launchRun,
   listProjects,
@@ -41,6 +42,7 @@ import { Popover } from "./Popover";
 import { finishedRunTone, MetaRow, useHoverOpen, worktreeBranch } from "./RunDock";
 import type {
   AgentStatus,
+  AgentUsageCheck,
   PlanView as Plan,
   RunStatus,
   TaskStatus,
@@ -512,6 +514,15 @@ export function LaunchControl({
   const [passes, setPasses] = useState<number | "">("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [launching, setLaunching] = useState(false);
+  // Set while the pre-launch `check_agent_usage` probe is in flight, so the
+  // button can say "Checking…" instead of sitting idle for however long the
+  // probe takes.
+  const [checking, setChecking] = useState(false);
+  // Set when the probe comes back "blocked" — holds the check so the prompt
+  // can show the reset time and offer scheduling against it.
+  const [blockedCheck, setBlockedCheck] = useState<AgentUsageCheck | null>(
+    null,
+  );
   // Success swaps the button's own label briefly rather than popping a
   // floating confirmation — a Popover here would portal to document.body and
   // could land on top of the next task's row. Errors still use the Popover
@@ -573,8 +584,7 @@ export function LaunchControl({
     setPasses(Math.min(50, Math.max(1, passCount + delta)));
   }
 
-  async function launch() {
-    setMenuOpen(false);
+  async function doLaunch() {
     setLaunching(true);
     setMsg(null);
     const maxIterations = Math.max(1, passes || 1);
@@ -597,12 +607,44 @@ export function LaunchControl({
     }
   }
 
+  // How long the pre-launch usage probe gets before this control gives up
+  // waiting and launches anyway — set above the backend adapter probe's own
+  // 20s bound (see `USAGE_PROBE_TIMEOUT`) so that timeout, not this one, is
+  // normally what decides. A stuck or failed probe should never be able to
+  // hold the Run button hostage.
+  const USAGE_CHECK_TIMEOUT_MS = 25_000;
+
+  async function launch() {
+    setMenuOpen(false);
+    setChecking(true);
+    setMsg(null);
+    // A probe failure or a client-side timeout both resolve to `null` here,
+    // so either one falls through to "launch immediately" below exactly like
+    // a "proceed" verdict — the check is a courtesy, not a gate that can wedge
+    // the button.
+    const check = await Promise.race<AgentUsageCheck | null>([
+      checkAgentUsage(agent).catch(() => null),
+      new Promise((resolve) =>
+        setTimeout(() => resolve(null), USAGE_CHECK_TIMEOUT_MS),
+      ),
+    ]);
+    setChecking(false);
+    if (check && check.decision !== "proceed") {
+      setBlockedCheck(check);
+      return;
+    }
+    await doLaunch();
+  }
+
   // Books a `scheduleLaunch` for the instant the exhausted agent's window
   // reopens, so the run fires unattended instead of the user having to
-  // remember to come back and press Run. Only reachable when `resetAtMs` is
-  // known — the button is disabled otherwise.
-  async function scheduleForReset() {
-    if (resetAtMs === null) return;
+  // remember to come back and press Run. `resetAt` defaults to the headroom
+  // store's figure but the blocked-launch prompt passes the just-probed
+  // instant explicitly, since that snapshot may be newer than what's landed
+  // in the shared store yet. Only reachable when a reset instant is known —
+  // callers must guard `null` themselves.
+  async function scheduleForReset(resetAt: number | null = resetAtMs) {
+    if (resetAt === null) return;
     setMenuOpen(false);
     setScheduling(true);
     setMsg(null);
@@ -613,7 +655,7 @@ export function LaunchControl({
         agent: selectedAgent,
         model: model.trim() || null,
         maxIterations: passCount,
-        launchAt: new Date(resetAtMs).toISOString(),
+        launchAt: new Date(resetAt).toISOString(),
       });
       setJustScheduled(true);
       setTimeout(() => setJustScheduled(false), 1500);
@@ -624,10 +666,23 @@ export function LaunchControl({
     }
   }
 
+  // The blocked verdict's reset instant, when the probe reported one — used
+  // by the blocked-launch prompt's copy and its "schedule" action.
+  const blockedResetAtMs =
+    blockedCheck && blockedCheck.decision !== "proceed"
+      ? blockedCheck.decision.blocked.reset_at_ms
+      : null;
+
   // Mirrored onto the DOM so plan.css's `:has(.launch--engaged)` can keep the
   // row visible while the menu/result popover is open — both now portal to
   // document.body via Popover, out of reach of a plain `:has(.launch__menu)`.
-  const engaged = menuOpen || msg !== null || justLaunched || justScheduled;
+  const engaged =
+    menuOpen ||
+    msg !== null ||
+    justLaunched ||
+    justScheduled ||
+    checking ||
+    blockedCheck !== null;
 
   const content = (
     <div
@@ -648,10 +703,16 @@ export function LaunchControl({
         onClick={launch}
         onChevronClick={() => setMenuOpen((v) => !v)}
         chevronLabel="Choose agent and passes"
-        disabled={noAgents || launching || !agent}
+        disabled={noAgents || checking || launching || !agent}
         chevronRef={chevronRef}
       >
-        {launching ? "Launching…" : justLaunched ? "Launched" : "Run"}
+        {checking
+          ? "Checking…"
+          : launching
+            ? "Launching…"
+            : justLaunched
+              ? "Launched"
+              : "Run"}
       </SplitButton>
       <Popover
         open={menuOpen}
@@ -793,6 +854,54 @@ export function LaunchControl({
         className="launch__result msg msg--err"
       >
         {msg?.text}
+      </Popover>
+      <Popover
+        open={blockedCheck !== null}
+        onClose={() => setBlockedCheck(null)}
+        anchorRef={chevronRef}
+        placement="bottom-end"
+        role="dialog"
+        aria-label="Launch blocked"
+        className="launch__blocked"
+      >
+        <p className="launch__blocked-text">
+          {selectedAgent}&rsquo;s limit is exhausted
+          {blockedResetAtMs !== null
+            ? ` — it resets at ${formatResetTime(blockedResetAtMs, now)}.`
+            : ", and it hasn't reported when the window resets."}
+        </p>
+        <div className="launch__blocked-actions">
+          <button
+            type="button"
+            className="launch__blocked-launch"
+            onClick={() => {
+              setBlockedCheck(null);
+              doLaunch();
+            }}
+          >
+            Launch anyway
+          </button>
+          {blockedResetAtMs !== null && (
+            <button
+              type="button"
+              className="launch__blocked-schedule"
+              onClick={() => {
+                const resetAt = blockedResetAtMs;
+                setBlockedCheck(null);
+                scheduleForReset(resetAt);
+              }}
+            >
+              Schedule for reset
+            </button>
+          )}
+          <button
+            type="button"
+            className="launch__blocked-cancel"
+            onClick={() => setBlockedCheck(null)}
+          >
+            Cancel
+          </button>
+        </div>
       </Popover>
     </div>
   );
