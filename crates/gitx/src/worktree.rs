@@ -34,6 +34,8 @@ pub enum WorktreeError {
     Git(String),
     /// `reap` was asked to touch a path outside the app's worktrees root.
     OutsideRoot(PathBuf),
+    /// `delete_branch` was asked to delete a branch outside the `agent/` prefix.
+    NotAnAgentBranch(String),
 }
 
 impl std::fmt::Display for WorktreeError {
@@ -43,6 +45,9 @@ impl std::fmt::Display for WorktreeError {
             WorktreeError::Git(msg) => write!(f, "git worktree failed: {msg}"),
             WorktreeError::OutsideRoot(p) => {
                 write!(f, "refusing to reap path outside worktrees root: {}", p.display())
+            }
+            WorktreeError::NotAnAgentBranch(b) => {
+                write!(f, "refusing to delete branch outside the {BRANCH_PREFIX} prefix: {b}")
             }
         }
     }
@@ -143,8 +148,13 @@ pub fn reap(repo: &Path, worktrees_root: &Path, path: &Path) -> Result<()> {
 /// reaped and the project it belongs to is being removed entirely. `-D`
 /// force-deletes since by this point the branch's commits live only in
 /// app-owned shadow refs, not necessarily merged anywhere else. Idempotent: a
-/// branch that's already gone is not an error.
+/// branch that's already gone is not an error. Refuses to touch any branch
+/// outside the `agent/` prefix — this is app-owned deletion, never a doorway
+/// to deleting a user's own branches.
 pub fn delete_branch(repo: &Path, branch: &str) -> Result<()> {
+    if !branch.starts_with(BRANCH_PREFIX) {
+        return Err(WorktreeError::NotAnAgentBranch(branch.to_string()));
+    }
     match git(repo, &["branch", "-D", branch]) {
         Ok(_) => Ok(()),
         Err(WorktreeError::Git(msg)) if msg.contains("not found") => Ok(()),
@@ -296,6 +306,24 @@ mod tests {
     fn delete_branch_is_idempotent_when_already_gone() {
         let repo = repo_with_commit();
         delete_branch(repo.path(), "agent/never-existed").unwrap();
+    }
+
+    #[test]
+    fn delete_branch_refuses_branch_outside_agent_prefix() {
+        let repo = repo_with_commit();
+        let err = delete_branch(repo.path(), "main").unwrap_err();
+        assert!(matches!(err, WorktreeError::NotAnAgentBranch(b) if b == "main"));
+
+        let branches = Command::new("git")
+            .arg("-C")
+            .arg(repo.path())
+            .args(["branch", "--list", "main"])
+            .output()
+            .unwrap();
+        assert!(
+            !String::from_utf8_lossy(&branches.stdout).trim().is_empty(),
+            "non-agent branch left untouched"
+        );
     }
 
     #[test]
