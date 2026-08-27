@@ -17,6 +17,19 @@ export type Project = {
   plan_convention: string;
 };
 
+/// Counts a removal confirmation dialog shows, gathered without deleting
+/// anything. `store::ProjectRemovalPreview`.
+export type ProjectRemovalPreview = {
+  plans: number;
+  /// Distinct tasks that have at least one run against them.
+  tasks_with_runs: number;
+  total_runs: number;
+  /// Runs still `queued` or `running`.
+  active_runs: number;
+  /// Of the project's runs' worktree paths, how many still exist on disk.
+  worktrees_on_disk: number;
+};
+
 // --- store: settings.rs ---
 
 /// Global app defaults. `store::Settings`.

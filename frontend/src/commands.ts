@@ -10,6 +10,7 @@ import type {
   PlanEditProposal,
   PlanView,
   Project,
+  ProjectRemovalPreview,
   RunSummary,
   RunTimeline,
   Settings,
@@ -26,6 +27,21 @@ export function registerProject(path: string): Promise<Project> {
 /// All registered projects.
 export function listProjects(): Promise<Project[]> {
   return invoke("list_projects");
+}
+
+/// The counts a removal confirmation dialog shows for a project — plans,
+/// runs, active runs, and worktrees still on disk — read-only.
+export function projectRemovalPreview(
+  projectId: string,
+): Promise<ProjectRemovalPreview> {
+  return invoke("project_removal_preview", { projectId });
+}
+
+/// Remove a project: its plans/runs/scheduled work, worktrees, and branches,
+/// then the project row itself. Rejects if the project has runs still queued
+/// or running.
+export function removeProject(projectId: string): Promise<void> {
+  return invoke("remove_project", { projectId });
 }
 
 /// Discover the v1 agent CLIs: availability, version, drift.

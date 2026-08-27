@@ -221,6 +221,14 @@ export function XIcon({ size = 16, className }: IconProps) {
   );
 }
 
+export function TrashIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...defaultProps}>
+      <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-9 0 1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" />
+    </svg>
+  );
+}
+
 export function PanelLeftIcon({ size = 16, className }: IconProps) {
   return (
     <svg width={size} height={size} className={className} {...defaultProps}>

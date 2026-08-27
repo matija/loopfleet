@@ -12,6 +12,8 @@ import {
   launchRun,
   listProjects,
   planOverview,
+  projectRemovalPreview,
+  removeProject,
   runTimeline,
   stopRun,
   useRun,
@@ -32,7 +34,7 @@ import {
   onScheduledResume,
   onScheduledResumeCancelled,
 } from "./events";
-import type { Project } from "./types";
+import type { Project, ProjectRemovalPreview } from "./types";
 import { isActiveRun } from "./status";
 import { AppShell } from "./components/AppShell";
 import { AddProject, pickAndRegisterProject } from "./components/AddProject";
@@ -51,7 +53,8 @@ import { CompareView } from "./components/CompareView";
 import { Toasts, useToasts } from "./components/Toasts";
 import { UpdateNotice, useAppUpdater } from "./components/UpdateNotice";
 import { Toolbar } from "./components/Toolbar";
-import { IconButton } from "./components/Button";
+import { Button, IconButton } from "./components/Button";
+import { Popover } from "./components/Popover";
 import {
   AgentIcon,
   BoxIcon,
@@ -62,6 +65,7 @@ import {
   PanelLeftIcon,
   PlayIcon,
   SettingsIcon,
+  TrashIcon,
   type IconProps,
 } from "./components/Icon";
 import {
@@ -145,6 +149,19 @@ export default function App() {
   // The sidebar search row shows a "Search" label until clicked/focused, then
   // swaps to the live input; it reverts once blurred with no text entered.
   const [projectSearchActive, setProjectSearchActive] = useState(false);
+  // The project a removal confirmation is open for — null when no row's
+  // remove affordance has been clicked. Only one row's confirmation can be
+  // open at a time, so a single anchor ref suffices for the Popover.
+  const [removeTarget, setRemoveTarget] = useState<Project | null>(null);
+  const removeAnchorRef = useRef<HTMLButtonElement | null>(null);
+  // The counts fetched for `removeTarget` (plans/runs/worktrees), loaded on
+  // open so the dialog can name what's about to go. Undefined while loading,
+  // null on fetch failure (the dialog still lets the user cancel).
+  const [removePreview, setRemovePreview] = useState<
+    ProjectRemovalPreview | undefined | null
+  >(undefined);
+  const [removeBusy, setRemoveBusy] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   // App-level command errors surface as transient toasts, not a persistent
   // banner. Contextual form errors stay inline in their own components.
   const { toasts, push: pushError, dismiss: dismissToast } = useToasts();
@@ -645,6 +662,45 @@ export default function App() {
     setView({ kind: "plan", projectId: id });
   }
 
+  // Opens the remove-project confirmation for `p`, anchored to the row's own
+  // trash button, and kicks off the preview fetch it names counts from.
+  function openRemoveProject(p: Project, anchor: HTMLButtonElement) {
+    removeAnchorRef.current = anchor;
+    setRemoveTarget(p);
+    setRemovePreview(undefined);
+    setRemoveError(null);
+    projectRemovalPreview(p.id)
+      .then(setRemovePreview)
+      .catch(() => setRemovePreview(null));
+  }
+
+  function closeRemoveProject() {
+    setRemoveTarget(null);
+    setRemovePreview(undefined);
+    setRemoveError(null);
+  }
+
+  // Confirms removal of `removeTarget`: on success drops it from the sidebar
+  // list and returns to the overview, since the plan/task view it might have
+  // been showing no longer has a project behind it.
+  async function confirmRemoveProject() {
+    if (!removeTarget) return;
+    setRemoveBusy(true);
+    setRemoveError(null);
+    try {
+      await removeProject(removeTarget.id);
+      const removedId = removeTarget.id;
+      setProjects((prev) => prev.filter((p) => p.id !== removedId));
+      setSelectedId((cur) => (cur === removedId ? null : cur));
+      setView({ kind: "overview" });
+      closeRemoveProject();
+    } catch (e) {
+      setRemoveError(String(e));
+    } finally {
+      setRemoveBusy(false);
+    }
+  }
+
   // A newly registered project joins the list, becomes the selection, and opens
   // its plan.
   function onAdded(p: Project) {
@@ -808,38 +864,126 @@ export default function App() {
             <div className="sidebar__list">
               {visibleProjects.map((p) => (
                 <div key={p.id}>
-                  <button
-                    className="project-item"
-                    aria-current={p.id === selectedId}
-                    onClick={() => selectProject(p.id)}
-                  >
-                    <FolderIcon size={16} className="project-item__icon" />
-                    <span
-                      className={`project-item__dot${
-                        activeProjectNames.has(repoName(p.repo_path))
-                          ? " project-item__dot--active"
-                          : ""
-                      }`}
+                  <div className="project-row">
+                    <button
+                      className="project-item"
+                      aria-current={p.id === selectedId}
+                      onClick={() => selectProject(p.id)}
+                    >
+                      <FolderIcon size={16} className="project-item__icon" />
+                      <span
+                        className={`project-item__dot${
+                          activeProjectNames.has(repoName(p.repo_path))
+                            ? " project-item__dot--active"
+                            : ""
+                        }`}
+                      />
+                      <span className="project-item__name">
+                        {repoName(p.repo_path)}
+                      </span>
+                      {(() => {
+                        const h = health[p.id];
+                        if (!h || !marksNoTasks(h)) return null;
+                        return (
+                          <span
+                            className="project-item__flag"
+                            title={planHealthTitle(h) ?? undefined}
+                          >
+                            no tasks
+                          </span>
+                        );
+                      })()}
+                      <span className="project-item__meta">
+                        {parentPath(p.repo_path)}
+                      </span>
+                    </button>
+                    <IconButton
+                      icon={TrashIcon}
+                      aria-label={`Remove ${repoName(p.repo_path)}`}
+                      className="project-row__remove"
+                      onClick={(e) =>
+                        openRemoveProject(p, e.currentTarget)
+                      }
                     />
-                    <span className="project-item__name">
-                      {repoName(p.repo_path)}
-                    </span>
-                    {(() => {
-                      const h = health[p.id];
-                      if (!h || !marksNoTasks(h)) return null;
-                      return (
-                        <span
-                          className="project-item__flag"
-                          title={planHealthTitle(h) ?? undefined}
+                  </div>
+                  {removeTarget?.id === p.id && (
+                    <Popover
+                      open
+                      onClose={closeRemoveProject}
+                      anchorRef={removeAnchorRef}
+                      role="dialog"
+                      aria-label={`Remove ${repoName(p.repo_path)}`}
+                      className="remove-project"
+                    >
+                      <p className="remove-project__title">
+                        Remove {repoName(p.repo_path)}?
+                      </p>
+                      <p className="remove-project__path">{p.repo_path}</p>
+                      {removePreview === undefined ? (
+                        <p className="remove-project__loading">
+                          Loading…
+                        </p>
+                      ) : removePreview === null ? (
+                        <p className="remove-project__loading">
+                          Counts unavailable — removal still proceeds.
+                        </p>
+                      ) : (
+                        <ul className="remove-project__counts">
+                          <li>
+                            {removePreview.plans}{" "}
+                            {removePreview.plans === 1 ? "plan" : "plans"}
+                          </li>
+                          <li>
+                            {removePreview.total_runs}{" "}
+                            {removePreview.total_runs === 1
+                              ? "run"
+                              : "runs"}{" "}
+                            across {removePreview.tasks_with_runs}{" "}
+                            {removePreview.tasks_with_runs === 1
+                              ? "task"
+                              : "tasks"}
+                          </li>
+                          <li>
+                            {removePreview.worktrees_on_disk}{" "}
+                            {removePreview.worktrees_on_disk === 1
+                              ? "worktree"
+                              : "worktrees"}{" "}
+                            on disk
+                          </li>
+                          {removePreview.active_runs > 0 && (
+                            <li className="remove-project__warn">
+                              {removePreview.active_runs} still queued or
+                              running — stop{" "}
+                              {removePreview.active_runs === 1
+                                ? "it"
+                                : "them"}{" "}
+                              before removing
+                            </li>
+                          )}
+                        </ul>
+                      )}
+                      {removeError && (
+                        <p className="remove-project__error">{removeError}</p>
+                      )}
+                      <div className="remove-project__actions">
+                        <Button
+                          variant="quiet"
+                          onClick={closeRemoveProject}
+                          disabled={removeBusy}
                         >
-                          no tasks
-                        </span>
-                      );
-                    })()}
-                    <span className="project-item__meta">
-                      {parentPath(p.repo_path)}
-                    </span>
-                  </button>
+                          Cancel
+                        </Button>
+                        <Button
+                          variant="primary"
+                          className="remove-project__confirm"
+                          onClick={confirmRemoveProject}
+                          disabled={removeBusy}
+                        >
+                          {removeBusy ? "Removing…" : "Remove project"}
+                        </Button>
+                      </div>
+                    </Popover>
+                  )}
                   {p.id === selectedId && (
                     <PlanTree
                       projectId={p.id}

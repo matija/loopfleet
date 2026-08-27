@@ -257,6 +257,38 @@
 /* Connection row: leading folder icon + status dot + repo name, with the
  * short-path metadata right-aligned and muted. Fixed to --row-h so rows sit
  * on the same rhythm as tree-item below. */
+/* Wraps the connection row's own button together with its remove affordance,
+ * which only shows up on hover/focus so the list doesn't carry a permanent
+ * trash icon on every row. */
+.project-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--space-1);
+}
+
+.project-row .project-item {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.project-row__remove {
+  position: absolute;
+  right: var(--space-2);
+  opacity: 0;
+  color: var(--c-text-faint);
+}
+
+.project-row:hover .project-row__remove,
+.project-row__remove:focus-visible {
+  opacity: 1;
+}
+
+.project-row__remove:hover {
+  color: var(--c-danger);
+}
+
 .project-item {
   display: flex;
   align-items: center;
@@ -269,7 +301,6 @@
   color: var(--c-text-muted);
   padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
-  margin-bottom: var(--space-1);
 }
 
 .project-item:hover {
@@ -341,6 +372,66 @@
   text-overflow: ellipsis;
   direction: rtl; /* keep the tail visible when the parent path is long */
   text-align: left;
+}
+
+/* Remove-project confirmation: a real interactive dialog (unlike the
+ * pointer-events:none `.meta-popover` hover cards), so it gets its own
+ * layout rather than reusing that class. */
+.remove-project {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 280px;
+}
+
+.remove-project__title {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--c-text);
+}
+
+.remove-project__path {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--c-text-faint);
+  word-break: break-all;
+}
+
+.remove-project__loading {
+  font-size: var(--text-xs);
+  color: var(--c-text-faint);
+}
+
+.remove-project__counts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+}
+
+.remove-project__warn {
+  color: var(--c-warn);
+}
+
+.remove-project__error {
+  font-size: var(--text-xs);
+  color: var(--c-danger);
+}
+
+.remove-project__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.remove-project__confirm {
+  background: var(--c-danger);
+  border-color: var(--c-danger);
 }
 
 /* --- sidebar footer ---
