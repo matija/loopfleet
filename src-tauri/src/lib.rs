@@ -1978,6 +1978,11 @@ struct UseRunResult {
     merged_commit: String,
     created: bool,
     up_to_date: bool,
+    /// Set when the merge succeeded but the immediate post-merge cleanup (run
+    /// reaping, gated on the `cleanup_after_merge` setting) hit a problem —
+    /// the merge itself is not rolled back or failed for this, since the
+    /// user's work already landed; they're just told cleanup didn't finish.
+    cleanup_error: Option<String>,
 }
 
 /// "Use this run": merge the run's final state into a target branch and mark
@@ -2026,16 +2031,28 @@ async fn use_run(
         .await
         .map_err(|e| e.to_string())?;
 
-    {
+    let cleanup_after_merge = {
         let conn = state.db.lock().unwrap();
         loopfleet_store::set_run_accepted(&conn, &run_id).map_err(|e| e.to_string())?;
-    }
+        loopfleet_store::load_settings(&conn)
+            .map(|s| s.cleanup_after_merge)
+            .unwrap_or(true)
+    };
+
+    let cleanup_error = if cleanup_after_merge {
+        reap_run(&state.db, &state.git, &state.data_dir, &run_id)
+            .await
+            .err()
+    } else {
+        None
+    };
 
     Ok(UseRunResult {
         target_branch: merge.target_branch,
         merged_commit: merge.merged_commit,
         created: merge.created,
         up_to_date: merge.up_to_date,
+        cleanup_error,
     })
 }
 

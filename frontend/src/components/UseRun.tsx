@@ -91,6 +91,9 @@ export function UseRun({
               : `→ ${result.merged_commit.slice(0, 8)}`}
         </p>
       )}
+      {result?.cleanup_error && (
+        <p className="use-run__error">Cleanup after merge failed: {result.cleanup_error}</p>
+      )}
       {error && <p className="use-run__error">{error}</p>}
     </div>
   );

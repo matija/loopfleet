@@ -238,6 +238,10 @@ export type UseRunResult = {
   merged_commit: string;
   created: boolean;
   up_to_date: boolean;
+  /// Set when the merge succeeded but the immediate post-merge cleanup
+  /// (gated on the `cleanup_after_merge` setting) hit a problem. The merge
+  /// itself still succeeded — this is informational, not an error to throw.
+  cleanup_error: string | null;
 };
 
 // --- src-tauri: sweep_worktrees_now ---
