@@ -878,7 +878,9 @@ export function LaunchControl({
           {blockedWindow ? `${blockedWindow} ` : ""}limit
           {blockedResetAtMs !== null
             ? ` — it resets in ${formatCountdown(blockedResetAtMs, now)}, at ${formatResetTime(blockedResetAtMs, now)}.`
-            : ", and it hasn't reported when the window resets."}
+            : ", and it hasn't reported when the window reopens."}
+          {blockedResetAtMs === null &&
+            " A run started now will schedule its own resume once the agent reports the limit."}
         </p>
         <div className="launch__blocked-actions">
           {blockedResetAtMs !== null && (
