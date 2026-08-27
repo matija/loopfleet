@@ -134,6 +134,7 @@ export function SettingsPanel({
     default_iterations: 1,
     concurrency_cap: 3,
     worktree_retention_hours: DEFAULT_RETENTION_HOURS,
+    cleanup_after_merge: true,
   });
   // `loaded` gates the form until the persisted settings arrive, so a user
   // can't edit the placeholder defaults and have their edits overwritten when
@@ -150,6 +151,7 @@ export function SettingsPanel({
   const [retentionHours, setRetentionHours] = useState(
     String(DEFAULT_RETENTION_HOURS),
   );
+  const [cleanupAfterMerge, setCleanupAfterMerge] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   // A reset changes the form and nothing else, so the panel says so once —
@@ -175,6 +177,7 @@ export function SettingsPanel({
         if (s.worktree_retention_hours > 0) {
           setRetentionHours(String(s.worktree_retention_hours));
         }
+        setCleanupAfterMerge(s.cleanup_after_merge);
         setLoaded(true);
       })
       .catch((e) => {
@@ -193,6 +196,7 @@ export function SettingsPanel({
       default_iterations: Math.max(1, settings.default_iterations || 1),
       concurrency_cap: Math.max(0, settings.concurrency_cap || 0),
       worktree_retention_hours: retentionValue(retentionMode, retentionHours),
+      cleanup_after_merge: cleanupAfterMerge,
     };
     setSaving(true);
     setMsg(null);
@@ -225,6 +229,7 @@ export function SettingsPanel({
   function resetWorktrees() {
     setRetentionMode(DEFAULT_WORKTREES.mode);
     setRetentionHours(DEFAULT_WORKTREES.hours);
+    setCleanupAfterMerge(DEFAULT_WORKTREES.cleanupAfterMerge);
     setMsg(null);
     setResetNote("Worktree defaults restored — review, then save.");
   }
@@ -339,7 +344,11 @@ export function SettingsPanel({
             section="Worktree settings"
             disabled={
               !loaded ||
-              isWorktreesAtDefault({ mode: retentionMode, hours: retentionHours })
+              isWorktreesAtDefault({
+                mode: retentionMode,
+                hours: retentionHours,
+                cleanupAfterMerge,
+              })
             }
             onReset={resetWorktrees}
           />
@@ -394,6 +403,22 @@ export function SettingsPanel({
             Accepted runs are always swept — their diff has already landed.
           </p>
         </Hint>
+        <div className="settings-row">
+          <label className="field field--checkbox">
+            <input
+              type="checkbox"
+              checked={cleanupAfterMerge}
+              disabled={!loaded}
+              onChange={(e) => setCleanupAfterMerge(e.target.checked)}
+            />
+            <span>Delete worktree and branch after merge</span>
+          </label>
+        </div>
+        <p className="field-note">
+          When a run is accepted, its worktree and <code>agent/…</code> branch
+          are deleted. The run's history, diffs and reports are kept either
+          way.
+        </p>
       </section>
 
       <section className="panel-section">

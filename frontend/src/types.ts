@@ -42,6 +42,9 @@ export type Settings = {
   /// `0` means immediately, `-1` means never (accepted runs are always
   /// swept regardless).
   worktree_retention_hours: number;
+  /// Whether an accepted run also deletes its worktree and `agent/…` branch.
+  /// The run's history, diffs and reports are kept either way.
+  cleanup_after_merge: boolean;
 };
 
 // --- adapters: discovery.rs ---

@@ -19,12 +19,17 @@ describe("DEFAULT_SETTINGS", () => {
       default_iterations: 1,
       concurrency_cap: 3,
       worktree_retention_hours: 48,
+      cleanup_after_merge: true,
     });
     expect(DEFAULT_SETTINGS.worktree_retention_hours).toBe(DEFAULT_RETENTION_HOURS);
   });
 
   it("presents the retention default as the 'after N hours' mode", () => {
-    expect(DEFAULT_WORKTREES).toEqual({ mode: "after", hours: "48" });
+    expect(DEFAULT_WORKTREES).toEqual({
+      mode: "after",
+      hours: "48",
+      cleanupAfterMerge: true,
+    });
   });
 });
 
@@ -49,26 +54,42 @@ describe("isRunDefaultsAtDefault", () => {
 describe("isWorktreesAtDefault", () => {
   it("is true for the default mode and hour count", () => {
     expect(isWorktreesAtDefault(DEFAULT_WORKTREES)).toBe(true);
-    expect(isWorktreesAtDefault({ mode: "after", hours: " 48 " })).toBe(true);
+    expect(
+      isWorktreesAtDefault({ mode: "after", hours: " 48 ", cleanupAfterMerge: true }),
+    ).toBe(true);
   });
 
   it("is false for the other modes", () => {
     // Their stored encodings (0, -1) aren't the default 48 either way, but the
     // hour draft they carry alongside must not sway the answer.
-    expect(isWorktreesAtDefault({ mode: "immediately", hours: "48" })).toBe(false);
-    expect(isWorktreesAtDefault({ mode: "never", hours: "48" })).toBe(false);
+    expect(
+      isWorktreesAtDefault({ mode: "immediately", hours: "48", cleanupAfterMerge: true }),
+    ).toBe(false);
+    expect(
+      isWorktreesAtDefault({ mode: "never", hours: "48", cleanupAfterMerge: true }),
+    ).toBe(false);
   });
 
   it("is false for a different hour count", () => {
-    expect(isWorktreesAtDefault({ mode: "after", hours: "12" })).toBe(false);
+    expect(
+      isWorktreesAtDefault({ mode: "after", hours: "12", cleanupAfterMerge: true }),
+    ).toBe(false);
   });
 
   it("is false for a draft that only encodes to the default by fallback", () => {
     // These all save as 48, but none of them show 48 — Reset stays available
     // so the field can be put back in agreement with what would be saved.
     for (const hours of ["", "   ", "abc", "0", "-5"]) {
-      expect(isWorktreesAtDefault({ mode: "after", hours })).toBe(false);
+      expect(isWorktreesAtDefault({ mode: "after", hours, cleanupAfterMerge: true })).toBe(
+        false,
+      );
     }
+  });
+
+  it("is false when the cleanup toggle differs", () => {
+    expect(
+      isWorktreesAtDefault({ mode: "after", hours: "48", cleanupAfterMerge: false }),
+    ).toBe(false);
   });
 });
 

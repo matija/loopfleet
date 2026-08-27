@@ -307,6 +307,29 @@
   font-size: var(--text-sm);
 }
 
+/* A checkbox field reads as one row (box beside its label) rather than the
+ * stacked label-over-control shape other fields use, and its input shouldn't
+ * pick up the boxed select/text-input styling above. */
+.field--checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.field--checkbox input {
+  all: revert;
+  margin: 0;
+}
+
+/* Sits under the toggle it explains, at hint weight, without needing the
+ * disclosure Hint uses for the longer retention explanation above it. */
+.field-note {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--c-text-faint);
+  line-height: var(--leading-normal);
+}
+
 /* --- agent chips --- */
 
 .agent-chips {

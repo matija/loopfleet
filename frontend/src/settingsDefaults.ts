@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS: Settings = {
   default_iterations: 1,
   concurrency_cap: 3,
   worktree_retention_hours: DEFAULT_RETENTION_HOURS,
+  cleanup_after_merge: true,
 };
 
 /// The "Run defaults" section: the three fields the launch affordance reads.
@@ -41,6 +42,7 @@ export type RunDefaultsDraft = Pick<
 export type WorktreesDraft = {
   mode: RetentionMode;
   hours: string;
+  cleanupAfterMerge: boolean;
 };
 
 export const DEFAULT_RUN_DEFAULTS: RunDefaultsDraft = {
@@ -52,6 +54,7 @@ export const DEFAULT_RUN_DEFAULTS: RunDefaultsDraft = {
 export const DEFAULT_WORKTREES: WorktreesDraft = {
   mode: retentionModeOf(DEFAULT_SETTINGS.worktree_retention_hours),
   hours: String(DEFAULT_RETENTION_HOURS),
+  cleanupAfterMerge: DEFAULT_SETTINGS.cleanup_after_merge,
 };
 
 export function isRunDefaultsAtDefault(draft: RunDefaultsDraft): boolean {
@@ -70,6 +73,9 @@ export function isRunDefaultsAtDefault(draft: RunDefaultsDraft): boolean {
 /// say 48. Treating that as "already at defaults" would grey out the one
 /// control that puts the visible draft back in agreement with it.
 export function isWorktreesAtDefault(draft: WorktreesDraft): boolean {
+  if (draft.cleanupAfterMerge !== DEFAULT_WORKTREES.cleanupAfterMerge) {
+    return false;
+  }
   if (retentionValue(draft.mode, draft.hours) !== DEFAULT_SETTINGS.worktree_retention_hours) {
     return false;
   }
