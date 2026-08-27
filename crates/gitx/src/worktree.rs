@@ -413,4 +413,60 @@ mod tests {
         assert_eq!(cleanup_orphans(repo.path()).unwrap(), 0);
         assert_eq!(list(repo.path()).unwrap().len(), 1, "live worktree kept");
     }
+
+    /// Reaping a run with cleanup enabled (worktree removal followed by branch
+    /// deletion, as the sweep does when `cleanup_after_merge` is on) drops the
+    /// worktree and the `agent/<run-id>` branch, but the run's shadow refs —
+    /// app-owned, outside the `agent/` prefix — must stay resolvable so its
+    /// diff history survives.
+    #[test]
+    fn reap_with_cleanup_enabled_keeps_shadow_refs_resolvable() {
+        let repo = repo_with_commit();
+        let root = tempfile::tempdir().unwrap();
+        let wt = add(repo.path(), root.path(), "run-cleanup-1").unwrap();
+
+        // Simulate the app's snapshotter recording a shadow commit for this run,
+        // independent of the agent branch (see gitx::shadow).
+        let shadow_ref = "refs/agentapp/run-run-cleanup-1/iter-1";
+        let head = Command::new("git")
+            .arg("-C")
+            .arg(repo.path())
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .unwrap();
+        let head = String::from_utf8_lossy(&head.stdout).trim().to_string();
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(repo.path())
+            .args(["update-ref", shadow_ref, &head])
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+
+        reap(repo.path(), root.path(), &wt.path).unwrap();
+        delete_branch(repo.path(), &wt.branch).unwrap();
+
+        assert!(!wt.path.exists(), "worktree dir removed");
+        assert!(list(repo.path()).unwrap().is_empty(), "no worktree left");
+
+        let branches = Command::new("git")
+            .arg("-C")
+            .arg(repo.path())
+            .args(["branch", "--list", &wt.branch])
+            .output()
+            .unwrap();
+        assert!(
+            String::from_utf8_lossy(&branches.stdout).trim().is_empty(),
+            "agent branch deleted"
+        );
+
+        let resolved = Command::new("git")
+            .arg("-C")
+            .arg(repo.path())
+            .args(["rev-parse", "--verify", "--quiet", shadow_ref])
+            .output()
+            .unwrap();
+        assert!(resolved.status.success(), "shadow ref still resolvable");
+        assert_eq!(String::from_utf8_lossy(&resolved.stdout).trim(), head);
+    }
 }
