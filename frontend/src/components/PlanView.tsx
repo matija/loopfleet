@@ -22,7 +22,12 @@ import { taskSummary } from "../displayText";
 import { onRunStatus } from "../events";
 import { preferredAgent, readLaunchPrefs, writeLaunchPrefs } from "../launchPrefs";
 import { isActiveRun, RUN_STATUS_LABEL } from "../status";
-import { formatResetTime, launchHeadroom, usageIndicator } from "../usage";
+import {
+  formatCountdown,
+  formatResetTime,
+  launchHeadroom,
+  usageIndicator,
+} from "../usage";
 import { SplitButton } from "./Button";
 import { formatDuration } from "./DataGrid";
 import { Elapsed } from "./Elapsed";
@@ -672,6 +677,10 @@ export function LaunchControl({
     blockedCheck && blockedCheck.decision !== "proceed"
       ? blockedCheck.decision.blocked.reset_at_ms
       : null;
+  // The spent window's own name (e.g. "5h", "weekly"), read off the same
+  // snapshot the headroom chip uses — the probe verdict itself only carries
+  // the reset instant, not which window ran out.
+  const blockedWindow = snapshots[selectedAgent]?.limit_window ?? null;
 
   // Mirrored onto the DOM so plan.css's `:has(.launch--engaged)` can keep the
   // row visible while the menu/result popover is open — both now portal to
@@ -865,22 +874,13 @@ export function LaunchControl({
         className="launch__blocked"
       >
         <p className="launch__blocked-text">
-          {selectedAgent}&rsquo;s limit is exhausted
+          <strong>{selectedAgent}</strong> has used its{" "}
+          {blockedWindow ? `${blockedWindow} ` : ""}limit
           {blockedResetAtMs !== null
-            ? ` — it resets at ${formatResetTime(blockedResetAtMs, now)}.`
+            ? ` — it resets in ${formatCountdown(blockedResetAtMs, now)}, at ${formatResetTime(blockedResetAtMs, now)}.`
             : ", and it hasn't reported when the window resets."}
         </p>
         <div className="launch__blocked-actions">
-          <button
-            type="button"
-            className="launch__blocked-launch"
-            onClick={() => {
-              setBlockedCheck(null);
-              doLaunch();
-            }}
-          >
-            Launch anyway
-          </button>
           {blockedResetAtMs !== null && (
             <button
               type="button"
@@ -891,9 +891,19 @@ export function LaunchControl({
                 scheduleForReset(resetAt);
               }}
             >
-              Schedule for reset
+              Schedule for {formatResetTime(blockedResetAtMs, now)}
             </button>
           )}
+          <button
+            type="button"
+            className="launch__blocked-run"
+            onClick={() => {
+              setBlockedCheck(null);
+              doLaunch();
+            }}
+          >
+            Run anyway
+          </button>
           <button
             type="button"
             className="launch__blocked-cancel"

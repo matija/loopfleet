@@ -652,7 +652,18 @@
   color: var(--c-accent-text);
 }
 
-.launch__blocked-actions .launch__blocked-launch {
+.launch__blocked-actions .launch__blocked-schedule {
+  border-color: var(--c-accent);
+  background: var(--c-accent);
+  color: var(--c-accent-text);
+}
+
+.launch__blocked-actions .launch__blocked-schedule:hover {
+  background: var(--c-accent);
+  filter: brightness(1.1);
+}
+
+.launch__blocked-actions .launch__blocked-run {
   border-color: var(--c-danger);
   color: var(--c-danger);
 }
