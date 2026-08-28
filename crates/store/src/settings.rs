@@ -32,6 +32,11 @@ pub struct Settings {
     /// Seconds the auto-merge countdown waits before merging, giving the user
     /// a window to cancel.
     pub auto_merge_countdown_seconds: u32,
+    /// Whether a run automatically advances to the next step once it's ready.
+    pub auto_advance_enabled: bool,
+    /// Seconds the auto-advance countdown waits before advancing, giving the
+    /// user a window to cancel.
+    pub auto_advance_delay_seconds: u32,
 }
 
 impl Default for Settings {
@@ -44,6 +49,8 @@ impl Default for Settings {
             cleanup_after_merge: true,
             auto_merge_enabled: true,
             auto_merge_countdown_seconds: 10,
+            auto_advance_enabled: true,
+            auto_advance_delay_seconds: 5,
         }
     }
 }
@@ -72,6 +79,12 @@ pub fn load_settings(conn: &Connection) -> rusqlite::Result<Settings> {
     if let Some(v) = get(conn, "auto_merge_countdown_seconds")?.and_then(|v| v.parse().ok()) {
         s.auto_merge_countdown_seconds = v;
     }
+    if let Some(v) = get(conn, "auto_advance_enabled")?.and_then(|v| v.parse().ok()) {
+        s.auto_advance_enabled = v;
+    }
+    if let Some(v) = get(conn, "auto_advance_delay_seconds")?.and_then(|v| v.parse().ok()) {
+        s.auto_advance_delay_seconds = v;
+    }
     Ok(s)
 }
 
@@ -99,6 +112,16 @@ pub fn save_settings(conn: &Connection, s: &Settings) -> rusqlite::Result<()> {
         conn,
         "auto_merge_countdown_seconds",
         &s.auto_merge_countdown_seconds.to_string(),
+    )?;
+    set(
+        conn,
+        "auto_advance_enabled",
+        &s.auto_advance_enabled.to_string(),
+    )?;
+    set(
+        conn,
+        "auto_advance_delay_seconds",
+        &s.auto_advance_delay_seconds.to_string(),
     )?;
     Ok(())
 }
@@ -185,6 +208,8 @@ mod tests {
             cleanup_after_merge: false,
             auto_merge_enabled: false,
             auto_merge_countdown_seconds: 30,
+            auto_advance_enabled: false,
+            auto_advance_delay_seconds: 15,
         };
         save_settings(&conn, &s).unwrap();
         assert_eq!(load_settings(&conn).unwrap(), s);
