@@ -1,4 +1,4 @@
-# <img src="src-tauri/icons/icon.png" width="36" height="36" alt=""> loopfleet
+# loopfleet <img src="src-tauri/icons/icon.png" width="36" height="36" alt="">
 
 Agent cockpit for spec-and-loop driven development.
 
