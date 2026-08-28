@@ -32,7 +32,12 @@ use loopfleet_sandbox::{RenderParams, Sandbox, SandboxCommand, SeatbeltSandbox};
 
 /// Run `git -C <dir> <args…>`, asserting success.
 fn git(dir: &Path, args: &[&str]) {
-    let out = Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .unwrap();
     assert!(
         out.status.success(),
         "git {args:?}: {}",

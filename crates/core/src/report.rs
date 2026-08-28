@@ -137,7 +137,11 @@ impl From<rusqlite::Error> for ReportError {
 
 /// Assemble the report for one task: its authored fields, derived status, and
 /// every run bound to it (events plus cumulative diff), in launch order.
-pub fn task_report(conn: &Connection, plan_id: &str, task_anchor: &str) -> Result<TaskReport, ReportError> {
+pub fn task_report(
+    conn: &Connection,
+    plan_id: &str,
+    task_anchor: &str,
+) -> Result<TaskReport, ReportError> {
     let task_row = loopfleet_store::load_task(conn, plan_id, task_anchor)?
         .ok_or_else(|| ReportError::NotFound(task_anchor.to_string()))?;
     let summaries: Vec<_> = loopfleet_store::list_runs_for_plan(conn, plan_id)?
@@ -237,7 +241,10 @@ fn build_run_report(
         .filter_map(|e| {
             serde_json::from_str::<NormalizedEvent>(&e.event_json)
                 .ok()
-                .map(|event| ReportEvent { ts: e.ts / 1000, event })
+                .map(|event| ReportEvent {
+                    ts: e.ts / 1000,
+                    event,
+                })
         })
         .collect();
 
@@ -251,8 +258,9 @@ fn build_run_report(
     Ok(RunReport {
         run_id: run_id.clone(),
         agent: detail.agent,
-        outcome: RunState::from_token(&detail.status)
-            .ok_or_else(|| ReportError::NotFound(format!("unknown run status: {}", detail.status)))?,
+        outcome: RunState::from_token(&detail.status).ok_or_else(|| {
+            ReportError::NotFound(format!("unknown run status: {}", detail.status))
+        })?,
         accepted: summary.accepted,
         started_ts,
         ended_ts,

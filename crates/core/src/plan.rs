@@ -76,7 +76,11 @@ pub fn discover_plans(repo: &Path, convention: PlanConvention) -> io::Result<Vec
     match convention {
         PlanConvention::Prd => {
             let path = repo.join("PRD.md");
-            Ok(if path.is_file() { vec![path] } else { Vec::new() })
+            Ok(if path.is_file() {
+                vec![path]
+            } else {
+                Vec::new()
+            })
         }
         PlanConvention::Folder => {
             let dir = repo.join("plans");

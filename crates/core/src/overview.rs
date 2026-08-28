@@ -70,13 +70,11 @@ impl std::error::Error for OverviewError {}
 
 /// Build the overview for `project`: one [`PlanView`] per discovered plan file
 /// (PRD convention → 0 or 1; folder convention → one per `.md`).
-pub fn plan_overview(
-    conn: &Connection,
-    project: &Project,
-) -> Result<Vec<PlanView>, OverviewError> {
+pub fn plan_overview(conn: &Connection, project: &Project) -> Result<Vec<PlanView>, OverviewError> {
     let convention = PlanConvention::from_token(&project.plan_convention)
         .ok_or_else(|| OverviewError::UnknownConvention(project.plan_convention.clone()))?;
-    let files = discover_plans(Path::new(&project.repo_path), convention).map_err(OverviewError::Io)?;
+    let files =
+        discover_plans(Path::new(&project.repo_path), convention).map_err(OverviewError::Io)?;
 
     let mut views = Vec::with_capacity(files.len());
     for file in files {

@@ -73,7 +73,10 @@ pub fn compare_view(
 ) -> Result<CompareView, CompareError> {
     let summaries = loopfleet_store::list_runs_for_plan(conn, plan_id)?;
     let mut runs = Vec::new();
-    for s in summaries.into_iter().filter(|s| s.task_anchor == task_anchor) {
+    for s in summaries
+        .into_iter()
+        .filter(|s| s.task_anchor == task_anchor)
+    {
         // Recover the parent repo (where the shadow refs live) and the final
         // iteration to diff against its base.
         let detail = loopfleet_store::load_run(conn, &s.id)?;
@@ -83,7 +86,9 @@ pub fn compare_view(
         let diff = match (&detail, final_iter) {
             (Some(d), Some(it)) => {
                 let repo = std::path::Path::new(&d.repo_path);
-                run_cumulative_diff_at(repo, &s.id, it.n).ok().map(to_diff_view)
+                run_cumulative_diff_at(repo, &s.id, it.n)
+                    .ok()
+                    .map(to_diff_view)
             }
             _ => None,
         };
@@ -157,8 +162,10 @@ mod tests {
         // A run on a different task must not appear.
         loopfleet_store::insert_run(&conn, &run("r3", &pid, "task b", "completed")).unwrap();
 
-        loopfleet_store::insert_iteration(&conn, "r1", 1, "refs/agentapp/run-r1/iter-1", None).unwrap();
-        loopfleet_store::insert_iteration(&conn, "r1", 2, "refs/agentapp/run-r1/iter-2", None).unwrap();
+        loopfleet_store::insert_iteration(&conn, "r1", 1, "refs/agentapp/run-r1/iter-1", None)
+            .unwrap();
+        loopfleet_store::insert_iteration(&conn, "r1", 2, "refs/agentapp/run-r1/iter-2", None)
+            .unwrap();
 
         let view = compare_view(&conn, &pid, "task a").unwrap();
         assert_eq!(view.task_anchor, "task a");

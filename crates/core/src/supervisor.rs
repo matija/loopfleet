@@ -90,10 +90,7 @@ impl RunState {
     pub fn is_terminal(self) -> bool {
         matches!(
             self,
-            RunState::Completed
-                | RunState::Failed
-                | RunState::Stopped
-                | RunState::LimitReached
+            RunState::Completed | RunState::Failed | RunState::Stopped | RunState::LimitReached
         )
     }
 
@@ -139,9 +136,7 @@ impl RunProcess {
         // process_group(0): child leads a new group, pgid == child pid.
         command.process_group(0);
         let child = command.spawn()?;
-        let pgid = child
-            .id()
-            .expect("child has a pid before it is awaited") as libc::pid_t;
+        let pgid = child.id().expect("child has a pid before it is awaited") as libc::pid_t;
         Ok(RunProcess { child, pgid })
     }
 
@@ -250,7 +245,10 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         };
-        assert!(is_alive(grandchild), "sleep should be running before terminate");
+        assert!(
+            is_alive(grandchild),
+            "sleep should be running before terminate"
+        );
 
         proc.terminate().unwrap();
         // The group leader (the shell) exits from SIGTERM.
@@ -260,7 +258,10 @@ mod tests {
         // let signal delivery + reaping settle.
         let deadline = Instant::now() + Duration::from_secs(5);
         while is_alive(grandchild) {
-            assert!(Instant::now() < deadline, "grandchild survived group SIGTERM");
+            assert!(
+                Instant::now() < deadline,
+                "grandchild survived group SIGTERM"
+            );
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     }

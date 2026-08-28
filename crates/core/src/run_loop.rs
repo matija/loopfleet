@@ -484,7 +484,11 @@ mod tests {
         assert_eq!(outcome.state, RunState::Failed);
         assert_eq!(outcome.iterations.len(), 3);
         // One shadow ref per pass; distinct commits (the parent chain advances).
-        let refs: Vec<_> = outcome.iterations.iter().map(|i| i.shadow_ref.as_str()).collect();
+        let refs: Vec<_> = outcome
+            .iterations
+            .iter()
+            .map(|i| i.shadow_ref.as_str())
+            .collect();
         assert_eq!(
             refs,
             [
@@ -512,7 +516,11 @@ mod tests {
         assert_eq!(outcome.reset_at.as_deref(), Some("2025-01-15T10:30:00Z"));
         // The limited pass is still snapshotted; no further pass ran.
         assert_eq!(outcome.iterations.len(), 1);
-        assert_eq!(adapter.call.load(Ordering::SeqCst), 1, "must not roll into pass 2");
+        assert_eq!(
+            adapter.call.load(Ordering::SeqCst),
+            1,
+            "must not roll into pass 2"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -597,7 +605,11 @@ mod tests {
 
         assert_eq!(outcome.state, RunState::Stopped);
         assert!(outcome.iterations.is_empty());
-        assert_eq!(adapter.call.load(Ordering::SeqCst), 0, "no pass should spawn");
+        assert_eq!(
+            adapter.call.load(Ordering::SeqCst),
+            0,
+            "no pass should spawn"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]

@@ -237,8 +237,15 @@ mod tests {
         seed(&conn, &dir.path().to_string_lossy());
 
         // Five events on the run; seqs 1..=5 in a fresh db.
-        for kind in ["turn_started", "assistant_text", "ended", "turn_started", "ended"] {
-            loopfleet_store::insert_event(&conn, "r1", &format!("{{\"kind\":\"{kind}\"}}")).unwrap();
+        for kind in [
+            "turn_started",
+            "assistant_text",
+            "ended",
+            "turn_started",
+            "ended",
+        ] {
+            loopfleet_store::insert_event(&conn, "r1", &format!("{{\"kind\":\"{kind}\"}}"))
+                .unwrap();
         }
         // Iteration 1 owns events up to seq 2; iteration 2 the rest.
         loopfleet_store::insert_iteration(&conn, "r1", 1, "refs/agentapp/run-r1/iter-1", Some(2))

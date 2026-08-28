@@ -79,7 +79,10 @@ mod tests {
     #[test]
     fn only_failed_or_stopped_is_not_started() {
         assert_eq!(
-            derive_status(&[run(RunState::Failed, false), run(RunState::Stopped, false)], false),
+            derive_status(
+                &[run(RunState::Failed, false), run(RunState::Stopped, false)],
+                false
+            ),
             TaskStatus::NotStarted
         );
     }
@@ -87,7 +90,10 @@ mod tests {
     #[test]
     fn queued_or_running_is_in_progress() {
         assert_eq!(
-            derive_status(&[run(RunState::Failed, false), run(RunState::Running, false)], false),
+            derive_status(
+                &[run(RunState::Failed, false), run(RunState::Running, false)],
+                false
+            ),
             TaskStatus::InProgress
         );
         assert_eq!(
