@@ -2004,6 +2004,60 @@ fn cancel_auto_merge(run_id: String, app: AppHandle, state: State<'_, AppState>)
     }
 }
 
+/// Stop autopilot for a plan: abort every armed auto-merge countdown on the
+/// plan's runs, and cancel every launch auto-advance has queued for it —
+/// the single "stop chaining tasks" action, as opposed to
+/// `cancel_auto_merge`/`cancel_scheduled_launch` which each abort one item by
+/// id. Manually scheduled launches (`origin: "manual"`) are left alone, since
+/// those are the user's own doing, not autopilot's. Emits the same
+/// `auto_merge_cancelled`/`scheduled_launch_cancelled` events per item
+/// cancelled, so surfaces watching individual indicators still update.
+/// Unlike `remove_project`, nothing is deleted — runs and the plan itself are
+/// left exactly as they landed; only the pending countdowns/launches are
+/// cleared.
+#[tauri::command]
+fn stop_autopilot(plan_id: String, app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let (runs, launches) = {
+        let conn = state.db.lock().unwrap();
+        (
+            loopfleet_store::list_runs_for_plan(&conn, &plan_id).map_err(|e| e.to_string())?,
+            loopfleet_store::list_scheduled_launches(&conn)
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .filter(|l| l.plan_id == plan_id && l.origin == "auto_advance")
+                .collect::<Vec<_>>(),
+        )
+    };
+
+    for run in &runs {
+        if let Some(handle) = state.scheduled_auto_merges.lock().unwrap().remove(&run.id) {
+            handle.abort();
+            let _ = app.emit(
+                "auto_merge_cancelled",
+                AutoMergeCancelledPayload {
+                    run_id: run.id.clone(),
+                },
+            );
+        }
+    }
+
+    for launch in &launches {
+        if let Some(handle) = state.scheduled_launches.lock().unwrap().remove(&launch.id) {
+            handle.abort();
+            {
+                let conn = state.db.lock().unwrap();
+                let _ = loopfleet_store::delete_scheduled_launch(&conn, launch.id);
+            }
+            let _ = app.emit(
+                "scheduled_launch_cancelled",
+                ScheduledLaunchCancelledPayload { id: launch.id },
+            );
+        }
+    }
+
+    Ok(())
+}
+
 /// Spawn the sleep-then-launch task behind one scheduled launch and register
 /// its handle, so `cancel_scheduled_launch` can abort it before it fires.
 /// Shared by `schedule_launch` (a fresh schedule, `reschedule_count = 0`) and
@@ -2778,6 +2832,7 @@ pub fn run() {
             schedule_launch,
             cancel_scheduled_launch,
             cancel_auto_merge,
+            stop_autopilot,
             acknowledge_runs,
             compare_task,
             use_run,
