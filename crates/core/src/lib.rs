@@ -14,6 +14,7 @@ use loopfleet_store::Project;
 use rusqlite::Connection;
 
 pub mod adapter;
+pub mod commit_message;
 pub mod compare;
 pub mod event;
 pub mod overview;
@@ -26,6 +27,7 @@ pub mod task_status;
 pub mod timeline;
 pub mod usage;
 pub use adapter::{AdapterError, AgentAdapter, RunHandle, RunSpec, SessionHandle, SessionSeed};
+pub use commit_message::compose_commit_message;
 pub use compare::{compare_view, CompareError, CompareView, RunCompare};
 pub use event::{Lane, NormalizedEvent, Usage};
 pub use overview::{plan_overview, OverviewError, PlanView, TaskView};
