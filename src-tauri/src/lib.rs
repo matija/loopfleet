@@ -140,6 +140,16 @@ struct AutoMergeCancelledPayload {
     run_id: String,
 }
 
+/// A fired auto-merge attempt failed — a dirty-tree refusal, a conflict, or
+/// any other error from [`merge_and_accept_run`]. The run stays in its
+/// terminal state, unaccepted; nothing else in the chain (e.g. a resume) is
+/// scheduled off the back of it, so it's left for the user to resolve.
+#[derive(Clone, serde::Serialize)]
+struct AutoMergeFailedPayload {
+    run_id: String,
+    reason: String,
+}
+
 /// Persist one event to the run's log and push it to the live UI. Returns the
 /// event's `seq` (its `rowid`), captured under the same lock as the insert so it
 /// is that event's even though other writers share the connection.
@@ -995,6 +1005,7 @@ fn spawn_run(
             let auto_merge_db = db.clone();
             let auto_merge_git = git.clone();
             let auto_merge_data_dir = data_dir.clone();
+            let auto_merge_app = app.clone();
             let handle = tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(delay_seconds as u64)).await;
                 auto_merges_for_task.lock().unwrap().remove(&auto_merge_run_id);
@@ -1008,6 +1019,13 @@ fn spawn_run(
                 .await
                 {
                     eprintln!("auto-merge failed for run {auto_merge_run_id}: {e}");
+                    let _ = auto_merge_app.emit(
+                        "auto_merge_failed",
+                        AutoMergeFailedPayload {
+                            run_id: auto_merge_run_id.clone(),
+                            reason: e,
+                        },
+                    );
                 }
             });
             scheduled_auto_merges.lock().unwrap().insert(cfg.run_id.clone(), handle);
