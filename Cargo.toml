@@ -23,7 +23,7 @@ loopfleet-gitx = { path = "crates/gitx" }
 loopfleet-store = { path = "crates/store" }
 
 rusqlite = { version = "0.32", features = ["bundled"] }
-git2 = "0.19"
+git2 = { version = "0.19", features = ["vendored-openssl"] }
 uuid = { version = "1", features = ["v4"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
