@@ -12,6 +12,14 @@
 use loopfleet_store::Settings;
 
 use crate::supervisor::RunState;
+use crate::task_status::TaskStatus;
+use crate::TaskView;
+
+/// The next task autopilot should launch: the first task in document order
+/// whose derived status is [`TaskStatus::NotStarted`].
+pub fn next_task(tasks: &[TaskView]) -> Option<&TaskView> {
+    tasks.iter().find(|t| t.status == TaskStatus::NotStarted)
+}
 
 /// Why auto-merge does not arm for a run right now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,5 +167,41 @@ mod tests {
             should_auto_merge(RunState::Completed, false, true, false, &s),
             AutoMergeDecision::Arm { delay_seconds: 42 }
         );
+    }
+
+    fn task(anchor: &str, status: TaskStatus) -> TaskView {
+        TaskView {
+            anchor: anchor.into(),
+            line_hint: 0,
+            text: anchor.into(),
+            checked: false,
+            status,
+            run_count: 0,
+        }
+    }
+
+    #[test]
+    fn next_task_finds_first_not_started_in_document_order() {
+        let tasks = vec![
+            task("alpha", TaskStatus::Accepted),
+            task("beta", TaskStatus::InProgress),
+            task("gamma", TaskStatus::NotStarted),
+            task("delta", TaskStatus::NotStarted),
+        ];
+        assert_eq!(next_task(&tasks).unwrap().anchor, "gamma");
+    }
+
+    #[test]
+    fn next_task_none_when_no_task_is_not_started() {
+        let tasks = vec![
+            task("alpha", TaskStatus::Accepted),
+            task("beta", TaskStatus::CompletedUnaccepted),
+        ];
+        assert!(next_task(&tasks).is_none());
+    }
+
+    #[test]
+    fn next_task_none_for_empty_tasks() {
+        assert!(next_task(&[]).is_none());
     }
 }
