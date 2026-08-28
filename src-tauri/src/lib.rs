@@ -960,10 +960,11 @@ fn spawn_run(
         );
 
         // Arm the auto-merge countdown when the terminal state, acceptance, and
-        // snapshot presence all line up (`should_auto_merge`, PRD: Autopilot). The
-        // countdown itself only removes its own handle when it elapses — actually
-        // performing the merge is a later task; this just arms the timer and lets
-        // the UI show (and eventually cancel) it.
+        // snapshot presence all line up (`should_auto_merge`, PRD: Autopilot).
+        // When the countdown elapses (and hasn't been cancelled via
+        // `cancel_auto_merge`, which aborts this handle first) it performs the
+        // merge through the exact same `merge_and_accept_run` path `use_run`
+        // uses, into the run's current branch (no custom target).
         let accepted = db
             .lock()
             .ok()
@@ -991,9 +992,23 @@ fn spawn_run(
             );
             let auto_merge_run_id = cfg.run_id.clone();
             let auto_merges_for_task = scheduled_auto_merges.clone();
+            let auto_merge_db = db.clone();
+            let auto_merge_git = git.clone();
+            let auto_merge_data_dir = data_dir.clone();
             let handle = tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(delay_seconds as u64)).await;
                 auto_merges_for_task.lock().unwrap().remove(&auto_merge_run_id);
+                if let Err(e) = merge_and_accept_run(
+                    &auto_merge_run_id,
+                    None,
+                    &auto_merge_db,
+                    &auto_merge_git,
+                    &auto_merge_data_dir,
+                )
+                .await
+                {
+                    eprintln!("auto-merge failed for run {auto_merge_run_id}: {e}");
+                }
             });
             scheduled_auto_merges.lock().unwrap().insert(cfg.run_id.clone(), handle);
         }
@@ -2093,11 +2108,18 @@ struct UseRunResult {
 /// serialized git actor; the current-branch default merges in the main worktree
 /// (guarded by a clean tree), a custom target uses a throwaway worktree so the
 /// user's own checkout is never touched.
-#[tauri::command]
-async fn use_run(
-    run_id: String,
+///
+/// Shared by the `use_run` command (a user-initiated merge) and the auto-merge
+/// countdown spawned when a run's terminal state, acceptance, and snapshot
+/// presence line up (`should_auto_merge`) — an automatic merge is not allowed
+/// to diverge from a manual one, so both call this one path, including
+/// `set_run_accepted` and the post-merge cleanup reap.
+async fn merge_and_accept_run(
+    run_id: &str,
     target_branch: Option<String>,
-    state: State<'_, AppState>,
+    db: &Arc<Mutex<Connection>>,
+    git: &GitActor,
+    data_dir: &std::path::Path,
 ) -> Result<UseRunResult, String> {
     let target = target_branch
         .map(|t| t.trim().to_string())
@@ -2106,12 +2128,12 @@ async fn use_run(
     // Resolve the run's parent repo, its final shadow ref, and enough of its
     // task binding to compose a fallback commit message for it.
     let (repo_path, source_ref, task_text, agent, pass_count) = {
-        let conn = state.db.lock().unwrap();
-        let detail = loopfleet_store::load_run(&conn, &run_id)
+        let conn = db.lock().unwrap();
+        let detail = loopfleet_store::load_run(&conn, run_id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("unknown run: {run_id}"))?;
         let iterations =
-            loopfleet_store::load_iterations(&conn, &run_id).map_err(|e| e.to_string())?;
+            loopfleet_store::load_iterations(&conn, run_id).map_err(|e| e.to_string())?;
         let pass_count = iterations.len() as u32;
         let source_ref = iterations
             .into_iter()
@@ -2129,17 +2151,16 @@ async fn use_run(
     // the agent wrote across passes, not something reconstructed here. Used only
     // as a fallback message; a run whose worktree carries its own commit wording
     // has that wording win instead (see `loopfleet_gitx::merge::merge_run`).
-    let progress_path = state.data_dir.join("progress").join(&run_id).join("progress.md");
+    let progress_path = data_dir.join("progress").join(run_id).join("progress.md");
     let summary = std::fs::read_to_string(&progress_path)
         .ok()
         .and_then(|c| loopfleet_core::progress::summary_from_contents(&c))
         .unwrap_or_default();
     let fallback_message =
-        loopfleet_core::compose_commit_message(&summary, &task_text, &run_id, &agent, pass_count);
+        loopfleet_core::compose_commit_message(&summary, &task_text, run_id, &agent, pass_count);
 
-    let scratch_root = state.data_dir.join("worktrees");
-    let merge = state
-        .git
+    let scratch_root = data_dir.join("worktrees");
+    let merge = git
         .merge_run(
             PathBuf::from(&repo_path),
             source_ref,
@@ -2151,17 +2172,15 @@ async fn use_run(
         .map_err(|e| e.to_string())?;
 
     let cleanup_after_merge = {
-        let conn = state.db.lock().unwrap();
-        loopfleet_store::set_run_accepted(&conn, &run_id).map_err(|e| e.to_string())?;
+        let conn = db.lock().unwrap();
+        loopfleet_store::set_run_accepted(&conn, run_id).map_err(|e| e.to_string())?;
         loopfleet_store::load_settings(&conn)
             .map(|s| s.cleanup_after_merge)
             .unwrap_or(true)
     };
 
     let cleanup_error = if cleanup_after_merge {
-        reap_run(&state.db, &state.git, &state.data_dir, &run_id)
-            .await
-            .err()
+        reap_run(db, git, data_dir, run_id).await.err()
     } else {
         None
     };
@@ -2173,6 +2192,18 @@ async fn use_run(
         up_to_date: merge.up_to_date,
         cleanup_error,
     })
+}
+
+/// "Use this run": the `use_run` command is a thin wrapper over
+/// [`merge_and_accept_run`] — see that function for the merge/accept/cleanup
+/// behavior itself.
+#[tauri::command]
+async fn use_run(
+    run_id: String,
+    target_branch: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<UseRunResult, String> {
+    merge_and_accept_run(&run_id, target_branch, &state.db, &state.git, &state.data_dir).await
 }
 
 /// Load one project by id.
