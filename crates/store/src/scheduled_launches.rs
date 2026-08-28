@@ -21,6 +21,10 @@ pub struct NewScheduledLaunch {
     pub pass_count: u32,
     /// When the launch should fire, unix millis.
     pub launch_at: i64,
+    /// What scheduled this launch: `"manual"` (user picked a time) or
+    /// `"auto_advance"` (autopilot chaining the plan's next task after an
+    /// auto-merge).
+    pub origin: String,
 }
 
 /// Schedule a launch, returning its row id (the handle used to delete it).
@@ -32,8 +36,8 @@ pub fn insert_scheduled_launch(
 ) -> rusqlite::Result<i64> {
     conn.execute(
         "INSERT INTO scheduled_launches
-           (plan_id, task_anchor, agent, model, pass_count, launch_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+           (plan_id, task_anchor, agent, model, pass_count, launch_at, origin)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             launch.plan_id,
             launch.task_anchor,
@@ -41,6 +45,7 @@ pub fn insert_scheduled_launch(
             launch.model,
             launch.pass_count,
             launch.launch_at,
+            launch.origin,
         ],
     )?;
     Ok(conn.last_insert_rowid())
@@ -62,13 +67,15 @@ pub struct ScheduledLaunch {
     /// agent was still exhausted when it fired (0 for one that has never
     /// fired yet).
     pub reschedule_count: u32,
+    /// What scheduled this launch: `"manual"` or `"auto_advance"`.
+    pub origin: String,
 }
 
 /// Every scheduled launch, ordered by when it's due to fire. Called at startup
 /// to reschedule anything a crash interrupted, and by the scheduler loop.
 pub fn list_scheduled_launches(conn: &Connection) -> rusqlite::Result<Vec<ScheduledLaunch>> {
     let mut stmt = conn.prepare(
-        "SELECT id, plan_id, task_anchor, agent, model, pass_count, launch_at, created_at, reschedule_count
+        "SELECT id, plan_id, task_anchor, agent, model, pass_count, launch_at, created_at, reschedule_count, origin
          FROM scheduled_launches ORDER BY launch_at, id",
     )?;
     let rows = stmt
@@ -83,6 +90,7 @@ pub fn list_scheduled_launches(conn: &Connection) -> rusqlite::Result<Vec<Schedu
                 launch_at: r.get(6)?,
                 created_at: r.get(7)?,
                 reschedule_count: r.get(8)?,
+                origin: r.get(9)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -98,7 +106,7 @@ pub fn list_scheduled_launches_for_project(
 ) -> rusqlite::Result<Vec<ScheduledLaunch>> {
     let mut stmt = conn.prepare(
         "SELECT sl.id, sl.plan_id, sl.task_anchor, sl.agent, sl.model, sl.pass_count,
-                sl.launch_at, sl.created_at, sl.reschedule_count
+                sl.launch_at, sl.created_at, sl.reschedule_count, sl.origin
          FROM scheduled_launches sl
          JOIN plans pl ON sl.plan_id = pl.id
          WHERE pl.project_id = ?1",
@@ -115,6 +123,7 @@ pub fn list_scheduled_launches_for_project(
                 launch_at: r.get(6)?,
                 created_at: r.get(7)?,
                 reschedule_count: r.get(8)?,
+                origin: r.get(9)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -171,6 +180,7 @@ mod tests {
             model: None,
             pass_count: 3,
             launch_at,
+            origin: "manual".into(),
         }
     }
 
@@ -195,6 +205,24 @@ mod tests {
             "created_at is stamped on insert"
         );
         assert_eq!(launches[0].reschedule_count, 0, "a fresh launch has never been rescheduled");
+        assert_eq!(launches[0].origin, "manual", "defaults to manual");
+    }
+
+    #[test]
+    fn origin_round_trips() {
+        let conn = crate::open(":memory:").unwrap();
+        let pid = seed(&conn);
+        insert_scheduled_launch(
+            &conn,
+            &NewScheduledLaunch {
+                origin: "auto_advance".into(),
+                ..new_launch(&pid, "task a", 1_000)
+            },
+        )
+        .unwrap();
+
+        let launches = list_scheduled_launches(&conn).unwrap();
+        assert_eq!(launches[0].origin, "auto_advance");
     }
 
     #[test]

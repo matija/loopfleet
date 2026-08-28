@@ -106,6 +106,8 @@ struct ScheduledLaunchPayload {
     plan_id: String,
     task_anchor: String,
     launch_at: String,
+    /// What scheduled this launch: `"manual"` or `"auto_advance"`.
+    origin: String,
 }
 
 /// A scheduled launch fired, pushed with the run id it produced.
@@ -1089,6 +1091,7 @@ fn spawn_run(
                                     model,
                                     max_iterations,
                                     launch_at_str,
+                                    Some("auto_advance".to_string()),
                                     advance_app,
                                     state,
                                 );
@@ -1788,9 +1791,11 @@ fn schedule_launch(
     model: Option<String>,
     max_iterations: u32,
     launch_at: String,
+    origin: Option<String>,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<i64, String> {
+    let origin = origin.unwrap_or_else(|| "manual".to_string());
     let launch_at_dt =
         OffsetDateTime::parse(&launch_at, &Rfc3339).map_err(|e| format!("invalid launch_at: {e}"))?;
     let launch_at_millis = (launch_at_dt.unix_timestamp_nanos() / 1_000_000) as i64;
@@ -1806,6 +1811,7 @@ fn schedule_launch(
                 model: model.clone(),
                 pass_count: max_iterations,
                 launch_at: launch_at_millis,
+                origin: origin.clone(),
             },
         )
         .map_err(|e| e.to_string())?
@@ -1820,6 +1826,7 @@ fn schedule_launch(
             launch_at: launch_at_dt
                 .format(&Rfc3339)
                 .unwrap_or_else(|_| launch_at.clone()),
+            origin: origin.clone(),
         },
     );
 
@@ -1843,6 +1850,7 @@ fn schedule_launch(
         max_iterations,
         delay,
         0,
+        origin,
     );
 
     Ok(id)
@@ -1942,6 +1950,7 @@ fn arm_scheduled_launch(
     max_iterations: u32,
     delay: std::time::Duration,
     reschedule_count: u32,
+    origin: String,
 ) {
     let launches_for_task = scheduled_launches.clone();
     let launch_db = db.clone();
@@ -1972,6 +1981,7 @@ fn arm_scheduled_launch(
                             plan_id: plan_id.clone(),
                             task_anchor: task_anchor.clone(),
                             launch_at: reset_at.format(&Rfc3339).unwrap_or_else(|_| reset_at.to_string()),
+                            origin: origin.clone(),
                         },
                     );
                     let next_delay = std::time::Duration::try_from(reset_at - OffsetDateTime::now_utc())
@@ -1994,6 +2004,7 @@ fn arm_scheduled_launch(
                         max_iterations,
                         next_delay,
                         next_count,
+                        origin,
                     );
                     return;
                 }
@@ -2113,6 +2124,7 @@ fn rearm_scheduled_launches(app: &AppHandle) {
                 plan_id: launch.plan_id.clone(),
                 task_anchor: launch.task_anchor.clone(),
                 launch_at: launch_at_str,
+                origin: launch.origin.clone(),
             },
         );
 
@@ -2137,6 +2149,7 @@ fn rearm_scheduled_launches(app: &AppHandle) {
             launch.pass_count,
             delay,
             launch.reschedule_count,
+            launch.origin,
         );
     }
 }

@@ -334,6 +334,8 @@ export type ScheduledLaunchPayload = {
   plan_id: string;
   task_anchor: string;
   launch_at: string;
+  /// What scheduled this launch: `"manual"` or `"auto_advance"`.
+  origin: string;
 };
 
 /// A scheduled launch fired, pushed on the `scheduled_launch_fired` Tauri

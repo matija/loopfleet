@@ -266,6 +266,7 @@ mod tests {
                 model: None,
                 pass_count: 1,
                 launch_at: 0,
+                origin: "manual".into(),
             },
         )
         .unwrap();

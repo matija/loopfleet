@@ -81,6 +81,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0008_scheduled_launch_reschedule",
         include_str!("migrations/0008_scheduled_launch_reschedule.sql"),
     ),
+    (
+        "0009_scheduled_launch_origin",
+        include_str!("migrations/0009_scheduled_launch_origin.sql"),
+    ),
 ];
 
 /// Open a SQLite database at `path`, enable foreign keys, and apply all pending

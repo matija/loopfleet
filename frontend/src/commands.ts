@@ -164,8 +164,13 @@ export function scheduleLaunch(args: {
   model?: string | null;
   maxIterations: number;
   launchAt: string;
+  origin?: string | null;
 }): Promise<number> {
-  return invoke("schedule_launch", { ...args, model: args.model ?? null });
+  return invoke("schedule_launch", {
+    ...args,
+    model: args.model ?? null,
+    origin: args.origin ?? null,
+  });
 }
 
 /// Abort a scheduled launch before it fires, keyed by its schedule id.
