@@ -81,6 +81,18 @@ export type ActiveRun = {
   /// exhausted" instead of a resume time. Mutually exclusive with
   /// `pendingResume` — exhaustion means nothing was scheduled.
   resumeExhausted?: boolean;
+  /// Set on a finished, unaccepted run once the backend arms its auto-merge
+  /// countdown (the `auto_merge_armed` event) — cleared on
+  /// `auto_merge_cancelled`, `auto_merge_failed`, or the merge itself landing.
+  autoMerge?: ArmedAutoMerge;
+};
+
+/// An armed auto-merge countdown on a finished run (PRD: Autopilot). `targetBranch`
+/// is "" for the repo's currently checked-out branch, same convention as
+/// `use_run`'s own `target_branch`. `mergeAt` is epoch ms.
+export type ArmedAutoMerge = {
+  targetBranch: string;
+  mergeAt: number;
 };
 
 /// A launch booked for later via `schedule_launch` (the "run when the limit
@@ -102,7 +114,13 @@ export type PendingLaunch = {
 /// going negative once the target passes; App.tsx removes the chip once the
 /// backend actually confirms the fire, so a brief "now" reads better than a
 /// negative duration in the gap.
-function Countdown({ target }: { target: number }) {
+function Countdown({
+  target,
+  label = "Time until launch",
+}: {
+  target: number;
+  label?: string;
+}) {
   const [, tick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => tick((n) => n + 1), 1000);
@@ -110,7 +128,7 @@ function Countdown({ target }: { target: number }) {
   }, []);
   const remaining = Math.max(0, target - Date.now());
   return (
-    <span className="run-elapsed" aria-label="Time until launch">
+    <span className="run-elapsed" aria-label={label}>
       {remaining === 0 ? "now" : `in ${formatDuration(remaining)}`}
     </span>
   );
@@ -277,6 +295,8 @@ function RunChip({
   onDismiss,
   onCancelResume,
   onMerge,
+  onCancelAutoMerge,
+  onMergeNow,
 }: {
   run: ActiveRun;
   selected: boolean;
@@ -292,6 +312,13 @@ function RunChip({
   /// branch). Resolves once the attempt settles either way — App owns marking
   /// the run accepted and reporting a failure, the chip only shows busy.
   onMerge: (runId: string) => Promise<void>;
+  /// Abort an armed auto-merge countdown before it fires (`cancel_auto_merge`).
+  /// Optional — omitted while App.tsx doesn't yet track armed countdowns, in
+  /// which case a run with `autoMerge` set (none exist yet) renders no button.
+  onCancelAutoMerge?: (runId: string) => void;
+  /// Fire an armed auto-merge countdown immediately instead of waiting it out.
+  /// Resolves once the attempt settles, same contract as `onMerge`.
+  onMergeNow?: (runId: string) => Promise<void>;
 }) {
   const active = isActiveRun(r.status);
   const taskText = taskSummary(r.taskText);
@@ -303,6 +330,9 @@ function RunChip({
     taskText,
     `${r.agent} · ${r.projectName}`,
     isMergedRun(r) ? "merged" : undefined,
+    r.autoMerge
+      ? `auto-merging into ${r.autoMerge.targetBranch || "current branch"}`
+      : undefined,
     r.unseen ? "finished, not yet seen" : undefined,
   ]
     .filter(Boolean)
@@ -321,6 +351,16 @@ function RunChip({
     setMerging(true);
     try {
       await onMerge(r.runId);
+    } finally {
+      setMerging(false);
+    }
+  }
+
+  async function mergeNow() {
+    if (!onMergeNow) return;
+    setMerging(true);
+    try {
+      await onMergeNow(r.runId);
     } finally {
       setMerging(false);
     }
@@ -351,7 +391,12 @@ function RunChip({
           <StatusIcon size={14} />
         </span>
         <span className="run-chip__task">{taskText}</span>
-        {r.pendingResume ? (
+        {r.autoMerge ? (
+          <span className="run-chip__meta run-chip__meta--warn">
+            {r.autoMerge.targetBranch || "current branch"} ·{" "}
+            <Countdown target={r.autoMerge.mergeAt} label="Time until merge" />
+          </span>
+        ) : r.pendingResume ? (
           <span className="run-chip__meta run-chip__meta--warn">
             Resumes{" "}
             {new Date(r.pendingResume.resumeAt).toLocaleTimeString([], {
@@ -418,7 +463,7 @@ function RunChip({
           <CheckIcon size={14} />
         </span>
       ) : null}
-      {canMergeFromDock(r) && (
+      {canMergeFromDock(r) && !r.autoMerge && (
         <button
           className="run-chip__action run-chip__action--merge"
           onClick={merge}
@@ -432,7 +477,29 @@ function RunChip({
           <CheckIcon size={14} />
         </button>
       )}
-      {active ? (
+      {r.autoMerge ? (
+        <>
+          <button
+            className="run-chip__action run-chip__action--merge"
+            onClick={mergeNow}
+            disabled={merging || !onMergeNow}
+            aria-busy={merging}
+            title={merging ? "Merging…" : "Merge now, skipping the countdown"}
+            aria-label={merging ? "Merging run" : "Merge now"}
+          >
+            <CheckIcon size={14} />
+          </button>
+          <button
+            className="run-chip__action run-chip__action--cancel-resume"
+            onClick={() => onCancelAutoMerge?.(r.runId)}
+            disabled={!onCancelAutoMerge}
+            title="Cancel the scheduled merge"
+            aria-label="Cancel scheduled merge"
+          >
+            <XIcon size={14} />
+          </button>
+        </>
+      ) : active ? (
         <button
           className="run-chip__action"
           onClick={() => onStop(r.runId)}
@@ -474,6 +541,8 @@ export function RunDock({
   onCancelResume,
   onCancelLaunch,
   onMerge,
+  onCancelAutoMerge,
+  onMergeNow,
   collapsed,
 }: {
   runs: ActiveRun[];
@@ -492,6 +561,13 @@ export function RunDock({
   /// `canMergeFromDock` holds, so landing a good run needs no detour through
   /// the run view. Resolves when the attempt settles, success or failure.
   onMerge: (runId: string) => Promise<void>;
+  /// Abort a run's armed auto-merge countdown (`cancel_auto_merge`) — offered
+  /// on chips where `autoMerge` is set. Optional until App.tsx wires up the
+  /// `auto_merge_armed` event.
+  onCancelAutoMerge?: (runId: string) => void;
+  /// Fire a run's armed auto-merge countdown immediately, same contract as
+  /// `onMerge`. Optional for the same reason as `onCancelAutoMerge`.
+  onMergeNow?: (runId: string) => Promise<void>;
   /// Collapsed to just the head strip via the toolbar's panel-bottom toggle.
   /// App.tsx owns the persisted state; the dock just renders it.
   collapsed?: boolean;
@@ -546,6 +622,8 @@ export function RunDock({
               onDismiss={onDismiss}
               onCancelResume={onCancelResume}
               onMerge={onMerge}
+              onCancelAutoMerge={onCancelAutoMerge}
+              onMergeNow={onMergeNow}
             />
           ))}
         </ul>
