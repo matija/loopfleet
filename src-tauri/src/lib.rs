@@ -138,6 +138,19 @@ struct AutoAdvancePendingQuestionPayload {
     launch_at: String,
 }
 
+/// A run was completed, unaccepted, and mergeable when the app last quit —
+/// its auto-merge countdown (if any) lived only in memory and is gone now
+/// that the process has restarted (see `question_stalled_auto_merges`).
+/// Rather than silently re-arm it and merge behind the user's back after an
+/// unknown amount of time away, it's surfaced as a question for them to
+/// answer explicitly, mirroring `AutoAdvancePendingQuestionPayload`.
+#[derive(Clone, serde::Serialize)]
+struct AutoMergePendingQuestionPayload {
+    run_id: String,
+    plan_id: String,
+    task_anchor: String,
+}
+
 /// A run's auto-merge countdown has armed, pushed to the UI so it can show
 /// when the merge will fire (and offer to cancel it). `target_branch` is
 /// empty for the repo's currently checked-out branch (see [`use_run`]).
@@ -2347,6 +2360,53 @@ fn rearm_scheduled_launches(app: &AppHandle) {
     }
 }
 
+/// Ask the user about any run that was mid-auto-merge-countdown when the app
+/// last quit, rather than silently re-arming it — the auto-merge counterpart
+/// of `rearm_scheduled_launches` turning a recovered `auto_advance` launch
+/// into a question. Unlike a scheduled launch, an auto-merge countdown lives
+/// only in the in-memory `scheduled_auto_merges` map: nothing persists the
+/// `merge_at` it was armed with, so there is no row to read back and no way
+/// to tell a run that was seconds from firing apart from one that only just
+/// became eligible. `should_auto_merge` re-evaluates the exact conditions
+/// that arm the countdown in the first place, though, so any run still
+/// completed, unaccepted, and mergeable by those same rules at startup is
+/// precisely the set that would have been counting down (or about to be) —
+/// each is left un-armed and turned into an `auto_merge_pending_question` for
+/// the user to answer.
+fn question_stalled_auto_merges(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().unwrap();
+    let run_ids = loopfleet_store::all_run_ids(&conn).unwrap_or_default();
+    let settings = loopfleet_store::load_settings(&conn).unwrap_or_default();
+
+    for run_id in run_ids {
+        let Ok(Some(detail)) = loopfleet_store::load_run(&conn, &run_id) else {
+            continue;
+        };
+        let Some(run_state) = RunState::from_token(&detail.status) else {
+            continue;
+        };
+        let has_snapshot = loopfleet_store::load_iterations(&conn, &run_id)
+            .map(|its| its.iter().any(|it| it.shadow_ref.as_deref().is_some_and(|s| !s.is_empty())))
+            .unwrap_or(false);
+        let merge_in_progress =
+            loopfleet_gitx::merge_in_progress(std::path::Path::new(&detail.repo_path)).unwrap_or(false);
+
+        let decision =
+            should_auto_merge(run_state, detail.accepted, has_snapshot, merge_in_progress, &settings);
+        if let AutoMergeDecision::Arm { .. } = decision {
+            let _ = app.emit(
+                "auto_merge_pending_question",
+                AutoMergePendingQuestionPayload {
+                    run_id: detail.id,
+                    plan_id: detail.plan_id,
+                    task_anchor: detail.task_anchor,
+                },
+            );
+        }
+    }
+}
+
 /// Every run bound to any task in `plan_id`. The plan view groups these by
 /// `task_anchor` so each task can list its runs and open their timelines.
 #[tauri::command]
@@ -2826,6 +2886,11 @@ pub fn run() {
             // Same recovery for user-scheduled launches (see
             // `rearm_scheduled_launches`).
             rearm_scheduled_launches(&app.handle().clone());
+            // A run left completed, unaccepted, and mergeable was mid
+            // auto-merge-countdown when the app quit (see
+            // `question_stalled_auto_merges`); ask the user rather than
+            // silently re-arming it.
+            question_stalled_auto_merges(&app.handle().clone());
 
             // Regaining focus counts as acknowledging any runs that finished
             // while the user was away — clear the dock badge along with it.
