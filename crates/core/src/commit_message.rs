@@ -112,9 +112,12 @@ fn short_id(run_id: &str) -> &str {
 
 /// Splits `subject` at `max_chars`, returning the (possibly untouched) head
 /// and, when a cut was made, the trimmed remainder to fold into the body.
+/// The cut backs up to the nearest preceding space so a word (e.g. the
+/// `(agent)` parenthetical) is never split across the subject and body.
 fn cap_subject(subject: &str, max_chars: usize) -> (String, Option<String>) {
     match subject.char_indices().nth(max_chars) {
-        Some((cut, _)) => {
+        Some((limit, _)) => {
+            let cut = subject[..limit].rfind(' ').unwrap_or(limit);
             let (head, tail) = subject.split_at(cut);
             (head.to_string(), Some(tail.trim().to_string()))
         }
@@ -202,12 +205,12 @@ mod tests {
     fn overlong_subject_is_capped_with_remainder_in_the_body() {
         let summary = "This summary is deliberately long enough to overflow the seventy two character subject cap";
         let full_subject = format!("{summary} (claude)");
-        let cut = full_subject.char_indices().nth(72).unwrap().0;
+        let limit = full_subject.char_indices().nth(72).unwrap().0;
+        let cut = full_subject[..limit].rfind(' ').unwrap();
         let (expected_subject, expected_overflow) = full_subject.split_at(cut);
 
         let msg = compose_commit_message(summary, "Build the widget", "abc123", "claude", 1);
 
-        assert_eq!(expected_subject.chars().count(), 72);
         assert_eq!(
             msg,
             format!(
@@ -215,5 +218,20 @@ mod tests {
                 expected_overflow.trim()
             )
         );
+    }
+
+    #[test]
+    fn cap_does_not_split_the_agent_parenthetical() {
+        // Regression: a subject landing right around the 72-char cap used to
+        // slice mid-word, e.g. "...(cla" / "ude)...".
+        let summary = "Add pure should_auto_merge decision in crates/core/src/autopilot.rs";
+        let msg = compose_commit_message(summary, "Build the widget", "abc123", "claude", 1);
+        let subject = msg.lines().next().unwrap();
+
+        assert!(
+            !subject.contains("(cla"),
+            "subject split mid-word: {subject:?}"
+        );
+        assert!(subject.ends_with("(claude)") || !subject.contains('('));
     }
 }
