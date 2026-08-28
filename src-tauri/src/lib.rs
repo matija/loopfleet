@@ -1018,10 +1018,11 @@ fn spawn_run(
             let auto_merge_git = git.clone();
             let auto_merge_data_dir = data_dir.clone();
             let auto_merge_app = app.clone();
+            let auto_advance_settings = settings.clone();
             let handle = tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(delay_seconds as u64)).await;
                 auto_merges_for_task.lock().unwrap().remove(&auto_merge_run_id);
-                if let Err(e) = merge_and_accept_run(
+                match merge_and_accept_run(
                     &auto_merge_run_id,
                     None,
                     &auto_merge_db,
@@ -1030,14 +1031,70 @@ fn spawn_run(
                 )
                 .await
                 {
-                    eprintln!("auto-merge failed for run {auto_merge_run_id}: {e}");
-                    let _ = auto_merge_app.emit(
-                        "auto_merge_failed",
-                        AutoMergeFailedPayload {
-                            run_id: auto_merge_run_id.clone(),
-                            reason: e,
-                        },
-                    );
+                    Err(e) => {
+                        eprintln!("auto-merge failed for run {auto_merge_run_id}: {e}");
+                        let _ = auto_merge_app.emit(
+                            "auto_merge_failed",
+                            AutoMergeFailedPayload {
+                                run_id: auto_merge_run_id.clone(),
+                                reason: e,
+                            },
+                        );
+                    }
+                    Ok(_) => {
+                        // Auto-advance (Autopilot): once this run's branch is
+                        // merged, queue the plan's next not-started task through
+                        // the same `schedule_launch` a manual "schedule for
+                        // later" uses, carrying forward this run's agent, model,
+                        // and pass count so the chain keeps the user's choices.
+                        if auto_advance_settings.auto_advance_enabled {
+                            let next = {
+                                let conn = auto_merge_db.lock().unwrap();
+                                loopfleet_store::load_run(&conn, &auto_merge_run_id)
+                                    .ok()
+                                    .flatten()
+                                    .and_then(|detail| {
+                                        let project_id =
+                                            loopfleet_store::project_id_for_run(&conn, &auto_merge_run_id)
+                                                .ok()
+                                                .flatten()?;
+                                        let project = get_project(&conn, &project_id).ok()?;
+                                        let views = loopfleet_core::plan_overview(&conn, &project).ok()?;
+                                        let plan =
+                                            views.into_iter().find(|v| v.plan_id == detail.plan_id)?;
+                                        let task = loopfleet_core::autopilot::next_task(&plan.tasks)?;
+                                        Some((
+                                            detail.plan_id,
+                                            task.anchor.clone(),
+                                            detail.agent,
+                                            detail.model,
+                                            detail.max_iterations,
+                                        ))
+                                    })
+                            };
+                            if let Some((plan_id, task_anchor, agent, model, max_iterations)) = next {
+                                let launch_at = OffsetDateTime::now_utc()
+                                    + time::Duration::seconds(
+                                        auto_advance_settings.auto_advance_delay_seconds as i64,
+                                    );
+                                let launch_at_str = launch_at
+                                    .format(&Rfc3339)
+                                    .unwrap_or_else(|_| launch_at.to_string());
+                                let advance_app = auto_merge_app.clone();
+                                let state = auto_merge_app.state::<AppState>();
+                                let _ = schedule_launch(
+                                    plan_id,
+                                    task_anchor,
+                                    agent,
+                                    model,
+                                    max_iterations,
+                                    launch_at_str,
+                                    advance_app,
+                                    state,
+                                );
+                            }
+                        }
+                    }
                 }
             });
             scheduled_auto_merges.lock().unwrap().insert(cfg.run_id.clone(), handle);
