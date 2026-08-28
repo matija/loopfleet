@@ -35,7 +35,7 @@ pub fn compose_commit_message(
     pass_count: u32,
 ) -> String {
     let chosen = first_line(summary)
-        .or_else(|| first_line(task_text))
+        .or_else(|| first_line(task_text).map(|line| strip_plan_syntax(&line)))
         .unwrap_or_else(|| format!("Apply loopfleet run {}", short_id(run_id)));
 
     let suffix = if pass_count > 1 {
@@ -65,6 +65,40 @@ fn first_line(text: &str) -> Option<String> {
         return None;
     }
     Some(trimmed.lines().next().unwrap_or(trimmed).trim().to_string())
+}
+
+/// Strip Markdown plan syntax from a task-derived subject line: a leading
+/// bullet marker (`-`/`*`/`+`), a leading `[ ]`/`[x]`/`[X]` checkbox, and
+/// `**` wrapping the whole line. A raw plan line still carries the structure
+/// the plan file needs (list marker, checkbox state, emphasis); a commit
+/// subject just needs the sentence.
+fn strip_plan_syntax(text: &str) -> String {
+    let after_bullet = text
+        .strip_prefix("- ")
+        .or_else(|| text.strip_prefix("* "))
+        .or_else(|| text.strip_prefix("+ "))
+        .map(|rest| rest.trim_start())
+        .unwrap_or(text);
+
+    let after_checkbox = strip_checkbox_marker(after_bullet).unwrap_or(after_bullet);
+
+    let unwrapped = after_checkbox
+        .strip_prefix("**")
+        .and_then(|rest| rest.strip_suffix("**"))
+        .filter(|inner| !inner.is_empty())
+        .unwrap_or(after_checkbox);
+
+    unwrapped.trim().to_string()
+}
+
+/// Strips a leading `[ ]`/`[x]`/`[X]` checkbox marker, returning the
+/// remaining text trimmed of the space that follows it. `None` when `text`
+/// doesn't start with a recognized checkbox.
+fn strip_checkbox_marker(text: &str) -> Option<&str> {
+    let inner = text.strip_prefix('[')?;
+    let state = inner.chars().next()?;
+    let after_box = inner[state.len_utf8()..].strip_prefix(']')?;
+    matches!(state, ' ' | 'x' | 'X').then(|| after_box.trim_start())
 }
 
 /// The first 8 characters of `run_id` (or the whole id if it is shorter),
@@ -143,6 +177,24 @@ mod tests {
         assert_eq!(
             msg,
             "Add the widget (claude)\n\nTask: Build the widget\n\nloopfleet-run: abc123"
+        );
+    }
+
+    #[test]
+    fn strips_plan_syntax_from_task_derived_subject() {
+        let msg = compose_commit_message("", "- [ ] **Build the widget**", "abc123", "claude", 1);
+        assert_eq!(
+            msg,
+            "Build the widget (claude)\n\nTask: - [ ] **Build the widget**\n\nloopfleet-run: abc123"
+        );
+    }
+
+    #[test]
+    fn strips_bare_bullet_and_checked_box_from_task_derived_subject() {
+        let msg = compose_commit_message("", "* [x] Build the widget", "abc123", "claude", 1);
+        assert_eq!(
+            msg,
+            "Build the widget (claude)\n\nTask: * [x] Build the widget\n\nloopfleet-run: abc123"
         );
     }
 
