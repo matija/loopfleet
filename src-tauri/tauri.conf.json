@@ -32,7 +32,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -40,5 +40,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI3MDJCNTJGRTlGNzgyNTMKUldSVGd2ZnBMN1VDdDJCTDF3SDVvTWJ0UXNzQ2xpWE1IakZrTDBOWTlGUjg5c2hybG5rUytidTQK",
+      "endpoints": [
+        "https://github.com/matija/loopfleet/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
