@@ -123,6 +123,21 @@ struct ScheduledLaunchCancelledPayload {
     id: i64,
 }
 
+/// Restart recovered an `auto_advance`-origin scheduled launch. Chaining the
+/// plan's next task automatically is a decision the user made implicitly by
+/// leaving autopilot running before shutdown; resuming that chain silently
+/// after time away would launch a run nobody was there to see start, so it is
+/// left un-armed and turned into a question for the user to answer instead.
+/// The row stays in `scheduled_launches` (findable again next restart) until
+/// then. `launch_at` is RFC 3339, the time it was originally due to fire.
+#[derive(Clone, serde::Serialize)]
+struct AutoAdvancePendingQuestionPayload {
+    id: i64,
+    plan_id: String,
+    task_anchor: String,
+    launch_at: String,
+}
+
 /// A run's auto-merge countdown has armed, pushed to the UI so it can show
 /// when the merge will fire (and offer to cancel it). `target_branch` is
 /// empty for the repo's currently checked-out branch (see [`use_run`]).
@@ -2257,12 +2272,19 @@ fn arm_scheduled_launch(
 
 /// Re-create every persisted `scheduled_launches` row as a live scheduled
 /// launch, called once at startup — the launch-side counterpart of
-/// `rearm_pending_resumes`. A scheduled launch survives a crash or quit because
+/// `rearm_pending_resumes`. A `manual` launch survives a crash or quit because
 /// it's just waiting for its time to arrive, so recovering it is both safe and
-/// the whole point of persisting it. Each entry is re-armed with whatever delay
-/// remains until its `launch_at` (already-due fires right away), and the
+/// the whole point of persisting it: it's re-armed with whatever delay remains
+/// until its `launch_at` (already-due fires right away), and the
 /// `scheduled_launch` event is re-emitted so the frontend's indicator and
 /// Cancel action reattach exactly as if the wait had never been interrupted.
+///
+/// An `auto_advance` launch is different: it was queued by autopilot chaining
+/// the plan's next task on the user's behalf, not requested for a specific
+/// time. Silently re-arming it after a restart would launch a run nobody was
+/// present to see start, so instead it's left un-armed and turned into a
+/// question via `auto_advance_pending_question`, for the user to answer
+/// explicitly before it proceeds.
 fn rearm_scheduled_launches(app: &AppHandle) {
     let state = app.state::<AppState>();
     let pending = {
@@ -2274,6 +2296,20 @@ fn rearm_scheduled_launches(app: &AppHandle) {
         let launch_at = OffsetDateTime::from_unix_timestamp(launch.launch_at / 1000)
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
         let launch_at_str = launch_at.format(&Rfc3339).unwrap_or_else(|_| launch_at.to_string());
+
+        if launch.origin == "auto_advance" {
+            let _ = app.emit(
+                "auto_advance_pending_question",
+                AutoAdvancePendingQuestionPayload {
+                    id: launch.id,
+                    plan_id: launch.plan_id.clone(),
+                    task_anchor: launch.task_anchor.clone(),
+                    launch_at: launch_at_str,
+                },
+            );
+            continue;
+        }
+
         let _ = app.emit(
             "scheduled_launch",
             ScheduledLaunchPayload {
