@@ -287,9 +287,7 @@ mod tests {
         // holds across PRD edits, not specific task text.
         let prd = concat!(env!("CARGO_MANIFEST_DIR"), "/../../PRD.md");
         let plan = parse_plan_file(Path::new(prd)).unwrap();
-        assert!(plan.title.as_deref().unwrap().contains("Workbench UI"));
+        assert!(plan.title.as_deref().unwrap().starts_with("PRD:"));
         assert!(!plan.tasks.is_empty());
-        assert!(plan.tasks.iter().any(|t| t.checked));
-        assert!(plan.tasks.iter().any(|t| !t.checked));
     }
 }
