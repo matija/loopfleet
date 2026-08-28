@@ -7,8 +7,8 @@ use loopfleet_adapters::{ClaudeAdapter, CursorAdapter, PiAdapter};
 use loopfleet_core::{
     fold_rate_limit, launch_decision, resolve_display, run_loop, should_auto_merge, AgentAdapter,
     AutoMergeBlockedReason, AutoMergeDecision, CompareView, LaunchDecision, LoopConfig,
-    NormalizedEvent, PlanView, RateLimitNotice, RunSpec, RunState, RunTimeline, UsageDisplay,
-    UsageSnapshot, UsageSource, UsageThresholds,
+    NormalizedEvent, PlanView, RateLimitNotice, RunSpec, RunState, RunTimeline, TaskStatus,
+    UsageDisplay, UsageSnapshot, UsageSource, UsageThresholds,
 };
 use loopfleet_gitx::GitActor;
 use loopfleet_sandbox::{confine_prefix, RenderParams};
@@ -2361,45 +2361,83 @@ fn rearm_scheduled_launches(app: &AppHandle) {
     prompt_stalled_autopilot_resume(app, stalled_autopilot_resumes);
 }
 
-/// Turn the oldest of `stalled`'s `auto_advance` launches (left un-armed by
-/// `rearm_scheduled_launches`) into a single `autopilot_resume_prompt` for the
-/// user — the chain that has been waiting longest is the one most useful to
-/// surface first, and asking about every recovered chain at once would just
-/// be a wall of questions on startup. The rest stay in `scheduled_launches`
-/// and are eligible to be picked next time (once this one is answered, or on
-/// the next restart).
-fn prompt_stalled_autopilot_resume(app: &AppHandle, stalled: Vec<loopfleet_store::ScheduledLaunch>) {
-    let Some(oldest) = stalled.into_iter().min_by_key(|l| l.created_at) else {
-        return;
-    };
+/// Turn the oldest still-valid of `stalled`'s `auto_advance` launches (left
+/// un-armed by `rearm_scheduled_launches`) into a single `autopilot_resume_prompt`
+/// for the user — the chain that has been waiting longest is the one most
+/// useful to surface first, and asking about every recovered chain at once
+/// would just be a wall of questions on startup.
+///
+/// Before asking, each candidate (oldest first) is re-validated against
+/// current state: the schedule row itself must not have been cancelled out
+/// from under this call, its plan must still parse, and its task must still
+/// exist and still be `NotStarted` — time away may have deleted the plan
+/// file, removed the task, or let some other run finish it. A candidate that
+/// fails any of these is stale: its `scheduled_launches` row is dropped
+/// silently (no `scheduled_launch_dropped`, since there is no "launching
+/// at…" indicator for the user to reconcile) and the next-oldest is tried.
+/// Whichever candidates aren't asked about (because an earlier one already
+/// won, or because this run never reaches them) stay in `scheduled_launches`
+/// and are eligible to be picked next time.
+fn prompt_stalled_autopilot_resume(app: &AppHandle, mut stalled: Vec<loopfleet_store::ScheduledLaunch>) {
+    stalled.sort_by_key(|l| l.created_at);
 
     let state = app.state::<AppState>();
-    let conn = state.db.lock().unwrap();
 
-    let plan_title = loopfleet_store::plan_file_path(&conn, &oldest.plan_id)
-        .ok()
-        .flatten()
-        .and_then(|path| loopfleet_core::parse_plan_file(std::path::Path::new(&path)).ok())
-        .and_then(|parsed| parsed.title);
-    let task_text = loopfleet_store::load_task(&conn, &oldest.plan_id, &oldest.task_anchor)
-        .ok()
-        .flatten()
-        .map(|t| t.text)
-        .unwrap_or_else(|| oldest.task_anchor.clone());
-    drop(conn);
+    for launch in stalled {
+        let conn = state.db.lock().unwrap();
 
-    let _ = app.emit(
-        "autopilot_resume_prompt",
-        AutopilotResumePromptPayload {
-            plan_id: oldest.plan_id,
-            plan_title,
-            task_anchor: oldest.task_anchor,
-            task_text,
-            agent: oldest.agent,
-            pass_count: oldest.pass_count,
-            scheduled_launch_id: oldest.id,
-        },
-    );
+        let still_scheduled = loopfleet_store::list_scheduled_launches(&conn)
+            .unwrap_or_default()
+            .iter()
+            .any(|l| l.id == launch.id);
+        if !still_scheduled {
+            continue;
+        }
+
+        let project_id = conn
+            .query_row(
+                "SELECT project_id FROM plans WHERE id = ?1",
+                [&launch.plan_id],
+                |r| r.get::<_, String>(0),
+            )
+            .ok();
+        let plan = project_id
+            .and_then(|project_id| get_project(&conn, &project_id).ok())
+            .and_then(|project| loopfleet_core::plan_overview(&conn, &project).ok())
+            .and_then(|views| views.into_iter().find(|v| v.plan_id == launch.plan_id));
+        let Some(plan) = plan else {
+            let _ = loopfleet_store::delete_scheduled_launch(&conn, launch.id);
+            continue;
+        };
+
+        let task = plan.tasks.iter().find(|t| t.anchor == launch.task_anchor);
+        let Some(task) = task else {
+            let _ = loopfleet_store::delete_scheduled_launch(&conn, launch.id);
+            continue;
+        };
+        if task.status != TaskStatus::NotStarted {
+            let _ = loopfleet_store::delete_scheduled_launch(&conn, launch.id);
+            continue;
+        }
+
+        let plan_title = plan.title.clone();
+        let task_text = task.text.clone();
+        drop(conn);
+
+        let _ = app.emit(
+            "autopilot_resume_prompt",
+            AutopilotResumePromptPayload {
+                plan_id: launch.plan_id,
+                plan_title,
+                task_anchor: launch.task_anchor,
+                task_text,
+                agent: launch.agent,
+                pass_count: launch.pass_count,
+                scheduled_launch_id: launch.id,
+            },
+        );
+        return;
+    }
 }
 
 /// Ask the user about any run that was mid-auto-merge-countdown when the app
