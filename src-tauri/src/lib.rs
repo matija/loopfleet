@@ -19,6 +19,8 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use tokio::sync::watch;
 
+mod path_env;
+
 /// The future returned by [`spawn_run`]. Boxed and type-erased so a rate-limited
 /// run can schedule another `spawn_run` from inside its own completion handler
 /// without the recursion making the future infinitely sized.
@@ -2307,6 +2309,12 @@ fn agent_dirs() -> Vec<PathBuf> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // A Finder/Dock-launched .app inherits launchd's minimal PATH, which hides
+    // the agent CLIs that a terminal-launched dev run finds. Repair PATH before
+    // anything spawns, so discovery and the runs themselves see the same
+    // binaries the user's shell does.
+    path_env::repair();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
