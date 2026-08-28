@@ -157,6 +157,16 @@ export type RunSummary = {
   accepted: boolean;
 };
 
+/// What "Continue plan" launched. `lib::ContinuePlanResult`.
+export type ContinuePlanResult = {
+  run_id: string;
+  task_anchor: string;
+  task_text: string;
+  agent: string;
+  model: string | null;
+  max_iterations: number;
+};
+
 // --- core: timeline.rs ---
 
 /// One file's change in a diff. `core::timeline::FileChangeView`.

@@ -12,6 +12,7 @@ import { useAgentUsage } from "../agentUsage";
 import {
   agentStatus,
   checkAgentUsage,
+  continuePlan,
   exportPlanReport,
   launchRun,
   listProjects,
@@ -42,6 +43,7 @@ import {
   DotIcon,
   FolderIcon,
   GitBranchIcon,
+  PlayIcon,
 } from "./Icon";
 import { Popover } from "./Popover";
 import { finishedRunTone, MetaRow, useHoverOpen, worktreeBranch } from "./RunDock";
@@ -196,12 +198,24 @@ function PlanCard({
   // group), so the index leads with what's left to do.
   const open = plan.tasks.filter((t) => t.status !== "accepted");
   const done = plan.tasks.filter((t) => t.status === "accepted");
+  // Same rule the backend's `next_task` uses to pick what "Continue plan"
+  // would start — mirrored here just to decide whether to show the button.
+  const hasNextTask = plan.tasks.some((t) => t.status === "not-started");
 
   return (
     <section className="plan-card">
       <header className="plan-card__head">
         <h3>{plan.title ?? plan.file_path}</h3>
         <span className="plan-card__path">{plan.file_path}</span>
+        {hasNextTask && (
+          <ContinuePlanButton
+            projectId={projectId}
+            planId={plan.plan_id}
+            onLaunched={onLaunched}
+            onLaunch={onLaunch}
+            onError={onError}
+          />
+        )}
         <ExportButton
           onExport={() => exportPlanReport(plan.plan_id)}
           onError={onError}
@@ -272,6 +286,61 @@ function PlanCard({
         </>
       )}
     </section>
+  );
+}
+
+/// Starts the plan's next not-started task with the plan's last-used launch
+/// preferences (or the app defaults, if it's never had a run) — one click to
+/// keep a chain moving without opening a per-task launch menu. Reports the
+/// launched run upward through the same `onLaunch`/`onLaunched` callbacks a
+/// per-task `LaunchControl` uses, so it folds into the global run dock the
+/// same way.
+function ContinuePlanButton({
+  projectId,
+  planId,
+  onLaunched,
+  onLaunch,
+  onError,
+}: {
+  projectId: string;
+  planId: string;
+  onLaunched: () => void;
+  onLaunch: (run: LaunchedRun) => void;
+  onError: (message: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  async function run() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await continuePlan({ projectId, planId });
+      onLaunch({
+        runId: result.run_id,
+        taskText: result.task_text,
+        taskAnchor: result.task_anchor,
+        agent: result.agent,
+        model: result.model ?? "",
+        maxIterations: result.max_iterations,
+      });
+      onLaunched();
+    } catch (e) {
+      onError(`Continue plan failed: ${String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button
+      className="btn btn--quiet"
+      onClick={run}
+      disabled={busy}
+      title="Start the plan's next not-started task, using this plan's last-used agent, model, and pass count"
+    >
+      <PlayIcon size={14} className="btn__icon" />
+      {busy ? "Starting…" : "Continue plan"}
+    </button>
   );
 }
 

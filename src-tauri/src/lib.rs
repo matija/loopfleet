@@ -788,6 +788,84 @@ async fn launch_run(
     .await
 }
 
+/// What "Continue plan" launched, for the UI to fold into the same run dock a
+/// manual per-task launch reports to (mirrors the frontend's `LaunchedRun`).
+#[derive(serde::Serialize)]
+struct ContinuePlanResult {
+    run_id: String,
+    task_anchor: String,
+    task_text: String,
+    agent: String,
+    model: Option<String>,
+    max_iterations: u32,
+}
+
+/// Start the plan's next not-started task (document order, same rule as
+/// autopilot's own chaining — see [`loopfleet_core::autopilot::next_task`]),
+/// carrying forward the plan's most recently launched run's agent/model/pass
+/// count. A plan with no prior run falls back to the app's default agent and
+/// iteration count. Errors if every task is already started (nothing to
+/// continue).
+#[tauri::command]
+async fn continue_plan(
+    project_id: String,
+    plan_id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ContinuePlanResult, String> {
+    let (task_anchor, task_text, agent, model, max_iterations) = {
+        let conn = state.db.lock().unwrap();
+        let project = get_project(&conn, &project_id)?;
+        let views = loopfleet_core::plan_overview(&conn, &project).map_err(|e| e.to_string())?;
+        let plan = views
+            .into_iter()
+            .find(|v| v.plan_id == plan_id)
+            .ok_or_else(|| "plan not found".to_string())?;
+        let task = loopfleet_core::autopilot::next_task(&plan.tasks)
+            .ok_or_else(|| "every task in this plan is already started".to_string())?;
+        let task_anchor = task.anchor.clone();
+        let task_text = task.text.clone();
+
+        let prefs = loopfleet_store::latest_launch_prefs_for_plan(&conn, &plan_id)
+            .map_err(|e| e.to_string())?;
+        let (agent, model, max_iterations) = match prefs {
+            Some(p) => (p.agent, p.model, p.max_iterations),
+            None => {
+                let settings = loopfleet_store::load_settings(&conn).map_err(|e| e.to_string())?;
+                (settings.default_agent, None, settings.default_iterations)
+            }
+        };
+        (task_anchor, task_text, agent, model, max_iterations)
+    };
+
+    let run_id = spawn_run(
+        project_id,
+        task_anchor.clone(),
+        agent.clone(),
+        model.clone(),
+        max_iterations,
+        app,
+        state.db.clone(),
+        state.git.clone(),
+        state.data_dir.clone(),
+        state.stops.clone(),
+        state.unacknowledged_runs.clone(),
+        state.scheduled_resumes.clone(),
+        state.scheduled_auto_merges.clone(),
+        0,
+    )
+    .await?;
+
+    Ok(ContinuePlanResult {
+        run_id,
+        task_anchor,
+        task_text,
+        agent,
+        model,
+        max_iterations,
+    })
+}
+
 /// Cut a worktree, insert a run row, and drive the looping run in the background
 /// (see [`launch_run`]). Takes owned clones of the shared app state rather than a
 /// Tauri `State`, so it can be called both from the `launch_run` command and from
@@ -3071,6 +3149,7 @@ pub fn run() {
             plan_edit_apply,
             plan_edit_discard,
             launch_run,
+            continue_plan,
             plan_runs,
             run_timeline,
             stop_run,

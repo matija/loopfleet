@@ -8,6 +8,7 @@ import type {
   AgentStatus,
   AgentUsageCheck,
   CompareView,
+  ContinuePlanResult,
   PlanEditProposal,
   PlanView,
   Project,
@@ -140,6 +141,17 @@ export function launchRun(args: {
   maxIterations: number;
 }): Promise<string> {
   return invoke("launch_run", { ...args, model: args.model ?? null });
+}
+
+/// Start a plan's next not-started task (document order), carrying forward the
+/// plan's most recently launched run's agent/model/pass count — falling back to
+/// the app's default agent/iterations if the plan has never had a run. Rejects
+/// if every task in the plan is already started.
+export function continuePlan(args: {
+  projectId: string;
+  planId: string;
+}): Promise<ContinuePlanResult> {
+  return invoke("continue_plan", args);
 }
 
 /// Request a stop of an active run (stops at the next pass boundary).

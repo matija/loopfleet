@@ -298,6 +298,41 @@ pub struct RunSummary {
     pub accepted: bool,
 }
 
+/// The agent/model/pass-count a plan's most recent run was launched with, for
+/// "Continue plan" to carry forward the plan's last-used launch preferences.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LastLaunchPrefs {
+    pub agent: String,
+    pub model: Option<String>,
+    pub max_iterations: u32,
+}
+
+/// The launch prefs of the most recently inserted run bound to `plan_id`, or
+/// `None` if the plan has never had a run. Ordered by `rowid` (insertion
+/// order) rather than `id`, since run ids are random UUIDs.
+pub fn latest_launch_prefs_for_plan(
+    conn: &Connection,
+    plan_id: &str,
+) -> rusqlite::Result<Option<LastLaunchPrefs>> {
+    conn.query_row(
+        "SELECT agent, model, max_iterations FROM runs
+         WHERE plan_id = ?1 ORDER BY rowid DESC LIMIT 1",
+        [plan_id],
+        |r| {
+            Ok(LastLaunchPrefs {
+                agent: r.get(0)?,
+                model: r.get(1)?,
+                max_iterations: r.get(2)?,
+            })
+        },
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+}
+
 /// Every run bound to any task in `plan_id`. The plan view groups these by
 /// `task_anchor` and derives each task's `TaskStatus`.
 pub fn list_runs_for_plan(conn: &Connection, plan_id: &str) -> rusqlite::Result<Vec<RunSummary>> {
