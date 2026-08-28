@@ -103,10 +103,12 @@ impl GitActor {
 
     /// Merge a run's final commit into a target branch ("use this run",
     /// `merge::merge_run`) through the actor. `target_branch = None` merges into
-    /// the repo's current branch; `Some(name)` names a custom target. `message =
-    /// None` derives the squashed commit's message from the source commit's own
-    /// message; `Some(msg)` uses the caller's wording instead. `scratch_root`
-    /// roots the throwaway worktree every custom-target merge runs in.
+    /// the repo's current branch; `Some(name)` names a custom target. The
+    /// squashed commit's message is the source commit's own message when the
+    /// agent left one; `message` is used only as a fallback for a run whose
+    /// worktree carries no wording of its own (e.g. a caller-composed summary),
+    /// with a synthesized subject as the last resort. `scratch_root` roots the
+    /// throwaway worktree every custom-target merge runs in.
     pub async fn merge_run(
         &self,
         repo: PathBuf,

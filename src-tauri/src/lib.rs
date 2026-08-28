@@ -2006,20 +2006,39 @@ async fn use_run(
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty());
 
-    // Resolve the run's parent repo and its final shadow ref.
-    let (repo_path, source_ref) = {
+    // Resolve the run's parent repo, its final shadow ref, and enough of its
+    // task binding to compose a fallback commit message for it.
+    let (repo_path, source_ref, task_text, agent, pass_count) = {
         let conn = state.db.lock().unwrap();
         let detail = loopfleet_store::load_run(&conn, &run_id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("unknown run: {run_id}"))?;
-        let source_ref = loopfleet_store::load_iterations(&conn, &run_id)
-            .map_err(|e| e.to_string())?
+        let iterations =
+            loopfleet_store::load_iterations(&conn, &run_id).map_err(|e| e.to_string())?;
+        let pass_count = iterations.len() as u32;
+        let source_ref = iterations
             .into_iter()
             .rev()
             .find_map(|it| it.shadow_ref)
             .ok_or_else(|| "run has no snapshot to use".to_string())?;
-        (detail.repo_path, source_ref)
+        let task_text = loopfleet_store::load_task(&conn, &detail.plan_id, &detail.task_anchor)
+            .map_err(|e| e.to_string())?
+            .map(|t| t.text)
+            .unwrap_or(detail.task_anchor);
+        (detail.repo_path, source_ref, task_text, detail.agent, pass_count)
     };
+
+    // The run's own progress file, read for its `SUMMARY:` line — durable state
+    // the agent wrote across passes, not something reconstructed here. Used only
+    // as a fallback message; a run whose worktree carries its own commit wording
+    // has that wording win instead (see `loopfleet_gitx::merge::merge_run`).
+    let progress_path = state.data_dir.join("progress").join(&run_id).join("progress.md");
+    let summary = std::fs::read_to_string(&progress_path)
+        .ok()
+        .and_then(|c| loopfleet_core::progress::summary_from_contents(&c))
+        .unwrap_or_default();
+    let fallback_message =
+        loopfleet_core::compose_commit_message(&summary, &task_text, &run_id, &agent, pass_count);
 
     let scratch_root = state.data_dir.join("worktrees");
     let merge = state
@@ -2029,7 +2048,7 @@ async fn use_run(
             source_ref,
             target,
             scratch_root,
-            None,
+            Some(fallback_message),
         )
         .await
         .map_err(|e| e.to_string())?;

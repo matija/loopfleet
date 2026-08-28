@@ -123,9 +123,11 @@ type Result<T> = std::result::Result<T, MergeError>;
 /// `Some(target)` names a custom branch: branched off the repo's HEAD first if it
 /// doesn't exist, then squash-merged in a throwaway worktree under `scratch_root`
 /// so the user's own checkout is never touched. Every path lands the run as one
-/// commit carrying `message` — the caller's own wording, or, when `None`, the
-/// source commits' own messages (see [`squash_message`]) — with
-/// [`MERGE_COMMIT_TRAILER`] appended.
+/// commit carrying the source commits' own messages when present (see
+/// [`squash_message`]) — the agent's own wording always wins — falling back to
+/// `message` (the caller's wording) when the source carries none of its own,
+/// and finally to a synthesized subject when neither has anything to say —
+/// with [`MERGE_COMMIT_TRAILER`] appended.
 pub fn merge_run(
     repo: &Path,
     source_rev: &str,
@@ -196,10 +198,9 @@ fn merge_into_current(repo: &Path, source: &str, message: Option<&str>) -> Resul
             "working tree is dirty; commit or stash before using this run".into(),
         ));
     }
-    let message = match message {
-        Some(m) => m.to_string(),
-        None => squash_message(repo, &branch, source)?.unwrap_or_else(|| fallback_message(source)),
-    };
+    let message = squash_message(repo, &branch, source)?
+        .or_else(|| message.map(str::to_string))
+        .unwrap_or_else(|| fallback_message(source));
     let message = with_trailer(&message);
     let (up_to_date, merged_commit) = squash_merge(repo, source, &message)?;
     Ok(MergeResult {
@@ -249,10 +250,9 @@ fn merge_into_named(
 
     // The message covers what the target is about to gain, so a derived one is
     // computed against the target's own tip.
-    let message = match message {
-        Some(m) => m.to_string(),
-        None => squash_message(repo, target_branch, source)?.unwrap_or_else(|| fallback_message(source)),
-    };
+    let message = squash_message(repo, target_branch, source)?
+        .or_else(|| message.map(str::to_string))
+        .unwrap_or_else(|| fallback_message(source));
     let message = with_trailer(&message);
 
     // Squash the run onto the target inside the throwaway worktree. Whatever the
@@ -903,19 +903,14 @@ mod tests {
         assert_eq!(subject, format!("Apply loopfleet run {}", &snap.commit[..8]));
     }
 
-    /// A caller-supplied message overrides the source commits' own wording, but
+    /// A caller-supplied message is used only when the source carries no wording
+    /// of its own (every commit in `base..source` is loopfleet bookkeeping), but
     /// still gets the trailer appended — `with_trailer` is the only place that
     /// happens, whichever wording it's applied to.
     #[test]
-    fn caller_supplied_message_is_used_with_trailer_appended() {
+    fn caller_supplied_message_is_used_as_fallback_with_trailer_appended() {
         let (repo, _root, wt) = repo_with_worktree("merge-r16");
-        let wt_git = |args: &[&str]| {
-            let out = Command::new("git").arg("-C").arg(&wt.path).args(args).output().unwrap();
-            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
-        };
         std::fs::write(wt.path.join("out.txt"), "result\n").unwrap();
-        wt_git(&["add", "-A"]);
-        wt_git(&["commit", "-qm", "Add the widget"]);
         let snap = snapshot(repo.path(), &wt.path, "merge-r16", 1).unwrap();
 
         let scratch = tempfile::tempdir().unwrap();
@@ -923,6 +918,28 @@ mod tests {
 
         let msg = git_out(repo.path(), &["log", "-1", "--format=%B", "main"]);
         assert_eq!(msg, "Custom message\n\nCo-authored-by: loopfleet <loopfleet@tandoku.hr>");
+    }
+
+    /// The agent's own commit message still wins even when the caller also
+    /// supplies one: the caller's wording is a fallback for when the source has
+    /// nothing to say, never an override of what the agent actually wrote.
+    #[test]
+    fn agents_own_commit_message_wins_over_a_caller_supplied_one() {
+        let (repo, _root, wt) = repo_with_worktree("merge-r18");
+        let wt_git = |args: &[&str]| {
+            let out = Command::new("git").arg("-C").arg(&wt.path).args(args).output().unwrap();
+            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        };
+        std::fs::write(wt.path.join("out.txt"), "result\n").unwrap();
+        wt_git(&["add", "-A"]);
+        wt_git(&["commit", "-qm", "Add the widget"]);
+        let snap = snapshot(repo.path(), &wt.path, "merge-r18", 1).unwrap();
+
+        let scratch = tempfile::tempdir().unwrap();
+        merge_run(repo.path(), &snap.git_ref, None, scratch.path(), Some("Custom message")).unwrap();
+
+        let msg = git_out(repo.path(), &["log", "-1", "--format=%B", "main"]);
+        assert_eq!(msg, "Add the widget\n\nCo-authored-by: loopfleet <loopfleet@tandoku.hr>");
     }
 
     /// The trailer lands as the message's last paragraph, leaving the subject and

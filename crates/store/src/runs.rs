@@ -168,6 +168,9 @@ pub fn load_iterations(conn: &Connection, run_id: &str) -> rusqlite::Result<Vec<
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunDetail {
     pub id: String,
+    /// The plan this run's task is bound to, so a caller can look the task's
+    /// full authored text back up by `(plan_id, task_anchor)`.
+    pub plan_id: String,
     pub task_anchor: String,
     pub agent: String,
     /// The model override this run was launched with, if any.
@@ -187,8 +190,8 @@ pub struct RunDetail {
 /// Load one run's detail (with its parent repo path), or `None` if absent.
 pub fn load_run(conn: &Connection, run_id: &str) -> rusqlite::Result<Option<RunDetail>> {
     conn.query_row(
-        "SELECT r.id, r.task_anchor, r.agent, r.model, r.status, r.max_iterations, pr.repo_path,
-                r.worktree_path, r.accepted
+        "SELECT r.id, r.plan_id, r.task_anchor, r.agent, r.model, r.status, r.max_iterations,
+                pr.repo_path, r.worktree_path, r.accepted
          FROM runs r
          JOIN plans pl ON r.plan_id = pl.id
          JOIN projects pr ON pl.project_id = pr.id
@@ -197,14 +200,15 @@ pub fn load_run(conn: &Connection, run_id: &str) -> rusqlite::Result<Option<RunD
         |r| {
             Ok(RunDetail {
                 id: r.get(0)?,
-                task_anchor: r.get(1)?,
-                agent: r.get(2)?,
-                model: r.get(3)?,
-                status: r.get(4)?,
-                max_iterations: r.get(5)?,
-                repo_path: r.get(6)?,
-                worktree_path: r.get(7)?,
-                accepted: r.get::<_, i64>(8)? != 0,
+                plan_id: r.get(1)?,
+                task_anchor: r.get(2)?,
+                agent: r.get(3)?,
+                model: r.get(4)?,
+                status: r.get(5)?,
+                max_iterations: r.get(6)?,
+                repo_path: r.get(7)?,
+                worktree_path: r.get(8)?,
+                accepted: r.get::<_, i64>(9)? != 0,
             })
         },
     )
