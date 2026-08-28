@@ -124,7 +124,7 @@ type Result<T> = std::result::Result<T, MergeError>;
 /// doesn't exist, then squash-merged in a throwaway worktree under `scratch_root`
 /// so the user's own checkout is never touched. Every path lands the run as one
 /// commit carrying `message` — the caller's own wording, or, when `None`, the
-/// source commits' own messages (see [`derive_message`]) — with
+/// source commits' own messages (see [`squash_message`]) — with
 /// [`MERGE_COMMIT_TRAILER`] appended.
 pub fn merge_run(
     repo: &Path,
@@ -149,10 +149,12 @@ pub fn merge_run(
 /// inventing a subject of its own.
 ///
 /// loopfleet's per-iteration shadow snapshots are skipped: they are bookkeeping
-/// (`run <id> iter <n>`), not something the user wrote. When the agent committed
-/// nothing itself, there is no other wording available and the final snapshot's
-/// message is used as-is.
-fn derive_message(repo: &Path, base: &str, source: &str) -> Result<String> {
+/// (`run <id> iter <n>`), not something the user wrote. `None` when every commit
+/// in `base..source` is one of those snapshots — the agent left no wording of its
+/// own to carry forward, so there is nothing here for the caller to use; the
+/// caller falls back to its own composed message rather than this function
+/// reaching for the raw snapshot text.
+fn squash_message(repo: &Path, base: &str, source: &str) -> Result<Option<String>> {
     let log = git(repo, &["log", "--format=%B%x00", &format!("{base}..{source}")])?;
     let messages: Vec<&str> = log
         .split('\0')
@@ -160,10 +162,18 @@ fn derive_message(repo: &Path, base: &str, source: &str) -> Result<String> {
         .filter(|m| !m.is_empty() && !is_snapshot_message(m))
         .collect();
     if messages.is_empty() {
-        git(repo, &["log", "-1", "--format=%B", source])
+        Ok(None)
     } else {
-        Ok(messages.join("\n\n"))
+        Ok(Some(messages.join("\n\n")))
     }
+}
+
+/// Fallback subject when neither the caller nor the source's own commits have
+/// anything to say (every commit in `base..source` was loopfleet bookkeeping,
+/// and no caller message was supplied) — identifies the run by its source
+/// commit rather than surfacing the bookkeeping text itself.
+fn fallback_message(source: &str) -> String {
+    format!("Apply loopfleet run {}", &source[..source.len().min(8)])
 }
 
 /// True for a loopfleet shadow-snapshot message (`run <id> iter <n>`, written by
@@ -188,7 +198,7 @@ fn merge_into_current(repo: &Path, source: &str, message: Option<&str>) -> Resul
     }
     let message = match message {
         Some(m) => m.to_string(),
-        None => derive_message(repo, &branch, source)?,
+        None => squash_message(repo, &branch, source)?.unwrap_or_else(|| fallback_message(source)),
     };
     let message = with_trailer(&message);
     let (up_to_date, merged_commit) = squash_merge(repo, source, &message)?;
@@ -241,7 +251,7 @@ fn merge_into_named(
     // computed against the target's own tip.
     let message = match message {
         Some(m) => m.to_string(),
-        None => derive_message(repo, target_branch, source)?,
+        None => squash_message(repo, target_branch, source)?.unwrap_or_else(|| fallback_message(source)),
     };
     let message = with_trailer(&message);
 
@@ -535,7 +545,7 @@ mod tests {
             &snap.git_ref,
             Some("review/x"),
             scratch.path(),
-            None,
+            Some("Caller-composed message"),
         )
         .unwrap();
 
@@ -551,8 +561,10 @@ mod tests {
         assert_eq!(show(repo.path(), "review/x", "README.md"), "hi\n");
         // One squashed commit on top of HEAD, under the supplied message — the
         // shadow commit is not the branch tip and is not a parent.
-        // The agent committed nothing, so the run's final snapshot supplies the wording.
-        assert_squashed_onto(repo.path(), "review/x", &head_tip, head_count, "run merge-r1 iter 1");
+        // The agent committed nothing itself, so it has no wording of its own to
+        // carry forward: the caller's composed message is used instead of the
+        // bookkeeping snapshot text ("run merge-r1 iter 1").
+        assert_squashed_onto(repo.path(), "review/x", &head_tip, head_count, "Caller-composed message");
         assert_ne!(git_out(repo.path(), &["rev-parse", "review/x"]), snap.commit);
         // ...stamped with the user's identity on both halves, as every path is.
         let (author, committer) = identity(repo.path(), "review/x");
@@ -610,7 +622,7 @@ mod tests {
             &snap.git_ref,
             Some("integration"),
             scratch.path(),
-            None,
+            Some("Caller-composed message"),
         )
         .unwrap();
 
@@ -620,7 +632,9 @@ mod tests {
         assert_eq!(show(repo.path(), "integration", "feature.txt"), "feature\n");
         assert_eq!(show(repo.path(), "integration", "README.md"), "hi\n");
         // ...as a single squashed commit on top of the old tip, not a merge commit.
-        assert_squashed_onto(repo.path(), "integration", &before_tip, before_count, "run merge-r2 iter 1");
+        // The agent committed nothing itself, so the caller's composed message is
+        // used instead of the bookkeeping snapshot text ("run merge-r2 iter 1").
+        assert_squashed_onto(repo.path(), "integration", &before_tip, before_count, "Caller-composed message");
         // The throwaway worktree is gone (only the main worktree remains).
         let listed = crate::worktree::list(repo.path()).unwrap();
         assert!(listed.iter().all(|w| !w.path.starts_with(scratch.path())));
@@ -722,7 +736,14 @@ mod tests {
         let snap = snapshot(repo.path(), &wt.path, "merge-r5", 1).unwrap();
 
         let scratch = tempfile::tempdir().unwrap();
-        let res = merge_run(repo.path(), &snap.git_ref, None, scratch.path(), None).unwrap();
+        let res = merge_run(
+            repo.path(),
+            &snap.git_ref,
+            None,
+            scratch.path(),
+            Some("Caller-composed message"),
+        )
+        .unwrap();
 
         assert_eq!(res.target_branch, "main");
         assert!(!res.created);
@@ -731,8 +752,10 @@ mod tests {
         assert_eq!(show(repo.path(), "main", "out.txt"), "result\n");
         assert!(repo.path().join("out.txt").exists());
         // Exactly one new commit, single-parented on main's old tip, carrying the
-        // supplied message — a squash, not a merge commit.
-        assert_squashed_onto(repo.path(), "main", &before_tip, before_count, "run merge-r5 iter 1");
+        // supplied message — a squash, not a merge commit. The agent committed
+        // nothing itself, so the caller's composed message is used instead of the
+        // bookkeeping snapshot text ("run merge-r5 iter 1").
+        assert_squashed_onto(repo.path(), "main", &before_tip, before_count, "Caller-composed message");
         // ...and that new commit is what the result reports, not the shadow commit.
         assert_eq!(res.merged_commit, git_out(repo.path(), &["rev-parse", "main"]));
         assert_ne!(res.merged_commit, snap.commit);
@@ -860,6 +883,24 @@ mod tests {
             msg,
             "Add the widget\n\nWith a body explaining why.\n\nCo-authored-by: loopfleet <loopfleet@tandoku.hr>"
         );
+    }
+
+    /// When every commit in `base..source` is loopfleet bookkeeping (the agent
+    /// committed nothing of its own) and the caller supplies no message either,
+    /// the squash falls back to naming the run by its source commit rather than
+    /// surfacing the bookkeeping snapshot text itself.
+    #[test]
+    fn falls_back_to_a_synthesized_subject_when_source_is_bookkeeping_only_and_no_message_given() {
+        let (repo, _root, wt) = repo_with_worktree("merge-r17");
+        std::fs::write(wt.path.join("out.txt"), "result\n").unwrap();
+        let snap = snapshot(repo.path(), &wt.path, "merge-r17", 1).unwrap();
+
+        let scratch = tempfile::tempdir().unwrap();
+        merge_run(repo.path(), &snap.git_ref, None, scratch.path(), None).unwrap();
+
+        let subject = git_out(repo.path(), &["log", "-1", "--pretty=%s", "main"]);
+        assert!(!subject.contains("iter"), "bookkeeping text should not surface, got {subject:?}");
+        assert_eq!(subject, format!("Apply loopfleet run {}", &snap.commit[..8]));
     }
 
     /// A caller-supplied message overrides the source commits' own wording, but
