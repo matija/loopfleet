@@ -21,6 +21,40 @@ pub fn next_task(tasks: &[TaskView]) -> Option<&TaskView> {
     tasks.iter().find(|t| t.status == TaskStatus::NotStarted)
 }
 
+/// Why auto-advance refuses to chain the plan's next task after an auto-merge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutoAdvanceBlockedReason {
+    /// The concurrency cap (M6 settings) is already met by active runs, so
+    /// queuing another launch would just wait behind it — the delay is more
+    /// useful spent on a fresh check once a slot frees up than on a launch
+    /// that's guaranteed to be rejected when it fires.
+    ConcurrencyCapReached,
+    /// The plan already has an auto-advance launch scheduled (e.g. one from a
+    /// task that finished moments earlier); advancing again would queue a
+    /// second one on top of it.
+    LaunchAlreadyPending,
+}
+
+/// Decide whether auto-advance may chain the plan's next task right now,
+/// given the fleet's current load and this plan's own pending schedule.
+///
+/// Checks run in that order, so the first one that fails is the reason
+/// reported. Returns `None` when neither condition blocks — the caller then
+/// looks up the next task itself via [`next_task`].
+pub fn should_auto_advance(
+    active_runs: u32,
+    concurrency_cap: u32,
+    has_pending_auto_advance_launch: bool,
+) -> Option<AutoAdvanceBlockedReason> {
+    if concurrency_cap > 0 && active_runs >= concurrency_cap {
+        return Some(AutoAdvanceBlockedReason::ConcurrencyCapReached);
+    }
+    if has_pending_auto_advance_launch {
+        return Some(AutoAdvanceBlockedReason::LaunchAlreadyPending);
+    }
+    None
+}
+
 /// Why auto-merge does not arm for a run right now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AutoMergeBlockedReason {
@@ -203,5 +237,47 @@ mod tests {
     #[test]
     fn next_task_none_for_empty_tasks() {
         assert!(next_task(&[]).is_none());
+    }
+
+    #[test]
+    fn auto_advance_allowed_under_cap_with_no_pending_launch() {
+        assert_eq!(should_auto_advance(1, 3, false), None);
+    }
+
+    #[test]
+    fn auto_advance_allowed_when_cap_disabled() {
+        assert_eq!(should_auto_advance(10, 0, false), None);
+    }
+
+    #[test]
+    fn auto_advance_blocked_when_cap_reached() {
+        assert_eq!(
+            should_auto_advance(3, 3, false),
+            Some(AutoAdvanceBlockedReason::ConcurrencyCapReached)
+        );
+    }
+
+    #[test]
+    fn auto_advance_blocked_when_over_cap() {
+        assert_eq!(
+            should_auto_advance(5, 3, false),
+            Some(AutoAdvanceBlockedReason::ConcurrencyCapReached)
+        );
+    }
+
+    #[test]
+    fn auto_advance_blocked_when_launch_already_pending() {
+        assert_eq!(
+            should_auto_advance(0, 3, true),
+            Some(AutoAdvanceBlockedReason::LaunchAlreadyPending)
+        );
+    }
+
+    #[test]
+    fn cap_reached_takes_priority_over_pending_launch() {
+        assert_eq!(
+            should_auto_advance(3, 3, true),
+            Some(AutoAdvanceBlockedReason::ConcurrencyCapReached)
+        );
     }
 }

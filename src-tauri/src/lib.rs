@@ -152,6 +152,17 @@ struct AutoMergeFailedPayload {
     reason: String,
 }
 
+/// Auto-advance declined to chain the plan's next task after an auto-merge —
+/// the concurrency cap was already met, or the plan already had an
+/// auto-advance launch pending. The plan sits idle until the user launches a
+/// task by hand or the blocking condition clears on its own (a run finishes,
+/// the pending launch fires).
+#[derive(Clone, serde::Serialize)]
+struct AutoAdvanceStoppedPayload {
+    plan_id: String,
+    reason: String,
+}
+
 /// Persist one event to the run's log and push it to the live UI. Returns the
 /// event's `seq` (its `rowid`), captured under the same lock as the insert so it
 /// is that event's even though other writers share the connection.
@@ -1050,7 +1061,7 @@ fn spawn_run(
                         // later" uses, carrying forward this run's agent, model,
                         // and pass count so the chain keeps the user's choices.
                         if auto_advance_settings.auto_advance_enabled {
-                            let next = {
+                            let outcome = {
                                 let conn = auto_merge_db.lock().unwrap();
                                 loopfleet_store::load_run(&conn, &auto_merge_run_id)
                                     .ok()
@@ -1064,37 +1075,76 @@ fn spawn_run(
                                         let views = loopfleet_core::plan_overview(&conn, &project).ok()?;
                                         let plan =
                                             views.into_iter().find(|v| v.plan_id == detail.plan_id)?;
+                                        let plan_id = detail.plan_id.clone();
+
+                                        let active_runs =
+                                            loopfleet_store::count_active_runs(&conn).ok()?;
+                                        let has_pending_launch =
+                                            loopfleet_store::list_scheduled_launches(&conn)
+                                                .ok()?
+                                                .iter()
+                                                .any(|l| {
+                                                    l.plan_id == plan_id && l.origin == "auto_advance"
+                                                });
+                                        if let Some(reason) = loopfleet_core::autopilot::should_auto_advance(
+                                            active_runs,
+                                            auto_advance_settings.concurrency_cap,
+                                            has_pending_launch,
+                                        ) {
+                                            return Some(Err((plan_id, reason)));
+                                        }
+
                                         let task = loopfleet_core::autopilot::next_task(&plan.tasks)?;
-                                        Some((
-                                            detail.plan_id,
+                                        Some(Ok((
+                                            plan_id,
                                             task.anchor.clone(),
                                             detail.agent,
                                             detail.model,
                                             detail.max_iterations,
-                                        ))
+                                        )))
                                     })
                             };
-                            if let Some((plan_id, task_anchor, agent, model, max_iterations)) = next {
-                                let launch_at = OffsetDateTime::now_utc()
-                                    + time::Duration::seconds(
-                                        auto_advance_settings.auto_advance_delay_seconds as i64,
+                            match outcome {
+                                Some(Ok((plan_id, task_anchor, agent, model, max_iterations))) => {
+                                    let launch_at = OffsetDateTime::now_utc()
+                                        + time::Duration::seconds(
+                                            auto_advance_settings.auto_advance_delay_seconds as i64,
+                                        );
+                                    let launch_at_str = launch_at
+                                        .format(&Rfc3339)
+                                        .unwrap_or_else(|_| launch_at.to_string());
+                                    let advance_app = auto_merge_app.clone();
+                                    let state = auto_merge_app.state::<AppState>();
+                                    let _ = schedule_launch(
+                                        plan_id,
+                                        task_anchor,
+                                        agent,
+                                        model,
+                                        max_iterations,
+                                        launch_at_str,
+                                        Some("auto_advance".to_string()),
+                                        advance_app,
+                                        state,
                                     );
-                                let launch_at_str = launch_at
-                                    .format(&Rfc3339)
-                                    .unwrap_or_else(|_| launch_at.to_string());
-                                let advance_app = auto_merge_app.clone();
-                                let state = auto_merge_app.state::<AppState>();
-                                let _ = schedule_launch(
-                                    plan_id,
-                                    task_anchor,
-                                    agent,
-                                    model,
-                                    max_iterations,
-                                    launch_at_str,
-                                    Some("auto_advance".to_string()),
-                                    advance_app,
-                                    state,
-                                );
+                                }
+                                Some(Err((plan_id, reason))) => {
+                                    let reason = match reason {
+                                        loopfleet_core::autopilot::AutoAdvanceBlockedReason::ConcurrencyCapReached => {
+                                            "concurrency_cap_reached"
+                                        }
+                                        loopfleet_core::autopilot::AutoAdvanceBlockedReason::LaunchAlreadyPending => {
+                                            "launch_already_pending"
+                                        }
+                                    };
+                                    let _ = auto_merge_app.emit(
+                                        "auto_advance_stopped",
+                                        AutoAdvanceStoppedPayload {
+                                            plan_id,
+                                            reason: reason.to_string(),
+                                        },
+                                    );
+                                }
+                                None => {}
                             }
                         }
                     }
