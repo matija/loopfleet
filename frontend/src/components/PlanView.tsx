@@ -795,7 +795,7 @@ export function LaunchControl({
                     ? "The agent hasn't reported when this window resets, so a start can't be scheduled — launch manually once it reports a limit."
                     : `Books a run to start at ${formatResetTime(resetAtMs, now)}, once the limit resets.`
                 }
-                onClick={scheduleForReset}
+                onClick={() => scheduleForReset()}
               >
                 {scheduling
                   ? "Scheduling…"
