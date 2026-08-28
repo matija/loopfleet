@@ -5,9 +5,10 @@ use std::sync::{Arc, Mutex};
 
 use loopfleet_adapters::{ClaudeAdapter, CursorAdapter, PiAdapter};
 use loopfleet_core::{
-    fold_rate_limit, launch_decision, resolve_display, run_loop, AgentAdapter, CompareView,
-    LaunchDecision, LoopConfig, NormalizedEvent, PlanView, RateLimitNotice, RunSpec, RunState,
-    RunTimeline, UsageDisplay, UsageSnapshot, UsageSource, UsageThresholds,
+    fold_rate_limit, launch_decision, resolve_display, run_loop, should_auto_merge, AgentAdapter,
+    AutoMergeDecision, CompareView, LaunchDecision, LoopConfig, NormalizedEvent, PlanView,
+    RateLimitNotice, RunSpec, RunState, RunTimeline, UsageDisplay, UsageSnapshot, UsageSource,
+    UsageThresholds,
 };
 use loopfleet_gitx::GitActor;
 use loopfleet_sandbox::{confine_prefix, RenderParams};
@@ -53,6 +54,10 @@ struct AppState {
     /// `scheduled_launches` row id, so `cancel_scheduled_launch` can abort it
     /// before it fires.
     scheduled_launches: Arc<Mutex<HashMap<i64, tauri::async_runtime::JoinHandle<()>>>>,
+    /// Handle to a run's armed auto-merge countdown, keyed by run id, so a
+    /// future cancel path can abort it before it fires. Armed when a run
+    /// reaches a terminal state and [`should_auto_merge`] says to.
+    scheduled_auto_merges: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
     /// The last usage snapshot published to the UI for each agent, keyed by
     /// agent key. Purely a de-duplication ledger for the `agent_usage` event:
     /// a snapshot is emitted only when it says something different from what
@@ -114,6 +119,18 @@ struct ScheduledLaunchFiredPayload {
 #[derive(Clone, serde::Serialize)]
 struct ScheduledLaunchCancelledPayload {
     id: i64,
+}
+
+/// A run's auto-merge countdown has armed, pushed to the UI so it can show
+/// when the merge will fire (and offer to cancel it). `target_branch` is
+/// empty for the repo's currently checked-out branch (see [`use_run`]).
+/// `merge_at` is RFC 3339.
+#[derive(Clone, serde::Serialize)]
+struct AutoMergeArmedPayload {
+    run_id: String,
+    task_anchor: String,
+    target_branch: String,
+    merge_at: String,
 }
 
 /// Persist one event to the run's log and push it to the live UI. Returns the
@@ -680,6 +697,7 @@ async fn launch_run(
         state.stops.clone(),
         state.unacknowledged_runs.clone(),
         state.scheduled_resumes.clone(),
+        state.scheduled_auto_merges.clone(),
         0,
     )
     .await
@@ -704,6 +722,7 @@ fn spawn_run(
     stops: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
     unacknowledged: Arc<AtomicI64>,
     scheduled_resumes: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
+    scheduled_auto_merges: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
     // How many prior resumes led to this run: 0 for a fresh manual launch,
     // otherwise the attempt number of the pending resume that spawned it.
     // Carried forward (and capped at `MAX_RESUME_ATTEMPTS`) so a chain of
@@ -839,6 +858,7 @@ fn spawn_run(
     let stops = stops.clone();
     let unacknowledged = unacknowledged.clone();
     let scheduled_resumes = scheduled_resumes.clone();
+    let scheduled_auto_merges = scheduled_auto_merges.clone();
     let sched = (
         app.clone(),
         db.clone(),
@@ -847,6 +867,7 @@ fn spawn_run(
         stops.clone(),
         unacknowledged.clone(),
         scheduled_resumes.clone(),
+        scheduled_auto_merges.clone(),
     );
     tauri::async_runtime::spawn(async move {
         // Watch the worktree for file changes (the app-sourced `FileChanged`
@@ -931,6 +952,45 @@ fn spawn_run(
             },
         );
 
+        // Arm the auto-merge countdown when the terminal state, acceptance, and
+        // snapshot presence all line up (`should_auto_merge`, PRD: Autopilot). The
+        // countdown itself only removes its own handle when it elapses — actually
+        // performing the merge is a later task; this just arms the timer and lets
+        // the UI show (and eventually cancel) it.
+        let accepted = db
+            .lock()
+            .ok()
+            .and_then(|conn| loopfleet_store::load_run(&conn, &cfg.run_id).ok().flatten())
+            .map(|detail| detail.accepted)
+            .unwrap_or(false);
+        let has_snapshot = outcome.iterations.iter().any(|it| !it.shadow_ref.is_empty());
+        let settings = db
+            .lock()
+            .ok()
+            .and_then(|conn| loopfleet_store::load_settings(&conn).ok())
+            .unwrap_or_default();
+        if let AutoMergeDecision::Arm { delay_seconds } =
+            should_auto_merge(outcome.state, accepted, has_snapshot, &settings)
+        {
+            let merge_at = OffsetDateTime::now_utc() + time::Duration::seconds(delay_seconds as i64);
+            let _ = app.emit(
+                "auto_merge_armed",
+                AutoMergeArmedPayload {
+                    run_id: cfg.run_id.clone(),
+                    task_anchor: rerun.1.clone(),
+                    target_branch: String::new(),
+                    merge_at: merge_at.format(&Rfc3339).unwrap_or_else(|_| merge_at.to_string()),
+                },
+            );
+            let auto_merge_run_id = cfg.run_id.clone();
+            let auto_merges_for_task = scheduled_auto_merges.clone();
+            let handle = tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(delay_seconds as u64)).await;
+                auto_merges_for_task.lock().unwrap().remove(&auto_merge_run_id);
+            });
+            scheduled_auto_merges.lock().unwrap().insert(cfg.run_id.clone(), handle);
+        }
+
         // The UI already reflects terminal state for a focused window, so the
         // OS-level nudge is only for when the user isn't looking: a system
         // notification naming the task and outcome, falling back to the prior
@@ -966,7 +1026,8 @@ fn spawn_run(
         if outcome.state == RunState::LimitReached && next_attempt <= MAX_RESUME_ATTEMPTS {
             let buffer = resume_buffer(next_attempt);
             if let Some(delay) = delay_until(outcome.reset_at.as_deref(), OffsetDateTime::now_utc(), buffer) {
-                let (app, db, git, data_dir, stops, unacknowledged, scheduled_resumes) = sched;
+                let (app, db, git, data_dir, stops, unacknowledged, scheduled_resumes, scheduled_auto_merges) =
+                    sched;
                 let (project_id, task_anchor, agent, model, max_iterations) = rerun;
                 let resume_run_id = cfg.run_id.clone();
                 let resume_at = OffsetDateTime::now_utc() + delay;
@@ -1001,7 +1062,7 @@ fn spawn_run(
                     let _ = spawn_run(
                         project_id, task_anchor, agent, model, max_iterations,
                         app, db, git, data_dir, stops, unacknowledged, resumes_for_task.clone(),
-                        next_attempt,
+                        scheduled_auto_merges, next_attempt,
                     )
                     .await;
                     resumes_for_task.lock().unwrap().remove(&resume_run_id);
@@ -1079,6 +1140,7 @@ fn rearm_pending_resumes(app: &AppHandle) {
         let unacknowledged = state.unacknowledged_runs.clone();
         let scheduled_resumes = state.scheduled_resumes.clone();
         let resumes_for_task = scheduled_resumes.clone();
+        let scheduled_auto_merges = state.scheduled_auto_merges.clone();
         let resume_db = db.clone();
         let app = app.clone();
         let resume_run_id = resume.run_id.clone();
@@ -1095,7 +1157,7 @@ fn rearm_pending_resumes(app: &AppHandle) {
             let _ = spawn_run(
                 project_id, task_anchor, agent, model, max_iterations,
                 app, db, git, data_dir, stops, unacknowledged, resumes_for_task.clone(),
-                attempt,
+                scheduled_auto_merges, attempt,
             )
             .await;
             resumes_for_task.lock().unwrap().remove(&resume_run_id);
@@ -1663,6 +1725,7 @@ fn schedule_launch(
         state.unacknowledged_runs.clone(),
         state.scheduled_resumes.clone(),
         state.scheduled_launches.clone(),
+        state.scheduled_auto_merges.clone(),
         id,
         plan_id,
         task_anchor,
@@ -1738,6 +1801,7 @@ fn arm_scheduled_launch(
     unacknowledged: Arc<AtomicI64>,
     scheduled_resumes: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
     scheduled_launches: Arc<Mutex<HashMap<i64, tauri::async_runtime::JoinHandle<()>>>>,
+    scheduled_auto_merges: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
     id: i64,
     plan_id: String,
     task_anchor: String,
@@ -1789,6 +1853,7 @@ fn arm_scheduled_launch(
                         unacknowledged,
                         scheduled_resumes,
                         launches_for_task,
+                        scheduled_auto_merges,
                         id,
                         plan_id,
                         task_anchor,
@@ -1855,6 +1920,7 @@ fn arm_scheduled_launch(
                 stops,
                 unacknowledged,
                 scheduled_resumes,
+                scheduled_auto_merges,
                 0,
             )
             .await
@@ -1930,6 +1996,7 @@ fn rearm_scheduled_launches(app: &AppHandle) {
             state.unacknowledged_runs.clone(),
             state.scheduled_resumes.clone(),
             state.scheduled_launches.clone(),
+            state.scheduled_auto_merges.clone(),
             launch.id,
             launch.plan_id,
             launch.task_anchor,
@@ -2394,6 +2461,7 @@ pub fn run() {
                 unacknowledged_runs: Arc::new(AtomicI64::new(0)),
                 scheduled_resumes: Arc::new(Mutex::new(HashMap::new())),
                 scheduled_launches: Arc::new(Mutex::new(HashMap::new())),
+                scheduled_auto_merges: Arc::new(Mutex::new(HashMap::new())),
                 published_usage: Arc::new(Mutex::new(HashMap::new())),
             });
 
