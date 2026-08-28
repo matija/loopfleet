@@ -1,5 +1,5 @@
 //! Auto-merge gating: the pure decision behind "merge this run's branch
-//! automatically once it's accepted" (see [`Settings::auto_merge_enabled`] in
+//! automatically once it completes" (see [`Settings::auto_merge_enabled`] in
 //! `loopfleet-store`).
 //!
 //! [`should_auto_merge`] is deliberately a plain function over plain inputs —
@@ -20,10 +20,14 @@ pub enum AutoMergeBlockedReason {
     Disabled,
     /// The run has not reached [`RunState::Completed`] yet.
     RunNotCompleted,
-    /// The run has not been accepted.
-    NotAccepted,
+    /// The run was already accepted (e.g. "used" by hand while it was still
+    /// running) — there is nothing left for auto-merge to do.
+    AlreadyAccepted,
     /// The run produced no shadow snapshot, so there is nothing to merge.
     NoSnapshot,
+    /// The repo has a merge already in progress (conflicts left for the user
+    /// to resolve by hand); auto-merge must not run on top of that.
+    MergeInProgress,
 }
 
 /// The outcome of [`should_auto_merge`]: either the countdown should arm, or a
@@ -38,17 +42,19 @@ pub enum AutoMergeDecision {
 }
 
 /// Decide whether a run's branch should auto-merge, given its lifecycle
-/// state, acceptance, and whether it produced a snapshot to merge.
+/// state, acceptance, snapshot presence, and the repo's own merge state.
 ///
-/// All four conditions must hold: auto-merge enabled in `settings`, the run
-/// [`Completed`](RunState::Completed), `accepted`, and `has_snapshot`. Checks
-/// run in that order, so the first one that fails is the reason reported —
-/// callers showing a single blocked reason get the most actionable one first
-/// (there is no point telling the user "not accepted" if auto-merge is off).
+/// All conditions must hold: auto-merge enabled in `settings`, the run
+/// [`Completed`](RunState::Completed), not already `accepted`, `has_snapshot`,
+/// and no `merge_in_progress` in the target repo. Checks run in that order, so
+/// the first one that fails is the reason reported — callers showing a single
+/// blocked reason get the most actionable one first (there is no point
+/// telling the user about a repo-side conflict if auto-merge is off).
 pub fn should_auto_merge(
     run_state: RunState,
     accepted: bool,
     has_snapshot: bool,
+    merge_in_progress: bool,
     settings: &Settings,
 ) -> AutoMergeDecision {
     if !settings.auto_merge_enabled {
@@ -57,11 +63,14 @@ pub fn should_auto_merge(
     if run_state != RunState::Completed {
         return AutoMergeDecision::Blocked(AutoMergeBlockedReason::RunNotCompleted);
     }
-    if !accepted {
-        return AutoMergeDecision::Blocked(AutoMergeBlockedReason::NotAccepted);
+    if accepted {
+        return AutoMergeDecision::Blocked(AutoMergeBlockedReason::AlreadyAccepted);
     }
     if !has_snapshot {
         return AutoMergeDecision::Blocked(AutoMergeBlockedReason::NoSnapshot);
+    }
+    if merge_in_progress {
+        return AutoMergeDecision::Blocked(AutoMergeBlockedReason::MergeInProgress);
     }
     AutoMergeDecision::Arm {
         delay_seconds: settings.auto_merge_countdown_seconds,
@@ -84,7 +93,7 @@ mod tests {
     fn arms_when_all_conditions_hold() {
         let s = settings(true, 10);
         assert_eq!(
-            should_auto_merge(RunState::Completed, true, true, &s),
+            should_auto_merge(RunState::Completed, false, true, false, &s),
             AutoMergeDecision::Arm { delay_seconds: 10 }
         );
     }
@@ -93,7 +102,7 @@ mod tests {
     fn blocked_when_disabled() {
         let s = settings(false, 10);
         assert_eq!(
-            should_auto_merge(RunState::Completed, true, true, &s),
+            should_auto_merge(RunState::Completed, false, true, false, &s),
             AutoMergeDecision::Blocked(AutoMergeBlockedReason::Disabled)
         );
     }
@@ -102,17 +111,17 @@ mod tests {
     fn blocked_when_run_not_completed() {
         let s = settings(true, 10);
         assert_eq!(
-            should_auto_merge(RunState::Running, true, true, &s),
+            should_auto_merge(RunState::Running, false, true, false, &s),
             AutoMergeDecision::Blocked(AutoMergeBlockedReason::RunNotCompleted)
         );
     }
 
     #[test]
-    fn blocked_when_not_accepted() {
+    fn blocked_when_already_accepted() {
         let s = settings(true, 10);
         assert_eq!(
-            should_auto_merge(RunState::Completed, false, true, &s),
-            AutoMergeDecision::Blocked(AutoMergeBlockedReason::NotAccepted)
+            should_auto_merge(RunState::Completed, true, true, false, &s),
+            AutoMergeDecision::Blocked(AutoMergeBlockedReason::AlreadyAccepted)
         );
     }
 
@@ -120,8 +129,17 @@ mod tests {
     fn blocked_when_no_snapshot() {
         let s = settings(true, 10);
         assert_eq!(
-            should_auto_merge(RunState::Completed, true, false, &s),
+            should_auto_merge(RunState::Completed, false, false, false, &s),
             AutoMergeDecision::Blocked(AutoMergeBlockedReason::NoSnapshot)
+        );
+    }
+
+    #[test]
+    fn blocked_when_merge_in_progress() {
+        let s = settings(true, 10);
+        assert_eq!(
+            should_auto_merge(RunState::Completed, false, true, true, &s),
+            AutoMergeDecision::Blocked(AutoMergeBlockedReason::MergeInProgress)
         );
     }
 
@@ -129,7 +147,7 @@ mod tests {
     fn disabled_takes_priority_over_other_reasons() {
         let s = settings(false, 10);
         assert_eq!(
-            should_auto_merge(RunState::Running, false, false, &s),
+            should_auto_merge(RunState::Running, true, false, true, &s),
             AutoMergeDecision::Blocked(AutoMergeBlockedReason::Disabled)
         );
     }
@@ -138,7 +156,7 @@ mod tests {
     fn arm_carries_configured_delay() {
         let s = settings(true, 42);
         assert_eq!(
-            should_auto_merge(RunState::Completed, true, true, &s),
+            should_auto_merge(RunState::Completed, false, true, false, &s),
             AutoMergeDecision::Arm { delay_seconds: 42 }
         );
     }

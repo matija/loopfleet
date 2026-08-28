@@ -6,9 +6,9 @@ use std::sync::{Arc, Mutex};
 use loopfleet_adapters::{ClaudeAdapter, CursorAdapter, PiAdapter};
 use loopfleet_core::{
     fold_rate_limit, launch_decision, resolve_display, run_loop, should_auto_merge, AgentAdapter,
-    AutoMergeDecision, CompareView, LaunchDecision, LoopConfig, NormalizedEvent, PlanView,
-    RateLimitNotice, RunSpec, RunState, RunTimeline, UsageDisplay, UsageSnapshot, UsageSource,
-    UsageThresholds,
+    AutoMergeBlockedReason, AutoMergeDecision, CompareView, LaunchDecision, LoopConfig,
+    NormalizedEvent, PlanView, RateLimitNotice, RunSpec, RunState, RunTimeline, UsageDisplay,
+    UsageSnapshot, UsageSource, UsageThresholds,
 };
 use loopfleet_gitx::GitActor;
 use loopfleet_sandbox::{confine_prefix, RenderParams};
@@ -982,14 +982,26 @@ fn spawn_run(
             .map(|detail| detail.accepted)
             .unwrap_or(false);
         let has_snapshot = outcome.iterations.iter().any(|it| !it.shadow_ref.is_empty());
+        let merge_in_progress = loopfleet_gitx::merge_in_progress(&cfg.repo).unwrap_or(false);
         let settings = db
             .lock()
             .ok()
             .and_then(|conn| loopfleet_store::load_settings(&conn).ok())
             .unwrap_or_default();
-        if let AutoMergeDecision::Arm { delay_seconds } =
-            should_auto_merge(outcome.state, accepted, has_snapshot, &settings)
-        {
+        let decision =
+            should_auto_merge(outcome.state, accepted, has_snapshot, merge_in_progress, &settings);
+        if let AutoMergeDecision::Blocked(reason) = decision {
+            if !matches!(
+                reason,
+                AutoMergeBlockedReason::Disabled | AutoMergeBlockedReason::RunNotCompleted
+            ) {
+                eprintln!(
+                    "auto-merge not armed for run {}: {reason:?}",
+                    cfg.run_id
+                );
+            }
+        }
+        if let AutoMergeDecision::Arm { delay_seconds } = decision {
             let merge_at = OffsetDateTime::now_utc() + time::Duration::seconds(delay_seconds as i64);
             let _ = app.emit(
                 "auto_merge_armed",
