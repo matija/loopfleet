@@ -266,12 +266,14 @@ fn build_prompt(cfg: &LoopConfig, prior: &str) -> String {
 You are running in a loop with fresh context each pass. Your durable memory is \
 the progress file at:\n  {progress}\n\n\
 Read your prior progress below, continue the work, and append what you did this \
-pass to that file. When the task is fully done, write a line containing exactly \
-`{marker}` to the progress file.\n\n\
+pass to that file. When the task is fully done, write to the progress file a line \
+containing exactly `{marker}` and a line starting with `{summary}` that describes \
+what the run changed: one line, imperative mood, under 72 characters.\n\n\
 --- prior progress ---\n{prior}\n",
         task = cfg.task_text,
         progress = cfg.progress_path.display(),
         marker = crate::progress::COMPLETION_MARKER,
+        summary = crate::progress::SUMMARY_MARKER,
         prior = prior,
     )
 }
@@ -568,6 +570,11 @@ mod tests {
         assert!(prompts[0].contains("(no prior progress yet)"));
         // Pass 2: the prior progress the agent wrote in pass 1 is fed back.
         assert!(prompts[1].contains("pass 1 did work"));
+        // Every pass asks for both end-of-task markers.
+        for prompt in prompts.iter() {
+            assert!(prompt.contains(crate::progress::COMPLETION_MARKER));
+            assert!(prompt.contains(crate::progress::SUMMARY_MARKER));
+        }
     }
 
     #[tokio::test(flavor = "multi_thread")]
