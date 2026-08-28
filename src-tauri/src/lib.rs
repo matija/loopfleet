@@ -133,6 +133,13 @@ struct AutoMergeArmedPayload {
     merge_at: String,
 }
 
+/// A previously armed auto-merge countdown was cancelled before it fired. The
+/// run stays in its terminal state, unaccepted, until the user acts on it.
+#[derive(Clone, serde::Serialize)]
+struct AutoMergeCancelledPayload {
+    run_id: String,
+}
+
 /// Persist one event to the run's log and push it to the live UI. Returns the
 /// event's `seq` (its `rowid`), captured under the same lock as the insert so it
 /// is that event's even though other writers share the connection.
@@ -1761,6 +1768,29 @@ fn cancel_scheduled_launch(id: i64, app: AppHandle, state: State<'_, AppState>) 
     }
 }
 
+/// Abort a run's armed auto-merge countdown before it fires, keyed by the
+/// run's id. The run itself is left exactly as it landed — completed,
+/// unaccepted — since cancelling the merge is not the same as rejecting the
+/// run. Emits `auto_merge_cancelled` so the UI can drop the "merging at…"
+/// indicator.
+#[tauri::command]
+fn cancel_auto_merge(run_id: String, app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let handle = state.scheduled_auto_merges.lock().unwrap().remove(&run_id);
+    match handle {
+        Some(handle) => {
+            handle.abort();
+            let _ = app.emit(
+                "auto_merge_cancelled",
+                AutoMergeCancelledPayload {
+                    run_id: run_id.clone(),
+                },
+            );
+            Ok(())
+        }
+        None => Err(format!("no armed auto-merge for run: {run_id}")),
+    }
+}
+
 /// Spawn the sleep-then-launch task behind one scheduled launch and register
 /// its handle, so `cancel_scheduled_launch` can abort it before it fires.
 /// Shared by `schedule_launch` (a fresh schedule, `reschedule_count = 0`) and
@@ -2513,6 +2543,7 @@ pub fn run() {
             cancel_scheduled_resume,
             schedule_launch,
             cancel_scheduled_launch,
+            cancel_auto_merge,
             acknowledge_runs,
             compare_task,
             use_run,
