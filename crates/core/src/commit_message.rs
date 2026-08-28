@@ -9,11 +9,21 @@
 //! crediting an author, since that credit is a separate trailer added later by
 //! the merge itself.
 
+/// Subjects longer than this are cut, with the overflow pushed into the body,
+/// matching the conventional git commit subject length.
+const MAX_SUBJECT_CHARS: usize = 72;
+
 /// Build the squash-commit message for `run_id`, run by `agent` against
 /// `task_text`, summarized by `summary`, having taken `pass_count` passes.
 ///
-/// `summary` becomes the subject line as-is (the caller is responsible for
-/// keeping it commit-subject-shaped); `task_text` is reproduced verbatim as
+/// The subject text falls back through `summary`, then the first line of
+/// `task_text`, then `Apply loopfleet run <short-id>` — whichever is first to
+/// give something non-empty — since a run can finish without the agent ever
+/// producing a usable summary. Whatever is chosen is trimmed to a single line
+/// (a summary or task first line can itself carry embedded newlines) before
+/// the agent/pass-count parenthetical is appended and the whole subject is
+/// capped at [`MAX_SUBJECT_CHARS`]; anything past the cap is pushed into the
+/// body rather than silently dropped. `task_text` is reproduced verbatim as
 /// the body so the commit says what the plan asked for, not a paraphrase.
 /// `pass_count` is folded into the subject as a parenthetical only when more
 /// than one pass ran, since a single-pass run reads as unremarkable.
@@ -24,17 +34,58 @@ pub fn compose_commit_message(
     agent: &str,
     pass_count: u32,
 ) -> String {
-    let summary = summary.trim();
-    let subject = if pass_count > 1 {
-        format!("{summary} ({agent}, {pass_count} passes)")
+    let chosen = first_line(summary)
+        .or_else(|| first_line(task_text))
+        .unwrap_or_else(|| format!("Apply loopfleet run {}", short_id(run_id)));
+
+    let suffix = if pass_count > 1 {
+        format!(" ({agent}, {pass_count} passes)")
     } else {
-        format!("{summary} ({agent})")
+        format!(" ({agent})")
     };
 
-    format!(
-        "{subject}\n\nTask: {task}\n\nloopfleet-run: {run_id}",
-        task = task_text.trim()
-    )
+    let (subject, overflow) = cap_subject(&format!("{chosen}{suffix}"), MAX_SUBJECT_CHARS);
+
+    let mut body = String::new();
+    if let Some(overflow) = overflow {
+        body.push_str(&overflow);
+        body.push_str("\n\n");
+    }
+    body.push_str("Task: ");
+    body.push_str(task_text.trim());
+
+    format!("{subject}\n\n{body}\n\nloopfleet-run: {run_id}")
+}
+
+/// The first non-blank line of `text`, trimmed; `None` when `text` has no
+/// non-whitespace content at all.
+fn first_line(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.lines().next().unwrap_or(trimmed).trim().to_string())
+}
+
+/// The first 8 characters of `run_id` (or the whole id if it is shorter),
+/// matching the short-sha convention used elsewhere for identifying a run.
+fn short_id(run_id: &str) -> &str {
+    match run_id.char_indices().nth(8) {
+        Some((i, _)) => &run_id[..i],
+        None => run_id,
+    }
+}
+
+/// Splits `subject` at `max_chars`, returning the (possibly untouched) head
+/// and, when a cut was made, the trimmed remainder to fold into the body.
+fn cap_subject(subject: &str, max_chars: usize) -> (String, Option<String>) {
+    match subject.char_indices().nth(max_chars) {
+        Some((cut, _)) => {
+            let (head, tail) = subject.split_at(cut);
+            (head.to_string(), Some(tail.trim().to_string()))
+        }
+        None => (subject.to_string(), None),
+    }
 }
 
 #[cfg(test)]
@@ -65,6 +116,52 @@ mod tests {
         assert_eq!(
             msg,
             "Add the widget (claude)\n\nTask: Build the widget\n\nloopfleet-run: abc123"
+        );
+    }
+
+    #[test]
+    fn falls_back_to_first_line_of_task_when_summary_is_blank() {
+        let msg = compose_commit_message("", "Build the widget\nwith extra care", "abc123", "claude", 1);
+        assert_eq!(
+            msg,
+            "Build the widget (claude)\n\nTask: Build the widget\nwith extra care\n\nloopfleet-run: abc123"
+        );
+    }
+
+    #[test]
+    fn falls_back_to_run_id_when_summary_and_task_are_blank() {
+        let msg = compose_commit_message("   ", "   ", "abc1234567890", "claude", 1);
+        assert_eq!(
+            msg,
+            "Apply loopfleet run abc12345 (claude)\n\nTask: \n\nloopfleet-run: abc1234567890"
+        );
+    }
+
+    #[test]
+    fn chosen_subject_is_trimmed_to_a_single_line() {
+        let msg = compose_commit_message("Add the widget\nand more", "Build the widget", "abc123", "claude", 1);
+        assert_eq!(
+            msg,
+            "Add the widget (claude)\n\nTask: Build the widget\n\nloopfleet-run: abc123"
+        );
+    }
+
+    #[test]
+    fn overlong_subject_is_capped_with_remainder_in_the_body() {
+        let summary = "This summary is deliberately long enough to overflow the seventy two character subject cap";
+        let full_subject = format!("{summary} (claude)");
+        let cut = full_subject.char_indices().nth(72).unwrap().0;
+        let (expected_subject, expected_overflow) = full_subject.split_at(cut);
+
+        let msg = compose_commit_message(summary, "Build the widget", "abc123", "claude", 1);
+
+        assert_eq!(expected_subject.chars().count(), 72);
+        assert_eq!(
+            msg,
+            format!(
+                "{expected_subject}\n\n{}\n\nTask: Build the widget\n\nloopfleet-run: abc123",
+                expected_overflow.trim()
+            )
         );
     }
 }
