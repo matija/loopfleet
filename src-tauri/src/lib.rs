@@ -153,14 +153,36 @@ struct AutoMergeFailedPayload {
 }
 
 /// Auto-advance declined to chain the plan's next task after an auto-merge —
-/// the concurrency cap was already met, or the plan already had an
-/// auto-advance launch pending. The plan sits idle until the user launches a
-/// task by hand or the blocking condition clears on its own (a run finishes,
-/// the pending launch fires).
+/// the concurrency cap was already met, the plan already had an auto-advance
+/// launch pending, or (`reason: "plan complete"`) there was no not-started
+/// task left to chain. The plan sits idle until the user launches a task by
+/// hand (or, for the first two reasons, the blocking condition clears on its
+/// own — a run finishes, the pending launch fires).
 #[derive(Clone, serde::Serialize)]
 struct AutoAdvanceStoppedPayload {
     plan_id: String,
     reason: String,
+}
+
+/// Outcome of checking whether auto-advance can chain the plan's next task
+/// after an auto-merge succeeds.
+enum AutoAdvanceOutcome {
+    /// Schedule this task next, carrying forward the finished run's agent,
+    /// model, and pass count.
+    Launch {
+        plan_id: String,
+        task_anchor: String,
+        agent: String,
+        model: Option<String>,
+        max_iterations: u32,
+    },
+    /// Auto-advance is blocked from chaining right now (cap or pending launch).
+    Blocked {
+        plan_id: String,
+        reason: loopfleet_core::autopilot::AutoAdvanceBlockedReason,
+    },
+    /// No not-started task remains — the plan itself is done.
+    PlanComplete { plan_id: String },
 }
 
 /// Persist one event to the run's log and push it to the live UI. Returns the
@@ -1032,6 +1054,7 @@ fn spawn_run(
             let auto_merge_data_dir = data_dir.clone();
             let auto_merge_app = app.clone();
             let auto_advance_settings = settings.clone();
+            let auto_merge_task_text = cfg.task_text.clone();
             let handle = tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(delay_seconds as u64)).await;
                 auto_merges_for_task.lock().unwrap().remove(&auto_merge_run_id);
@@ -1091,21 +1114,29 @@ fn spawn_run(
                                             auto_advance_settings.concurrency_cap,
                                             has_pending_launch,
                                         ) {
-                                            return Some(Err((plan_id, reason)));
+                                            return Some(AutoAdvanceOutcome::Blocked { plan_id, reason });
                                         }
 
-                                        let task = loopfleet_core::autopilot::next_task(&plan.tasks)?;
-                                        Some(Ok((
-                                            plan_id,
-                                            task.anchor.clone(),
-                                            detail.agent,
-                                            detail.model,
-                                            detail.max_iterations,
-                                        )))
+                                        match loopfleet_core::autopilot::next_task(&plan.tasks) {
+                                            Some(task) => Some(AutoAdvanceOutcome::Launch {
+                                                plan_id,
+                                                task_anchor: task.anchor.clone(),
+                                                agent: detail.agent,
+                                                model: detail.model,
+                                                max_iterations: detail.max_iterations,
+                                            }),
+                                            None => Some(AutoAdvanceOutcome::PlanComplete { plan_id }),
+                                        }
                                     })
                             };
                             match outcome {
-                                Some(Ok((plan_id, task_anchor, agent, model, max_iterations))) => {
+                                Some(AutoAdvanceOutcome::Launch {
+                                    plan_id,
+                                    task_anchor,
+                                    agent,
+                                    model,
+                                    max_iterations,
+                                }) => {
                                     let launch_at = OffsetDateTime::now_utc()
                                         + time::Duration::seconds(
                                             auto_advance_settings.auto_advance_delay_seconds as i64,
@@ -1127,7 +1158,7 @@ fn spawn_run(
                                         state,
                                     );
                                 }
-                                Some(Err((plan_id, reason))) => {
+                                Some(AutoAdvanceOutcome::Blocked { plan_id, reason }) => {
                                     let reason = match reason {
                                         loopfleet_core::autopilot::AutoAdvanceBlockedReason::ConcurrencyCapReached => {
                                             "concurrency_cap_reached"
@@ -1143,6 +1174,28 @@ fn spawn_run(
                                             reason: reason.to_string(),
                                         },
                                     );
+                                }
+                                Some(AutoAdvanceOutcome::PlanComplete { plan_id }) => {
+                                    let _ = auto_merge_app.emit(
+                                        "auto_advance_stopped",
+                                        AutoAdvanceStoppedPayload {
+                                            plan_id,
+                                            reason: "plan complete".to_string(),
+                                        },
+                                    );
+                                    if let Some(window) = auto_merge_app.get_webview_window("main") {
+                                        if !window.is_focused().unwrap_or(false)
+                                            && !notify_run_terminal(
+                                                &auto_merge_app,
+                                                &auto_merge_task_text,
+                                                RunState::Completed,
+                                            )
+                                        {
+                                            let _ = window.request_user_attention(Some(
+                                                tauri::UserAttentionType::Informational,
+                                            ));
+                                        }
+                                    }
                                 }
                                 None => {}
                             }
