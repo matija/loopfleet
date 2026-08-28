@@ -123,19 +123,24 @@ struct ScheduledLaunchCancelledPayload {
     id: i64,
 }
 
-/// Restart recovered an `auto_advance`-origin scheduled launch. Chaining the
-/// plan's next task automatically is a decision the user made implicitly by
-/// leaving autopilot running before shutdown; resuming that chain silently
-/// after time away would launch a run nobody was there to see start, so it is
-/// left un-armed and turned into a question for the user to answer instead.
-/// The row stays in `scheduled_launches` (findable again next restart) until
-/// then. `launch_at` is RFC 3339, the time it was originally due to fire.
+/// Restart recovered one or more `auto_advance`-origin scheduled launches.
+/// Chaining the plan's next task automatically is a decision the user made
+/// implicitly by leaving autopilot running before shutdown; resuming that
+/// chain silently after time away would launch a run nobody was there to see
+/// start, so every such launch is left un-armed, and the oldest of them (the
+/// chain that has been waiting longest) is turned into a single question for
+/// the user to answer instead. Each row stays in `scheduled_launches`
+/// (findable again next restart, and eligible to be prompted for then) until
+/// answered.
 #[derive(Clone, serde::Serialize)]
-struct AutoAdvancePendingQuestionPayload {
-    id: i64,
+struct AutopilotResumePromptPayload {
     plan_id: String,
+    plan_title: Option<String>,
     task_anchor: String,
-    launch_at: String,
+    task_text: String,
+    agent: String,
+    pass_count: u32,
+    scheduled_launch_id: i64,
 }
 
 /// A run was completed, unaccepted, and mergeable when the app last quit —
@@ -143,7 +148,7 @@ struct AutoAdvancePendingQuestionPayload {
 /// that the process has restarted (see `question_stalled_auto_merges`).
 /// Rather than silently re-arm it and merge behind the user's back after an
 /// unknown amount of time away, it's surfaced as a question for them to
-/// answer explicitly, mirroring `AutoAdvancePendingQuestionPayload`.
+/// answer explicitly, mirroring `AutopilotResumePromptPayload`.
 #[derive(Clone, serde::Serialize)]
 struct AutoMergePendingQuestionPayload {
     run_id: String,
@@ -2295,9 +2300,9 @@ fn arm_scheduled_launch(
 /// An `auto_advance` launch is different: it was queued by autopilot chaining
 /// the plan's next task on the user's behalf, not requested for a specific
 /// time. Silently re-arming it after a restart would launch a run nobody was
-/// present to see start, so instead it's left un-armed and turned into a
-/// question via `auto_advance_pending_question`, for the user to answer
-/// explicitly before it proceeds.
+/// present to see start, so instead every such launch is left un-armed, and
+/// the oldest one is turned into a question via `prompt_stalled_autopilot_resume`,
+/// for the user to answer explicitly before it proceeds.
 fn rearm_scheduled_launches(app: &AppHandle) {
     let state = app.state::<AppState>();
     let pending = {
@@ -2305,23 +2310,17 @@ fn rearm_scheduled_launches(app: &AppHandle) {
         loopfleet_store::list_scheduled_launches(&conn).unwrap_or_default()
     };
 
+    let mut stalled_autopilot_resumes = Vec::new();
+
     for launch in pending {
+        if launch.origin == "auto_advance" {
+            stalled_autopilot_resumes.push(launch);
+            continue;
+        }
+
         let launch_at = OffsetDateTime::from_unix_timestamp(launch.launch_at / 1000)
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
         let launch_at_str = launch_at.format(&Rfc3339).unwrap_or_else(|_| launch_at.to_string());
-
-        if launch.origin == "auto_advance" {
-            let _ = app.emit(
-                "auto_advance_pending_question",
-                AutoAdvancePendingQuestionPayload {
-                    id: launch.id,
-                    plan_id: launch.plan_id.clone(),
-                    task_anchor: launch.task_anchor.clone(),
-                    launch_at: launch_at_str,
-                },
-            );
-            continue;
-        }
 
         let _ = app.emit(
             "scheduled_launch",
@@ -2358,6 +2357,49 @@ fn rearm_scheduled_launches(app: &AppHandle) {
             launch.origin,
         );
     }
+
+    prompt_stalled_autopilot_resume(app, stalled_autopilot_resumes);
+}
+
+/// Turn the oldest of `stalled`'s `auto_advance` launches (left un-armed by
+/// `rearm_scheduled_launches`) into a single `autopilot_resume_prompt` for the
+/// user — the chain that has been waiting longest is the one most useful to
+/// surface first, and asking about every recovered chain at once would just
+/// be a wall of questions on startup. The rest stay in `scheduled_launches`
+/// and are eligible to be picked next time (once this one is answered, or on
+/// the next restart).
+fn prompt_stalled_autopilot_resume(app: &AppHandle, stalled: Vec<loopfleet_store::ScheduledLaunch>) {
+    let Some(oldest) = stalled.into_iter().min_by_key(|l| l.created_at) else {
+        return;
+    };
+
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().unwrap();
+
+    let plan_title = loopfleet_store::plan_file_path(&conn, &oldest.plan_id)
+        .ok()
+        .flatten()
+        .and_then(|path| loopfleet_core::parse_plan_file(std::path::Path::new(&path)).ok())
+        .and_then(|parsed| parsed.title);
+    let task_text = loopfleet_store::load_task(&conn, &oldest.plan_id, &oldest.task_anchor)
+        .ok()
+        .flatten()
+        .map(|t| t.text)
+        .unwrap_or_else(|| oldest.task_anchor.clone());
+    drop(conn);
+
+    let _ = app.emit(
+        "autopilot_resume_prompt",
+        AutopilotResumePromptPayload {
+            plan_id: oldest.plan_id,
+            plan_title,
+            task_anchor: oldest.task_anchor,
+            task_text,
+            agent: oldest.agent,
+            pass_count: oldest.pass_count,
+            scheduled_launch_id: oldest.id,
+        },
+    );
 }
 
 /// Ask the user about any run that was mid-auto-merge-countdown when the app
