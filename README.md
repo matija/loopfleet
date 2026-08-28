@@ -11,14 +11,10 @@ loopfleet is a native macOS app that keeps the plan, the runs, and the resulting
 
 ## Download 📦
 
-Grab the latest `.dmg` from the [**releases page**](https://github.com/matija/loopfleet/releases/latest):
+### [🍎 Download for Apple Silicon](https://github.com/matija/loopfleet/releases/latest/download/loopfleet-apple-silicon.dmg) &nbsp;·&nbsp; [💻 Download for Intel](https://github.com/matija/loopfleet/releases/latest/download/loopfleet-intel.dmg)
 
-| Mac                                | File                        |
-| ---------------------------------- | --------------------------- |
-| 🍎 Apple Silicon (M1 and later)    | `loopfleet_*_aarch64.dmg`   |
-| 💻 Intel                           | `loopfleet_*_x64.dmg`       |
-
-Builds are signed and notarized, and the app updates itself from within. ✨
+Signed and notarized `.dmg` builds — the app updates itself from there. ✨
+All releases: [github.com/matija/loopfleet/releases](https://github.com/matija/loopfleet/releases)
 
 > WIP.
 
