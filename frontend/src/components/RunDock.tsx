@@ -35,6 +35,7 @@ import {
   ClockIcon,
   FolderIcon,
   GitBranchIcon,
+  PlayIcon,
   SquareIcon,
   XIcon,
 } from "./Icon";
@@ -107,6 +108,12 @@ export type PendingLaunch = {
   taskText: string;
   /// Epoch ms the launch is booked to fire at.
   launchAt: number;
+  /// What scheduled this launch — `"manual"` (the "run when the limit
+  /// resets" path) or `"auto_advance"` (autopilot chaining the plan's next
+  /// task after the current run finishes). Mirrors
+  /// `ScheduledLaunchPayload.origin`; drives the chip's icon/label and
+  /// whether the plan name is surfaced inline instead of only in the tooltip.
+  origin: string;
 };
 
 /// Live countdown to `target` (epoch ms), ticking once a second — the
@@ -142,26 +149,32 @@ function PendingLaunchChip({
   onCancel: (id: number) => void;
 }) {
   const taskText = taskSummary(launch.taskText);
-  const chipTitle = `${taskText} — ${launch.projectName} — scheduled ${new Date(
+  const isAutoAdvance = launch.origin === "auto_advance";
+  const statusLabel = isAutoAdvance ? "Auto-advance" : "Scheduled";
+  const chipTitle = `${isAutoAdvance ? "Auto-advance — " : ""}${taskText} — ${launch.projectName} — starts ${new Date(
     launch.launchAt,
   ).toLocaleString([], { hour: "numeric", minute: "2-digit" })}`;
 
   return (
-    <li className="run-chip run-chip--pending-launch" title={chipTitle}>
+    <li
+      className={`run-chip run-chip--pending-launch${isAutoAdvance ? " run-chip--auto-advance" : ""}`}
+      title={chipTitle}
+    >
       <span className="run-chip__open" aria-disabled="true">
-        <span className="run-chip__status run-chip__status--queued" aria-label="Scheduled">
-          <ClockIcon size={14} />
+        <span className="run-chip__status run-chip__status--queued" aria-label={statusLabel}>
+          {isAutoAdvance ? <PlayIcon size={14} /> : <ClockIcon size={14} />}
         </span>
         <span className="run-chip__task">{taskText}</span>
         <span className="run-chip__meta run-chip__meta--warn">
+          {isAutoAdvance ? `${launch.projectName} · ` : ""}
           <Countdown target={launch.launchAt} />
         </span>
       </span>
       <button
         className="run-chip__action run-chip__action--cancel-resume"
         onClick={() => onCancel(launch.id)}
-        title="Cancel this scheduled launch"
-        aria-label="Cancel scheduled launch"
+        title={isAutoAdvance ? "Cancel this auto-advance launch" : "Cancel this scheduled launch"}
+        aria-label={isAutoAdvance ? "Cancel auto-advance launch" : "Cancel scheduled launch"}
       >
         <XIcon size={14} />
       </button>

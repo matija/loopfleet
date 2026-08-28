@@ -442,7 +442,10 @@ export default function App() {
       setPendingLaunches((prev) =>
         prev.some((x) => x.id === p.id)
           ? prev
-          : [...prev, { id: p.id, projectName, taskText: p.task_anchor, launchAt }],
+          : [
+              ...prev,
+              { id: p.id, projectName, taskText: p.task_anchor, launchAt, origin: p.origin },
+            ],
       );
       planOverview(p.plan_id)
         .then((plans) => {
