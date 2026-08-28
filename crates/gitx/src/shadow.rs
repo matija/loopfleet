@@ -86,6 +86,13 @@ pub fn snapshot(repo: &Path, worktree: &Path, run_id: &str, iter: u32) -> Result
     let _ = std::fs::remove_file(&tmp_index);
 
     let parent = resolve_parent(repo, worktree, run_id, iter)?;
+    // Kept as plain bookkeeping, not written for a human: `merge::is_snapshot_message`
+    // recognizes this exact shape to filter these commits out of a squash message, and
+    // `merge::fallback_message` no longer falls back to a source commit's own message
+    // (which used to let this text leak onto a user branch when a run had no other
+    // commits) — it now names the run by its source sha instead. With that fallback
+    // gone, this message never reaches a user branch, so it only needs to serve as the
+    // app's internal ledger of `refs/agentapp/run-<id>/iter-<n>` history.
     let msg = format!("run {run_id} iter {iter}");
     // Attribute the snapshot to the user (their configured git identity) so a
     // run's commits land in their history under their name once the run is used.
