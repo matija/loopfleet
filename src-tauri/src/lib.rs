@@ -2091,6 +2091,72 @@ fn stop_autopilot(plan_id: String, app: AppHandle, state: State<'_, AppState>) -
     Ok(())
 }
 
+/// Answer a startup `autopilot_resume_prompt`: accept fires the stalled
+/// `auto_advance` launch immediately, through the exact same
+/// `arm_scheduled_launch` path every other scheduled launch fires through
+/// (just with no delay, since the user is answering right now instead of a
+/// timer elapsing); decline simply drops the `scheduled_launches` row,
+/// leaving the plan, its runs, and settings untouched — the chain stops here
+/// rather than being re-armed. `scheduled_launch_id` is the row named in the
+/// prompt's payload, since this app has no single "current prompt" to answer
+/// implicitly.
+#[tauri::command]
+fn answer_autopilot_prompt(
+    scheduled_launch_id: i64,
+    accept: bool,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if !accept {
+        let conn = state.db.lock().unwrap();
+        let _ = loopfleet_store::delete_scheduled_launch(&conn, scheduled_launch_id);
+        drop(conn);
+        let _ = app.emit(
+            "scheduled_launch_cancelled",
+            ScheduledLaunchCancelledPayload {
+                id: scheduled_launch_id,
+            },
+        );
+        return Ok(());
+    }
+
+    let launch = {
+        let conn = state.db.lock().unwrap();
+        loopfleet_store::list_scheduled_launches(&conn)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .find(|l| l.id == scheduled_launch_id)
+    };
+    let Some(launch) = launch else {
+        return Err(format!(
+            "no scheduled launch for prompt: {scheduled_launch_id}"
+        ));
+    };
+
+    arm_scheduled_launch(
+        app,
+        state.db.clone(),
+        state.git.clone(),
+        state.data_dir.clone(),
+        state.stops.clone(),
+        state.unacknowledged_runs.clone(),
+        state.scheduled_resumes.clone(),
+        state.scheduled_launches.clone(),
+        state.scheduled_auto_merges.clone(),
+        launch.id,
+        launch.plan_id,
+        launch.task_anchor,
+        launch.agent,
+        launch.model,
+        launch.pass_count,
+        std::time::Duration::ZERO,
+        launch.reschedule_count,
+        launch.origin,
+    );
+
+    Ok(())
+}
+
 /// Spawn the sleep-then-launch task behind one scheduled launch and register
 /// its handle, so `cancel_scheduled_launch` can abort it before it fires.
 /// Shared by `schedule_launch` (a fresh schedule, `reschedule_count = 0`) and
@@ -3014,6 +3080,7 @@ pub fn run() {
             cancel_scheduled_launch,
             cancel_auto_merge,
             stop_autopilot,
+            answer_autopilot_prompt,
             acknowledge_runs,
             compare_task,
             use_run,
