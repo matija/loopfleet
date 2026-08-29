@@ -179,6 +179,10 @@
   text-overflow: ellipsis;
 }
 
+.task-row__text:hover {
+  background: var(--c-surface-hover);
+}
+
 /* Expanded: the task's full text wraps instead of clipping to one line. */
 .task-row__text[aria-expanded="true"] {
   overflow: visible;
