@@ -104,6 +104,9 @@ struct ScheduledResumeCancelledPayload {
 struct ScheduledLaunchPayload {
     id: i64,
     plan_id: String,
+    /// Resolved alongside `plan_id` at emit time, so the UI can match the
+    /// launch to a project without treating `plan_id` as a stand-in for it.
+    project_id: String,
     task_anchor: String,
     launch_at: String,
     /// What scheduled this launch: `"manual"` or `"auto_advance"`.
@@ -2024,9 +2027,9 @@ fn schedule_launch(
         OffsetDateTime::parse(&launch_at, &Rfc3339).map_err(|e| format!("invalid launch_at: {e}"))?;
     let launch_at_millis = (launch_at_dt.unix_timestamp_nanos() / 1_000_000) as i64;
 
-    let id = {
+    let (id, project_id) = {
         let conn = state.db.lock().unwrap();
-        loopfleet_store::insert_scheduled_launch(
+        let id = loopfleet_store::insert_scheduled_launch(
             &conn,
             &loopfleet_store::NewScheduledLaunch {
                 plan_id: plan_id.clone(),
@@ -2038,7 +2041,11 @@ fn schedule_launch(
                 origin: origin.clone(),
             },
         )
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+        let project_id = loopfleet_store::project_id_for_plan(&conn, &plan_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("unknown plan: {plan_id}"))?;
+        (id, project_id)
     };
 
     let _ = app.emit(
@@ -2046,6 +2053,7 @@ fn schedule_launch(
         ScheduledLaunchPayload {
             id,
             plan_id: plan_id.clone(),
+            project_id,
             task_anchor: task_anchor.clone(),
             launch_at: launch_at_dt
                 .format(&Rfc3339)
@@ -2260,13 +2268,14 @@ fn answer_autopilot_prompt(
 /// schedule is dropped and `scheduled_launch_dropped` is emitted so the UI can
 /// tell the user rather than let it vanish silently.
 ///
-/// Once it actually fires, the project id is resolved fresh from `plan_id`
+/// The project id is resolved fresh from `plan_id` right after waking up
 /// (rather than carried since scheduling) since a scheduled launch, unlike a
 /// run, has no project id of its own to remember — and the plan may no longer
-/// exist by firing time (e.g. deleted after the schedule was set). The launch
-/// then runs through the exact same `spawn_run` path `launch_run` uses, as a
-/// fresh attempt (`resume_attempt = 0`) independent of any rate-limit resume
-/// chain; `spawn_run` re-validates the task anchor still resolves in the
+/// exist by firing time (e.g. deleted after the schedule was set); a missing
+/// plan resolves to `None` here and surfaces as the "plan no longer exists"
+/// drop below. The launch then runs through the exact same `spawn_run` path
+/// `launch_run` uses, as a fresh attempt (`resume_attempt = 0`) independent
+/// of any rate-limit resume chain; `spawn_run` re-validates the task anchor still resolves in the
 /// project's plans, the project is still attached, and the agent CLI is still
 /// installed. A missing plan or a `spawn_run` failure both drop the schedule
 /// and emit `scheduled_launch_dropped` with the reason, the same
@@ -2303,6 +2312,16 @@ fn arm_scheduled_launch(
     let handle = tauri::async_runtime::spawn(async move {
         tokio::time::sleep(delay).await;
 
+        let project_id = {
+            let conn = match launch_db.lock() {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            loopfleet_store::project_id_for_plan(&conn, &plan_id)
+                .ok()
+                .flatten()
+        };
+
         let snapshot = resolve_agent_usage(&launch_db, &agent).await;
         let now = now_ms();
         let still_exhausted = resolve_display(&snapshot, now, UsageThresholds::default())
@@ -2323,6 +2342,7 @@ fn arm_scheduled_launch(
                         ScheduledLaunchPayload {
                             id,
                             plan_id: plan_id.clone(),
+                            project_id: project_id.clone().unwrap_or_default(),
                             task_anchor: task_anchor.clone(),
                             launch_at: reset_at.format(&Rfc3339).unwrap_or_else(|_| reset_at.to_string()),
                             origin: origin.clone(),
@@ -2372,19 +2392,6 @@ fn arm_scheduled_launch(
                 return;
             }
         }
-
-        let project_id = {
-            let conn = match launch_db.lock() {
-                Ok(c) => c,
-                Err(_) => return,
-            };
-            conn.query_row(
-                "SELECT project_id FROM plans WHERE id = ?1",
-                [&plan_id],
-                |r| r.get::<_, String>(0),
-            )
-            .ok()
-        };
 
         // `spawn_run` re-validates the task anchor, the project's attachment,
         // and the agent CLI's presence itself — all of which may have changed
@@ -2489,11 +2496,20 @@ fn rearm_scheduled_launches(app: &AppHandle) {
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
         let launch_at_str = launch_at.format(&Rfc3339).unwrap_or_else(|_| launch_at.to_string());
 
+        let project_id = {
+            let conn = state.db.lock().unwrap();
+            loopfleet_store::project_id_for_plan(&conn, &launch.plan_id)
+                .ok()
+                .flatten()
+                .unwrap_or_default()
+        };
+
         let _ = app.emit(
             "scheduled_launch",
             ScheduledLaunchPayload {
                 id: launch.id,
                 plan_id: launch.plan_id.clone(),
+                project_id,
                 task_anchor: launch.task_anchor.clone(),
                 launch_at: launch_at_str,
                 origin: launch.origin.clone(),

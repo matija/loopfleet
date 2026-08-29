@@ -461,15 +461,13 @@ export default function App() {
 
   // A launch was booked for later (fresh, or re-announced by the backend's
   // startup rearm of a persisted schedule): resolve its project name and task
-  // text — the event payload carries only `plan_id`/`task_anchor` — and add
-  // it to the dock's pending-launch strip. `plan_id` is the project id here
-  // (the same value `LaunchControl` passes as both `projectId` to itself and
-  // `planId` to `scheduleLaunch`), so it matches straight against `projects`.
+  // text — the event payload carries the plan's `plan_id`/`task_anchor` plus
+  // its own `project_id` — and add it to the dock's pending-launch strip.
   useEffect(() => {
     const un = onScheduledLaunch((p) => {
       const launchAt = new Date(p.launch_at).getTime();
-      const project = projectsRef.current.find((x) => x.id === p.plan_id);
-      const projectName = project ? repoName(project.repo_path) : p.plan_id;
+      const project = projectsRef.current.find((x) => x.id === p.project_id);
+      const projectName = project ? repoName(project.repo_path) : p.project_id;
       setPendingLaunches((prev) =>
         prev.some((x) => x.id === p.id)
           ? prev

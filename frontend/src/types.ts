@@ -355,6 +355,7 @@ export type ScheduledResumeCancelledPayload = {
 export type ScheduledLaunchPayload = {
   id: number;
   plan_id: string;
+  project_id: string;
   task_anchor: string;
   launch_at: string;
   /// What scheduled this launch: `"manual"` or `"auto_advance"`.

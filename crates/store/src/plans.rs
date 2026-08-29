@@ -46,6 +46,22 @@ pub fn plan_file_path(conn: &Connection, plan_id: &str) -> rusqlite::Result<Opti
     })
 }
 
+/// The project id owning `plan_id`, or `None` if no such plan is synced.
+/// Read-only lookup used to resolve a plan reference back to its project,
+/// mirroring `project_id_for_run`'s join-through-the-owner shape.
+pub fn project_id_for_plan(conn: &Connection, plan_id: &str) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT project_id FROM plans WHERE id = ?1",
+        params![plan_id],
+        |r| r.get(0),
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+}
+
 /// Upsert one task by its anchor (the primary key). Deliberately never deletes
 /// tasks that vanished from the file: a launched run may still reference one via
 /// its FK, and the plan view derives which tasks to show from the freshly parsed
