@@ -167,16 +167,9 @@
   color: var(--c-text);
   font-size: var(--text-base);
   min-width: 0;
-  /* Text is unclipped by JS; clamp to two lines here so no row can ever grow
-   * past that regardless of viewport width. Clamping needs the -webkit-box
-   * display, so the first line is centered within the shared control-height
-   * band via padding rather than flex centering. */
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
   overflow: hidden;
-  padding-block: max(0px, calc((var(--control-h) - 1lh) / 2));
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .task-row__checked,
