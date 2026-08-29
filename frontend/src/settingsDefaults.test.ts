@@ -20,6 +20,10 @@ describe("DEFAULT_SETTINGS", () => {
       concurrency_cap: 3,
       worktree_retention_hours: 48,
       cleanup_after_merge: true,
+      auto_merge_enabled: true,
+      auto_merge_countdown_seconds: 10,
+      auto_advance_enabled: true,
+      auto_advance_delay_seconds: 5,
     });
     expect(DEFAULT_SETTINGS.worktree_retention_hours).toBe(DEFAULT_RETENTION_HOURS);
   });
