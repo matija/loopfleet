@@ -20,7 +20,7 @@ import {
   planOverview,
   scheduleLaunch,
 } from "../commands";
-import { taskSummary } from "../displayText";
+import { normalizeDisplayText, taskSummary } from "../displayText";
 import { onRunStatus } from "../events";
 import { preferredAgent, readLaunchPrefs, writeLaunchPrefs } from "../launchPrefs";
 import { isActiveRun, RUN_STATUS_LABEL } from "../status";
@@ -439,7 +439,7 @@ function TaskRow({
           </span>
         </span>
         <span className="task-row__text">
-          {taskSummary(task.text)}
+          {normalizeDisplayText(task.text)}
         </span>
         {task.checked && (
           <span
