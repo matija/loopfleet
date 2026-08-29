@@ -1078,6 +1078,7 @@ export default function App() {
                       role="dialog"
                       aria-label={`Remove ${repoName(p.repo_path)}`}
                       className="remove-project"
+                      scrim
                     >
                       <p className="remove-project__title">
                         Remove {repoName(p.repo_path)}?

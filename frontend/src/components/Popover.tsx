@@ -41,6 +41,12 @@ export type PopoverProps = {
   placement?: PopoverPlacement;
   "aria-label"?: string;
   className?: string;
+  /// Renders a full-viewport dimming layer behind the panel and lets a click
+  /// anywhere on it dismiss the popover. For confirmations guarding a
+  /// destructive action (e.g. remove-project) rather than lightweight menus,
+  /// where the scrim makes the modal-ness of the moment legible and blocks
+  /// stray clicks from reaching whatever sits underneath.
+  scrim?: boolean;
 };
 
 type Resolved = {
@@ -92,6 +98,7 @@ export function Popover({
   role = "menu",
   placement = "bottom-start",
   className,
+  scrim = false,
   ...rest
 }: PopoverProps) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -153,20 +160,23 @@ export function Popover({
   if (!open) return null;
 
   return createPortal(
-    <div
-      ref={panelRef}
-      className={className ? `popover ${className}` : "popover"}
-      role={role}
-      data-placement={pos?.vertical ?? "bottom"}
-      style={{
-        top: pos?.top ?? -9999,
-        left: pos?.left ?? -9999,
-        visibility: pos ? "visible" : "hidden",
-      }}
-      {...rest}
-    >
-      {children}
-    </div>,
+    <>
+      {scrim && <div className="popover-scrim" />}
+      <div
+        ref={panelRef}
+        className={className ? `popover ${className}` : "popover"}
+        role={role}
+        data-placement={pos?.vertical ?? "bottom"}
+        style={{
+          top: pos?.top ?? -9999,
+          left: pos?.left ?? -9999,
+          visibility: pos ? "visible" : "hidden",
+        }}
+        {...rest}
+      >
+        {children}
+      </div>
+    </>,
     document.body,
   );
 }

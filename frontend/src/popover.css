@@ -21,6 +21,16 @@
   outline: none;
 }
 
+/* Dims the page and blocks clicks from reaching whatever sits underneath a
+ * destructive-action confirmation (Popover's `scrim` prop). Sits just below
+ * the panel in z-index so the panel itself still reads as the focal point. */
+.popover-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 299;
+  background: var(--c-scrim, rgba(0, 0, 0, 0.4));
+}
+
 /* Settle in from the anchor's edge — down into place when opening below the
  * anchor, up into place when flipped above it. Neutralized globally by the
  * prefers-reduced-motion guard in tokens.css. */
