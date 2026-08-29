@@ -111,6 +111,12 @@ export type PendingLaunch = {
   id: number;
   projectName: string;
   taskText: string;
+  /// The project the launch is booked against (the event's `plan_id`) and the
+  /// plan task it will run. Carried so the run the launch produces can join the
+  /// dock with the same project/task identity a manual launch gets — which is
+  /// what makes retry available on it.
+  projectId: string;
+  taskAnchor: string;
   /// Epoch ms the launch is booked to fire at.
   launchAt: number;
   /// What scheduled this launch — `"manual"` (the "run when the limit

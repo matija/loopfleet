@@ -475,7 +475,15 @@ export default function App() {
           ? prev
           : [
               ...prev,
-              { id: p.id, projectName, taskText: p.task_anchor, launchAt, origin: p.origin },
+              {
+                id: p.id,
+                projectName,
+                taskText: p.task_anchor,
+                launchAt,
+                origin: p.origin,
+                projectId: p.plan_id,
+                taskAnchor: p.task_anchor,
+              },
             ],
       );
       planOverview(p.plan_id)
@@ -500,11 +508,14 @@ export default function App() {
     };
   }, []);
 
-  // A scheduled launch fired: drop its pending-launch chip and toast the
-  // outcome. The run it produced isn't added to `runs` here — that registry
-  // is populated from explicit launch call sites (`onLaunch`/`onRetry`), and
-  // there is no run-detail fetch wired to a bare run id yet — so the toast is
-  // the notification this task asks for.
+  // A scheduled launch fired: hand the run it produced to the dock, drop the
+  // pending-launch chip it replaces, and toast the outcome. The run is seeded
+  // from the pending entry (project name, task text, project/task identity, so
+  // retry works on it just like a manual launch) and the rest — the agent it
+  // ran with and the pass count — is filled in from the run's own detail, the
+  // only place a bare run id can be resolved from. If the chip is gone (a fire
+  // announced without its schedule, e.g. after the launch was seeded before a
+  // reload), the run still joins the dock with what the detail fetch knows.
   useEffect(() => {
     const un = onScheduledLaunchFired((p) => {
       const entry = pendingLaunchesRef.current.find((x) => x.id === p.id);
@@ -513,6 +524,44 @@ export default function App() {
           `Scheduled launch fired: ${taskSummary(entry.taskText)} (${entry.projectName})`,
         );
       }
+      setRuns((prev) =>
+        prev.some((r) => r.runId === p.run_id)
+          ? prev
+          : [
+              {
+                runId: p.run_id,
+                projectName: entry?.projectName ?? "project",
+                taskText: entry?.taskText ?? "",
+                agent: "",
+                startedAt: Date.now(),
+                status: "running",
+                projectId: entry?.projectId,
+                taskAnchor: entry?.taskAnchor,
+              },
+              ...prev,
+            ],
+      );
+      setDockCollapsed(false);
+      runTimeline(p.run_id)
+        .then((t) => {
+          setRuns((prev) =>
+            prev.map((r) =>
+              r.runId === p.run_id
+                ? {
+                    ...r,
+                    agent: t.agent,
+                    maxIterations: t.max_iterations,
+                    taskAnchor: r.taskAnchor ?? t.task_anchor,
+                    taskText: r.taskText || t.task_anchor,
+                  }
+                : r,
+            ),
+          );
+        })
+        .catch(() => {
+          // Detail not readable yet (the run has only just started) — the chip
+          // renders without its agent/pass count rather than not at all.
+        });
       setPendingLaunches((prev) => prev.filter((x) => x.id !== p.id));
     });
     return () => {
