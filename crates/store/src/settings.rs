@@ -14,6 +14,9 @@ use serde::{Deserialize, Serialize};
 pub struct Settings {
     /// Pre-selected agent in the launch affordance.
     pub default_agent: String,
+    /// Pre-selected model in the launch affordance, if any. `None` means the
+    /// agent's own default model is used.
+    pub default_model: Option<String>,
     /// Pre-selected iteration count in the launch affordance.
     pub default_iterations: u32,
     /// Max simultaneously active (queued/running) runs. A launch past this is
@@ -43,6 +46,7 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             default_agent: "claude".into(),
+            default_model: None,
             default_iterations: 1,
             concurrency_cap: 3,
             worktree_retention_hours: 48,
@@ -60,6 +64,9 @@ pub fn load_settings(conn: &Connection) -> rusqlite::Result<Settings> {
     let mut s = Settings::default();
     if let Some(v) = get(conn, "default_agent")? {
         s.default_agent = v;
+    }
+    if let Some(v) = get(conn, "default_model")? {
+        s.default_model = if v.is_empty() { None } else { Some(v) };
     }
     if let Some(v) = get(conn, "default_iterations")?.and_then(|v| v.parse().ok()) {
         s.default_iterations = v;
@@ -91,6 +98,7 @@ pub fn load_settings(conn: &Connection) -> rusqlite::Result<Settings> {
 /// Persist every settings field (upsert per key).
 pub fn save_settings(conn: &Connection, s: &Settings) -> rusqlite::Result<()> {
     set(conn, "default_agent", &s.default_agent)?;
+    set(conn, "default_model", s.default_model.as_deref().unwrap_or(""))?;
     set(conn, "default_iterations", &s.default_iterations.to_string())?;
     set(conn, "concurrency_cap", &s.concurrency_cap.to_string())?;
     set(
@@ -202,6 +210,7 @@ mod tests {
         let conn = crate::open(":memory:").unwrap();
         let s = Settings {
             default_agent: "pi".into(),
+            default_model: Some("opus".into()),
             default_iterations: 10,
             concurrency_cap: 1,
             worktree_retention_hours: -1,
