@@ -8,13 +8,14 @@
 //! derive each task's live `TaskStatus`. The PRD is frozen — this never edits it;
 //! `markdown` is the raw file for the UI to render as-is.
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use loopfleet_store::{Connection, Project};
 use serde::Serialize;
 
 use crate::plan::{discover_plans, parse_plan, PlanConvention};
-use crate::task_binding::{MatchKind, PlanBinding};
+use crate::task_binding::{resolve as resolve_task_anchor, MatchKind};
 use crate::task_status::{derive_status, TaskRun, TaskStatus};
 use crate::RunState;
 
@@ -81,6 +82,23 @@ impl std::error::Error for OverviewError {}
 
 /// Build the overview for `project`: one [`PlanView`] per discovered plan file
 /// (PRD convention → 0 or 1; folder convention → one per `.md`).
+/// Whether the plan file has been replaced rather than edited: tasks were synced
+/// from it before, it still holds tasks now, and not one of the previous ones
+/// survived.
+///
+/// The two guards against a false positive matter. An empty `previous` is a plan
+/// synced for the first time, which has nothing to have lost. An empty parse is
+/// a file that momentarily holds no tasks — a half-written save, a plan being
+/// restructured — and absence of tasks is not evidence that different ones
+/// arrived. Only a full turnover between two populated task sets counts.
+fn plan_was_replaced(previous: &HashSet<String>, now: &[crate::plan::ParsedTask]) -> bool {
+    !previous.is_empty()
+        && !now.is_empty()
+        && !now
+            .iter()
+            .any(|t| previous.contains(&t.anchor.normalized_text))
+}
+
 pub fn plan_overview(conn: &Connection, project: &Project) -> Result<Vec<PlanView>, OverviewError> {
     let convention = PlanConvention::from_token(&project.plan_convention)
         .ok_or_else(|| OverviewError::UnknownConvention(project.plan_convention.clone()))?;
@@ -96,6 +114,24 @@ pub fn plan_overview(conn: &Connection, project: &Project) -> Result<Vec<PlanVie
         let pid = loopfleet_store::plan_id(&project.id, &file_path);
         loopfleet_store::upsert_plan(conn, &pid, &project.id, &file_path)
             .map_err(OverviewError::Store)?;
+
+        // Decide, before the sync overwrites the evidence, whether this file is
+        // still the plan the stored tasks came from. Nothing surviving from the
+        // last sync means the plan at this path was replaced — the archive-and-
+        // start-the-next-one cycle a `prd`-convention project runs on — and the
+        // outgoing tasks' lines stop being evidence about anything, for good.
+        //
+        // The decision has to be made here, and it has to stick. It cannot be
+        // re-derived at read time from the runs, because the moment one run is
+        // launched against the new plan its anchor matches by text and any such
+        // test flips back, resurrecting every old binding.
+        let previous = loopfleet_store::present_task_anchors(conn, &pid)
+            .map_err(OverviewError::Store)?;
+        if plan_was_replaced(&previous, &parsed.tasks) {
+            loopfleet_store::revoke_positional_recovery(conn, &pid)
+                .map_err(OverviewError::Store)?;
+        }
+        loopfleet_store::mark_tasks_absent(conn, &pid).map_err(OverviewError::Store)?;
         for t in &parsed.tasks {
             loopfleet_store::upsert_task(
                 conn,
@@ -115,13 +151,6 @@ pub fn plan_overview(conn: &Connection, project: &Project) -> Result<Vec<PlanVie
         // matches the current derivation needs the whole task list (and its own
         // last known line) to place it, not a single equality test per task.
         //
-        // The binder is built from the runs' own anchors, which are the only
-        // record of what this file used to say — the task rows were re-synced
-        // from its current contents three lines ago and would vouch for any
-        // file at all. What it decides: is this still the plan these runs were
-        // stored against, or has the plan at this path been replaced? Position
-        // is only admissible if it is.
-        let binding = PlanBinding::new(&parsed.tasks, runs.iter().map(|r| &r.task_anchor));
         let mut bound: Vec<Vec<TaskRun>> = vec![Vec::new(); parsed.tasks.len()];
         let mut unbound_runs = 0;
         let mut drifted_runs = 0;
@@ -129,7 +158,11 @@ pub fn plan_overview(conn: &Connection, project: &Project) -> Result<Vec<PlanVie
             let Some(state) = RunState::from_token(&r.status) else {
                 continue;
             };
-            match binding.resolve(&r.task_anchor, hints.get(&r.task_anchor).copied()) {
+            match resolve_task_anchor(
+                &parsed.tasks,
+                &r.task_anchor,
+                hints.get(&r.task_anchor).copied(),
+            ) {
                 Some(res) => {
                     if res.kind != MatchKind::Exact || res.position_disagreed {
                         drifted_runs += 1;
@@ -211,6 +244,98 @@ mod tests {
             max_iterations: 3,
             status: status.into(),
         }
+    }
+
+    #[test]
+    fn a_run_on_the_new_plan_does_not_resurrect_the_old_plan_s_bindings() {
+        // The regression a first attempt at this shipped with. Deciding at read
+        // time whether the file is "still the same plan" by asking if any run's
+        // anchor matches by text works exactly until the first run is launched
+        // against the new plan: that run's anchor matches, the test flips, and
+        // every old run is positionally rebound. The plan reads correctly once,
+        // then reverts the moment it is used.
+        //
+        // Recording the decision when the replacement is observed is what makes
+        // it hold. Nothing a later run does can put those lines back in play.
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let (project, dir) =
+            project_with_prd(&conn, "# Old\n- [ ] ship the widget\n- [ ] ship the gadget\n");
+
+        let views = plan_overview(&conn, &project).unwrap();
+        let plan_id = views[0].plan_id.clone();
+        for anchor in ["ship the widget", "ship the gadget"] {
+            let run = run_row(&plan_id, anchor, "completed");
+            loopfleet_store::insert_run(&conn, &run).unwrap();
+            loopfleet_store::set_run_accepted(&conn, &run.id).unwrap();
+        }
+
+        std::fs::write(
+            dir.path().join("PRD.md"),
+            "# New\n- [ ] add a theme picker\n- [ ] remove the brand mark\n",
+        )
+        .unwrap();
+        // The replacement is observed here.
+        let views = plan_overview(&conn, &project).unwrap();
+        assert!(views[0].tasks.iter().all(|t| t.status == TaskStatus::NotStarted));
+
+        // Now work actually starts on the new plan: one run against one of its
+        // tasks, which of course matches by text.
+        let run = run_row(&plan_id, "add a theme picker", "completed");
+        loopfleet_store::insert_run(&conn, &run).unwrap();
+        loopfleet_store::set_run_accepted(&conn, &run.id).unwrap();
+
+        let views = plan_overview(&conn, &project).unwrap();
+        let v = &views[0];
+        let picker = v.tasks.iter().find(|t| t.anchor == "add a theme picker").unwrap();
+        let mark = v.tasks.iter().find(|t| t.anchor == "remove the brand mark").unwrap();
+        // The task that was actually run is accepted, by its own run and nothing
+        // else; the untouched one is still untouched.
+        assert_eq!(picker.status, TaskStatus::Accepted);
+        assert_eq!(picker.run_count, 1);
+        assert_eq!(mark.status, TaskStatus::NotStarted);
+        assert_eq!(mark.run_count, 0);
+        assert_eq!(v.unbound_runs, 2);
+    }
+
+    #[test]
+    fn a_reworded_task_still_recovers_its_runs_by_position() {
+        // The case the positional signal exists for, and the reason a replaced
+        // plan is distinguished from an edited one rather than the signal simply
+        // being removed. One task is rewritten past all textual recognition
+        // while the rest of the plan stands; its line is still good evidence.
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let (project, dir) = project_with_prd(
+            &conn,
+            "# Plan\n- [ ] ship the widget\n- [ ] ship the gadget\n- [ ] ship the doohickey\n",
+        );
+
+        let views = plan_overview(&conn, &project).unwrap();
+        let plan_id = views[0].plan_id.clone();
+        let run = run_row(&plan_id, "ship the gadget", "completed");
+        loopfleet_store::insert_run(&conn, &run).unwrap();
+        loopfleet_store::set_run_accepted(&conn, &run.id).unwrap();
+
+        // Same plan, one task reworded in place. Its neighbours survive, so this
+        // is an edit and not a replacement.
+        std::fs::write(
+            dir.path().join("PRD.md"),
+            "# Plan\n- [ ] ship the widget\n- [ ] deliver the contraption\n- [ ] ship the doohickey\n",
+        )
+        .unwrap();
+
+        let views = plan_overview(&conn, &project).unwrap();
+        let v = &views[0];
+        let reworded = v
+            .tasks
+            .iter()
+            .find(|t| t.anchor == "deliver the contraption")
+            .unwrap();
+        assert_eq!(reworded.status, TaskStatus::Accepted);
+        assert_eq!(reworded.run_count, 1);
+        assert_eq!(v.unbound_runs, 0);
+        // Recovered by a signal other than an exact anchor match: the plan's
+        // anchors have drifted, and the count is how that is surfaced.
+        assert_eq!(v.drifted_runs, 1);
     }
 
     #[test]

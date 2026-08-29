@@ -6,7 +6,7 @@
 //! `checked` is the authored "implemented" baseline (read as `Accepted` by
 //! `derive_status`), not a live progress signal.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::{params, Connection};
 
@@ -64,10 +64,14 @@ pub fn project_id_for_plan(conn: &Connection, plan_id: &str) -> rusqlite::Result
     })
 }
 
-/// Upsert one task by its anchor (the primary key). Deliberately never deletes
-/// tasks that vanished from the file: a launched run may still reference one via
-/// its FK, and the plan view derives which tasks to show from the freshly parsed
-/// file anyway, so a stale row is harmless.
+/// Upsert one task by its anchor (the primary key), marking it present in the
+/// file and its line usable as binding evidence.
+///
+/// Never deletes tasks that vanished from the file — a launched run may still
+/// reference one via its FK. A vanished row is not harmless, though, which is
+/// what `present`/`positional` are for: see [`mark_tasks_absent`] and
+/// [`revoke_positional_recovery`], and call them around a sync rather than
+/// relying on the upserts alone.
 pub fn upsert_task(
     conn: &Connection,
     plan_id: &str,
@@ -77,25 +81,75 @@ pub fn upsert_task(
     checked: bool,
 ) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO tasks (plan_id, normalized_text, line_hint, text, checked)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO tasks (plan_id, normalized_text, line_hint, text, checked, present, positional)
+         VALUES (?1, ?2, ?3, ?4, ?5, 1, 1)
          ON CONFLICT(plan_id, normalized_text)
-         DO UPDATE SET line_hint = excluded.line_hint,
-                       text      = excluded.text,
-                       checked   = excluded.checked",
+         DO UPDATE SET line_hint  = excluded.line_hint,
+                       text       = excluded.text,
+                       checked    = excluded.checked,
+                       present    = 1,
+                       positional = 1",
         params![plan_id, normalized_text, line_hint, text, checked as i64],
     )?;
     Ok(())
 }
 
-/// Every stored anchor in a plan mapped to its last known line.
+/// The anchors of every task that was in the plan file at the last sync.
+///
+/// Read *before* re-syncing: it is the only record of what the file used to say,
+/// and the sync overwrites it. Comparing it with the freshly parsed anchors is
+/// what tells a reworded task from a replaced plan.
+pub fn present_task_anchors(conn: &Connection, plan_id: &str) -> rusqlite::Result<HashSet<String>> {
+    let mut stmt =
+        conn.prepare("SELECT normalized_text FROM tasks WHERE plan_id = ?1 AND present = 1")?;
+    let rows = stmt.query_map(params![plan_id], |r| r.get::<_, String>(0))?;
+    rows.collect()
+}
+
+/// Withdraw the positional signal from the plan's currently-present tasks,
+/// permanently.
+///
+/// Called at the moment a sync finds that nothing in the file survived from the
+/// last one: the plan at this path was replaced, so these tasks belong to a plan
+/// that no longer exists and their lines are not evidence about the new one. The
+/// flag is sticky by design — the alternative, re-deciding on every read, is
+/// what let a single run launched against the new plan resurrect the old plan's
+/// bindings.
+pub fn revoke_positional_recovery(conn: &Connection, plan_id: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE tasks SET positional = 0 WHERE plan_id = ?1 AND present = 1",
+        params![plan_id],
+    )?;
+    Ok(())
+}
+
+/// Mark every task in the plan absent, to be re-marked present by the upserts
+/// that follow. Run once at the start of a sync so tasks that vanished from the
+/// file are known to have vanished.
+pub fn mark_tasks_absent(conn: &Connection, plan_id: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE tasks SET present = 0 WHERE plan_id = ?1",
+        params![plan_id],
+    )?;
+    Ok(())
+}
+
+/// Every *positionally recoverable* anchor in a plan mapped to its last known
+/// line.
 ///
 /// Task rows outlive the file's current contents (`upsert_task` never deletes),
 /// so this is the positional evidence a run carries about where its task used
 /// to sit — the second signal `loopfleet_core::task_binding` resolves against
 /// when a stored anchor no longer matches any parsed task's text.
+///
+/// Rows whose `positional` flag was revoked are omitted, so a run whose plan was
+/// replaced gets no hint at all and cannot be bound by position. That filter is
+/// the whole of the guard: `task_binding` needs no notion of it, because an
+/// anchor with no hint already skips the positional signal.
 pub fn task_line_hints(conn: &Connection, plan_id: &str) -> rusqlite::Result<HashMap<String, u32>> {
-    let mut stmt = conn.prepare("SELECT normalized_text, line_hint FROM tasks WHERE plan_id = ?1")?;
+    let mut stmt = conn.prepare(
+        "SELECT normalized_text, line_hint FROM tasks WHERE plan_id = ?1 AND positional = 1",
+    )?;
     let rows = stmt.query_map(params![plan_id], |r| {
         Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u32))
     })?;

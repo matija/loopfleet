@@ -22,8 +22,9 @@ pub use settings::{
 
 mod plans;
 pub use plans::{
-    load_task, plan_file_path, plan_id, project_id_for_plan, task_line_hints, upsert_plan,
-    upsert_task, TaskRow,
+    load_task, mark_tasks_absent, plan_file_path, plan_id, present_task_anchors,
+    project_id_for_plan, revoke_positional_recovery, task_line_hints, upsert_plan, upsert_task,
+    TaskRow,
 };
 
 mod runs;
@@ -87,6 +88,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
     (
         "0009_scheduled_launch_origin",
         include_str!("migrations/0009_scheduled_launch_origin.sql"),
+    ),
+    (
+        "0010_task_presence",
+        include_str!("migrations/0010_task_presence.sql"),
     ),
 ];
 
