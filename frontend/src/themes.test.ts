@@ -73,6 +73,7 @@ describe("THEMES", () => {
     expect(THEMES).toEqual([
       { id: "dark", label: "Dark" },
       { id: "rose-pine-moon", label: "Rosé Pine Moon" },
+      { id: "github-dark", label: "GitHub Dark" },
     ]);
   });
 
@@ -93,6 +94,7 @@ describe("isThemeId", () => {
   it("accepts registered ids", () => {
     expect(isThemeId("dark")).toBe(true);
     expect(isThemeId("rose-pine-moon")).toBe(true);
+    expect(isThemeId("github-dark")).toBe(true);
   });
 
   it("rejects anything else", () => {
