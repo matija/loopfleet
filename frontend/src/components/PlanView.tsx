@@ -24,6 +24,7 @@ import { normalizeDisplayText, taskSummary } from "../displayText";
 import { onRunStatus } from "../events";
 import { preferredAgent, readLaunchPrefs, writeLaunchPrefs } from "../launchPrefs";
 import { isActiveRun, RUN_STATUS_LABEL } from "../status";
+import { useTaskExpanded } from "../taskExpand";
 import {
   formatCountdown,
   formatResetTime,
@@ -390,6 +391,7 @@ function TaskRow({
   const [lastRun, setLastRun] = useState<RowLastRun | null>(null);
   const rowRef = useRef<HTMLLIElement>(null);
   const { open, handlers } = useHoverOpen(400, rowRef);
+  const [expanded, toggleExpanded] = useTaskExpanded(`${planId}:${task.anchor}`);
 
   // Track the launched run's terminal transition so the hover card can show
   // a finished duration instead of freezing on "running".
@@ -438,9 +440,14 @@ function TaskRow({
             {STATUS_LABEL[task.status]}
           </span>
         </span>
-        <span className="task-row__text">
+        <button
+          type="button"
+          className="task-row__text"
+          aria-expanded={expanded}
+          onClick={toggleExpanded}
+        >
           {normalizeDisplayText(task.text)}
-        </span>
+        </button>
         {task.checked && (
           <span
             className="task-row__checked"

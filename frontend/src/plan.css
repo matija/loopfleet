@@ -164,12 +164,25 @@
 }
 
 .task-row__text {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
   color: var(--c-text);
   font-size: var(--text-base);
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* Expanded: the task's full text wraps instead of clipping to one line. */
+.task-row__text[aria-expanded="true"] {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
 }
 
 .task-row__checked,
