@@ -223,6 +223,7 @@ button.toolbar__crumb:hover {
  * (not a gap) separates their hit targets so they still read as one
  * control. */
 .toolbar-split {
+  --toolbar-split-inner-radius: calc(var(--radius-sm) - 1px);
   display: inline-flex;
   align-items: stretch;
   height: var(--control-h-lg);
@@ -238,16 +239,16 @@ button.toolbar__crumb:hover {
 }
 
 .toolbar-split__main {
-  border-top-left-radius: calc(var(--radius-sm) - 1px);
-  border-bottom-left-radius: calc(var(--radius-sm) - 1px);
+  border-top-left-radius: var(--toolbar-split-inner-radius);
+  border-bottom-left-radius: var(--toolbar-split-inner-radius);
 }
 
 .toolbar-split__chevron {
   width: var(--control-h-lg);
   padding: 0;
   border-left: 1px solid var(--c-border);
-  border-top-right-radius: calc(var(--radius-sm) - 1px);
-  border-bottom-right-radius: calc(var(--radius-sm) - 1px);
+  border-top-right-radius: var(--toolbar-split-inner-radius);
+  border-bottom-right-radius: var(--toolbar-split-inner-radius);
 }
 
 /* Focus rings sit on top of the split's shared border/divider rather than

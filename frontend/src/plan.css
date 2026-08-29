@@ -570,6 +570,7 @@
  * the primary action without shouting. Sized down to the row's --control-h,
  * since toolbar-split defaults to the taller toolbar control height. */
 .launch__run {
+  --toolbar-split-inner-radius: calc(var(--radius-md) - 1px);
   height: var(--control-h);
   border-color: var(--c-accent-border);
   border-radius: var(--radius-md);
