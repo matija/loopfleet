@@ -172,6 +172,7 @@
   cursor: pointer;
   color: var(--c-text);
   font-size: var(--text-base);
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
