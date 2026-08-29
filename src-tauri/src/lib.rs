@@ -2744,7 +2744,7 @@ async fn merge_and_accept_run(
 
     // Resolve the run's parent repo, its final shadow ref, and enough of its
     // task binding to compose a fallback commit message for it.
-    let (repo_path, source_ref, task_text, agent, pass_count) = {
+    let (repo_path, source_ref, task_text, agent, model, pass_count) = {
         let conn = db.lock().unwrap();
         let detail = loopfleet_store::load_run(&conn, run_id)
             .map_err(|e| e.to_string())?
@@ -2761,7 +2761,14 @@ async fn merge_and_accept_run(
             .map_err(|e| e.to_string())?
             .map(|t| t.text)
             .unwrap_or(detail.task_anchor);
-        (detail.repo_path, source_ref, task_text, detail.agent, pass_count)
+        (
+            detail.repo_path,
+            source_ref,
+            task_text,
+            detail.agent,
+            detail.model,
+            pass_count,
+        )
     };
 
     // The run's own progress file, read for its `SUMMARY:` line — durable state
@@ -2773,8 +2780,14 @@ async fn merge_and_accept_run(
         .ok()
         .and_then(|c| loopfleet_core::progress::summary_from_contents(&c))
         .unwrap_or_default();
-    let fallback_message =
-        loopfleet_core::compose_commit_message(&summary, &task_text, run_id, &agent, pass_count);
+    let fallback_message = loopfleet_core::compose_commit_message(
+        &summary,
+        &task_text,
+        run_id,
+        &agent,
+        model.as_deref(),
+        pass_count,
+    );
 
     let scratch_root = data_dir.join("worktrees");
     let merge = git
