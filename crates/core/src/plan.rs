@@ -107,19 +107,24 @@ pub fn parse_plan_file(path: &Path) -> io::Result<ParsedPlan> {
 /// Parse plan markdown. Deterministic and side-effect free: the same input
 /// always yields the same tasks in the same order.
 pub fn parse_plan(content: &str) -> ParsedPlan {
+    let lines: Vec<&str> = content.lines().collect();
     let mut tasks = Vec::new();
     let mut title = None;
     let mut in_fence = false;
 
-    for (i, line) in content.lines().enumerate() {
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
         let trimmed = line.trim_start();
         // Toggle on fenced code blocks so a checkbox shown inside an example
         // (```- [ ] …```) is never mistaken for a real task.
         if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
             in_fence = !in_fence;
+            i += 1;
             continue;
         }
         if in_fence {
+            i += 1;
             continue;
         }
         if title.is_none() {
@@ -127,20 +132,60 @@ pub fn parse_plan(content: &str) -> ParsedPlan {
                 title = Some(rest.trim().to_string());
             }
         }
-        if let Some((checked, text)) = parse_checkbox(line) {
+        if let Some((checked, first)) = parse_checkbox(line) {
+            let line_hint = (i + 1) as u32;
+            let mut text = first.to_string();
+            // A wrapped list item continues on indented lines with no marker
+            // of their own; join them back into one task rather than
+            // truncating the task at its first physical line.
+            let mut j = i + 1;
+            while j < lines.len() {
+                let cont = lines[j];
+                if cont.trim().is_empty() {
+                    break;
+                }
+                if !cont.starts_with(' ') && !cont.starts_with('\t') {
+                    break;
+                }
+                let cont_trimmed = cont.trim();
+                if cont_trimmed.starts_with("```")
+                    || cont_trimmed.starts_with("~~~")
+                    || cont_trimmed.starts_with('#')
+                    || is_list_marker(cont_trimmed)
+                {
+                    break;
+                }
+                text.push(' ');
+                text.push_str(cont_trimmed);
+                j += 1;
+            }
             tasks.push(ParsedTask {
                 anchor: TaskAnchor {
-                    normalized_text: normalize(text),
+                    normalized_text: normalize(&text),
                     // 1-based: humans and editors count lines from 1.
-                    line_hint: (i + 1) as u32,
+                    line_hint,
                 },
-                text: text.to_string(),
+                text,
                 checked,
             });
+            i = j;
+            continue;
         }
+        i += 1;
     }
 
     ParsedPlan { title, tasks }
+}
+
+/// Whether a trimmed line starts a new markdown list item (checkbox or
+/// plain), which ends the previous item's continuation.
+fn is_list_marker(trimmed: &str) -> bool {
+    trimmed.starts_with("- ")
+        || trimmed.starts_with("* ")
+        || trimmed.starts_with("+ ")
+        || trimmed == "-"
+        || trimmed == "*"
+        || trimmed == "+"
 }
 
 /// Recognize a markdown checkbox list item: an optional-indent list marker
@@ -241,6 +286,27 @@ mod tests {
         let plan = parse_plan("  - [ ] nested\n");
         assert_eq!(plan.tasks.len(), 1);
         assert_eq!(plan.tasks[0].text, "nested");
+    }
+
+    #[test]
+    fn joins_wrapped_checkbox_continuation_lines() {
+        let plan = parse_plan(
+            "- [ ] **Extend the thing and\n  the other thing with a\n  new field.**\n  Rationale here.\n\n**Done when.** stuff\n",
+        );
+        assert_eq!(plan.tasks.len(), 1);
+        assert_eq!(
+            plan.tasks[0].text,
+            "**Extend the thing and the other thing with a new field.** Rationale here."
+        );
+        assert_eq!(plan.tasks[0].anchor.line_hint, 1);
+    }
+
+    #[test]
+    fn continuation_stops_at_next_list_item_or_unindented_line() {
+        let plan = parse_plan("- [ ] first\n  more first\n- [ ] second\nunindented\n");
+        assert_eq!(plan.tasks.len(), 2);
+        assert_eq!(plan.tasks[0].text, "first more first");
+        assert_eq!(plan.tasks[1].text, "second");
     }
 
     #[test]
