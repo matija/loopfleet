@@ -507,13 +507,18 @@ export default function App() {
   }, []);
 
   // A scheduled launch fired: hand the run it produced to the dock, drop the
-  // pending-launch chip it replaces, and toast the outcome. The event now
-  // carries the launch's own identity (project, task, agent, pass cap), so the
-  // run joins the dock fully described without a follow-up detail fetch — which
-  // could not have answered at this point anyway, the run having only just
-  // started. The pending chip is still preferred for the two labels it may have
+  // pending-launch chip it replaces, and force the dock open so the swap from
+  // "Scheduled" chip to running chip is visible. The event now carries the
+  // launch's own identity (project, task, agent, pass cap), so the run joins
+  // the dock fully described without a follow-up detail fetch — which could
+  // not have answered at this point anyway, the run having only just started.
+  // The pending chip is still preferred for the two labels it may have
   // resolved further than the payload can: its project name, and the plan
   // task's text where the payload has only the anchor.
+  //
+  // No toast here: `pushError`/`Toasts` is the command-error surface (⚠ icon,
+  // assertive aria-live) and a launch firing on schedule isn't an error — the
+  // dock swap below, plus the forced un-collapse, already says "it fired."
   useEffect(() => {
     const un = onScheduledLaunchFired((p) => {
       const entry = pendingLaunchesRef.current.find((x) => x.id === p.id);
@@ -521,7 +526,6 @@ export default function App() {
       const projectName =
         entry?.projectName ?? (project ? repoName(project.repo_path) : p.plan_id);
       const taskText = entry?.taskText ?? p.task_anchor;
-      pushError(`Scheduled launch fired: ${taskSummary(taskText)} (${projectName})`);
       setRuns((prev) =>
         prev.some((r) => r.runId === p.run_id)
           ? prev
