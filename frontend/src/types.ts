@@ -362,11 +362,21 @@ export type ScheduledLaunchPayload = {
 };
 
 /// A scheduled launch fired, pushed on the `scheduled_launch_fired` Tauri
-/// event with the run id it produced.
+/// event with the run id it produced and the launch's own identity, so the run
+/// can join the dock without depending on the pending-launch chip still being
+/// there or on the run's detail being readable yet.
 /// `src-tauri::ScheduledLaunchFiredPayload`.
 export type ScheduledLaunchFiredPayload = {
   id: number;
   run_id: string;
+  /// The project the launch was booked against and the plan task it ran —
+  /// the same identity a manual launch gives its run, which is what makes
+  /// retry available on it.
+  plan_id: string;
+  task_anchor: string;
+  /// The agent the run started with and its pass cap.
+  agent: string;
+  max_iterations: number;
 };
 
 /// A previously scheduled launch was cancelled before it fired, pushed on the

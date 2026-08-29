@@ -110,11 +110,21 @@ struct ScheduledLaunchPayload {
     origin: String,
 }
 
-/// A scheduled launch fired, pushed with the run id it produced.
+/// A scheduled launch fired, pushed with the run id it produced and enough of
+/// the launch's identity to describe that run on its own. The UI has no way to
+/// resolve a bare run id at the moment it starts — the run's own detail may not
+/// be readable yet — and the pending-launch chip this event replaces may not be
+/// there to borrow from (a schedule armed before a reload announces its fire
+/// without ever having announced itself), so what the launch already knows is
+/// carried here rather than looked up afterwards.
 #[derive(Clone, serde::Serialize)]
 struct ScheduledLaunchFiredPayload {
     id: i64,
     run_id: String,
+    plan_id: String,
+    task_anchor: String,
+    agent: String,
+    max_iterations: u32,
 }
 
 /// A previously scheduled launch was cancelled before it fired.
@@ -2383,6 +2393,9 @@ fn arm_scheduled_launch(
         // schedule with a visible reason rather than launch nothing and stay
         // silent, since by this point there's no "launching at…" indicator
         // left in the UI to explain the absence.
+        // Cloned before `spawn_run` consumes it, so the fired event can name
+        // the agent the run started with.
+        let fired_agent = agent.clone();
         let launch_result = match project_id {
             Some(project_id) => spawn_run(
                 project_id,
@@ -2409,7 +2422,17 @@ fn arm_scheduled_launch(
 
         match launch_result {
             Ok(run_id) => {
-                let _ = app.emit("scheduled_launch_fired", ScheduledLaunchFiredPayload { id, run_id });
+                let _ = app.emit(
+                    "scheduled_launch_fired",
+                    ScheduledLaunchFiredPayload {
+                        id,
+                        run_id,
+                        plan_id,
+                        task_anchor,
+                        agent: fired_agent,
+                        max_iterations,
+                    },
+                );
             }
             Err(reason) => {
                 let _ = app.emit(
