@@ -14,7 +14,7 @@ use loopfleet_store::{Connection, Project};
 use serde::Serialize;
 
 use crate::plan::{discover_plans, parse_plan, PlanConvention};
-use crate::task_binding::{resolve as resolve_task_anchor, MatchKind};
+use crate::task_binding::{MatchKind, PlanBinding};
 use crate::task_status::{derive_status, TaskRun, TaskStatus};
 use crate::RunState;
 
@@ -114,6 +114,14 @@ pub fn plan_overview(conn: &Connection, project: &Project) -> Result<Vec<PlanVie
         // Resolve each run to its task once. A stored anchor that no longer
         // matches the current derivation needs the whole task list (and its own
         // last known line) to place it, not a single equality test per task.
+        //
+        // The binder is built from the runs' own anchors, which are the only
+        // record of what this file used to say — the task rows were re-synced
+        // from its current contents three lines ago and would vouch for any
+        // file at all. What it decides: is this still the plan these runs were
+        // stored against, or has the plan at this path been replaced? Position
+        // is only admissible if it is.
+        let binding = PlanBinding::new(&parsed.tasks, runs.iter().map(|r| &r.task_anchor));
         let mut bound: Vec<Vec<TaskRun>> = vec![Vec::new(); parsed.tasks.len()];
         let mut unbound_runs = 0;
         let mut drifted_runs = 0;
@@ -121,11 +129,7 @@ pub fn plan_overview(conn: &Connection, project: &Project) -> Result<Vec<PlanVie
             let Some(state) = RunState::from_token(&r.status) else {
                 continue;
             };
-            match resolve_task_anchor(
-                &parsed.tasks,
-                &r.task_anchor,
-                hints.get(&r.task_anchor).copied(),
-            ) {
+            match binding.resolve(&r.task_anchor, hints.get(&r.task_anchor).copied()) {
                 Some(res) => {
                     if res.kind != MatchKind::Exact || res.position_disagreed {
                         drifted_runs += 1;
@@ -207,6 +211,57 @@ mod tests {
             max_iterations: 3,
             status: status.into(),
         }
+    }
+
+    #[test]
+    fn a_replaced_plan_does_not_inherit_the_previous_plan_s_accepted_runs() {
+        // The archive-and-start-the-next-one cycle, which is how a project at
+        // the `prd` convention moves from one plan to the next: PRD.md is
+        // rewritten in place, so the plan id — derived from the path — carries
+        // the finished plan's runs onto a plan nobody has started.
+        //
+        // Every ingredient for a misbinding is present: the old task rows are
+        // still stored (upsert_task never deletes) with the lines they sat on,
+        // those lines land inside the new file, and no new task matches any
+        // stored anchor by text. Without the per-plan gate on the positional
+        // signal, the new tasks read as accepted work.
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let (project, dir) =
+            project_with_prd(&conn, "# Old\n- [ ] ship the widget\n- [ ] ship the gadget\n");
+
+        let views = plan_overview(&conn, &project).unwrap();
+        let plan_id = views[0].plan_id.clone();
+        for anchor in ["ship the widget", "ship the gadget"] {
+            let run = run_row(&plan_id, anchor, "completed");
+            loopfleet_store::insert_run(&conn, &run).unwrap();
+            loopfleet_store::set_run_accepted(&conn, &run.id).unwrap();
+        }
+
+        // The finished plan is archived by hand and a new one written in its
+        // place. Same path, same plan id, same two lines — different plan.
+        std::fs::write(
+            dir.path().join("PRD.md"),
+            "# New\n- [ ] add a theme picker\n- [ ] remove the brand mark\n",
+        )
+        .unwrap();
+
+        let views = plan_overview(&conn, &project).unwrap();
+        let v = &views[0];
+        assert_eq!(v.tasks.len(), 2);
+        for t in &v.tasks {
+            assert_eq!(
+                t.status,
+                TaskStatus::NotStarted,
+                "{} inherited a previous plan's run",
+                t.anchor
+            );
+            assert_eq!(t.run_count, 0);
+        }
+        // The old runs are not silently dropped either: they are stranded, and
+        // the count says so. Drift is for anchors that moved within a plan, not
+        // for runs belonging to a plan that is gone.
+        assert_eq!(v.unbound_runs, 2);
+        assert_eq!(v.drifted_runs, 0);
     }
 
     #[test]

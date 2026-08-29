@@ -191,14 +191,15 @@ pub fn plan_report(conn: &Connection, plan_id: &str) -> Result<PlanReport, Repor
     let hints = loopfleet_store::task_line_hints(conn, plan_id)?;
 
     // Same resolution the overview uses, so an exported report and the plan view
-    // agree on which runs belong to which task.
+    // agree on which runs belong to which task — including the per-plan decision
+    // about whether position is admissible at all.
+    let binding = crate::task_binding::PlanBinding::new(
+        &parsed.tasks,
+        summaries.iter().map(|s| &s.task_anchor),
+    );
     let mut bound: Vec<Vec<&loopfleet_store::RunSummary>> = vec![Vec::new(); parsed.tasks.len()];
     for s in &summaries {
-        if let Some(res) = crate::task_binding::resolve(
-            &parsed.tasks,
-            &s.task_anchor,
-            hints.get(&s.task_anchor).copied(),
-        ) {
+        if let Some(res) = binding.resolve(&s.task_anchor, hints.get(&s.task_anchor).copied()) {
             bound[res.task_index].push(s);
         }
     }
