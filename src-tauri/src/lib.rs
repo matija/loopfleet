@@ -2582,13 +2582,9 @@ fn prompt_stalled_autopilot_resume(app: &AppHandle, mut stalled: Vec<loopfleet_s
             continue;
         }
 
-        let project_id = conn
-            .query_row(
-                "SELECT project_id FROM plans WHERE id = ?1",
-                [&launch.plan_id],
-                |r| r.get::<_, String>(0),
-            )
-            .ok();
+        let project_id = loopfleet_store::project_id_for_plan(&conn, &launch.plan_id)
+            .ok()
+            .flatten();
         let plan = project_id
             .and_then(|project_id| get_project(&conn, &project_id).ok())
             .and_then(|project| loopfleet_core::plan_overview(&conn, &project).ok())
