@@ -29,6 +29,9 @@ pub struct AgentSpec {
     pub version_arg: &'static str,
     /// Version the adapter was integration-tested against.
     pub tested_version: &'static str,
+    /// Model names the UI may offer for `--model`, in display order. Empty
+    /// when the CLI has no fixed set (any string it accepts is passed through).
+    pub models: &'static [&'static str],
 }
 
 /// The three v1.0 agents. Keys match `build_adapter` and the stored run `agent`;
@@ -40,6 +43,7 @@ pub const KNOWN_AGENTS: &[AgentSpec] = &[
         binary: "claude",
         version_arg: "--version",
         tested_version: "2.1.201",
+        models: &["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"],
     },
     AgentSpec {
         key: "pi",
@@ -47,6 +51,7 @@ pub const KNOWN_AGENTS: &[AgentSpec] = &[
         binary: "pi",
         version_arg: "--version",
         tested_version: "0.80.3",
+        models: &[],
     },
     AgentSpec {
         key: "cursor",
@@ -54,6 +59,7 @@ pub const KNOWN_AGENTS: &[AgentSpec] = &[
         binary: "cursor-agent",
         version_arg: "--version",
         tested_version: "2026.07.01",
+        models: &[],
     },
 ];
 
