@@ -229,9 +229,19 @@
 /* Merge ("use this run") is the one affirmative chip action, so it hovers
    accent rather than the destructive default. While the merge is in flight the
    button is disabled and dimmed — the chip's only pending signal. */
-.run-chip__action--merge:hover {
+.run-chip__action--merge:hover,
+.run-chip__action--merge:focus-visible {
   background: var(--c-accent);
   color: var(--c-text);
+}
+
+/* The chip clips its contents (overflow: hidden, for the rounded row of
+   chips), which would crop the global :focus-visible outline off a
+   flush-right action like this one. Swap it for an inset ring so keyboard
+   focus stays visible instead of disappearing under the chip's edge. */
+.run-chip__action--merge:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--c-text);
 }
 
 .run-chip__action--merge[aria-busy="true"] {
