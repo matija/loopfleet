@@ -90,6 +90,7 @@ export function TaskTab({
         </div>
         <LaunchControl
           projectId={projectId}
+          planId={planId}
           taskAnchor={task.anchor}
           installed={installed}
           agentsLoading={agentsLoading}

@@ -469,6 +469,7 @@ function TaskRow({
       </div>
       <LaunchControl
         projectId={projectId}
+        planId={planId}
         taskAnchor={task.anchor}
         installed={installed}
         agentsLoading={agentsLoading}
@@ -556,6 +557,7 @@ function TaskRow({
 
 export function LaunchControl({
   projectId,
+  planId,
   taskAnchor,
   installed,
   agentsLoading = false,
@@ -564,6 +566,7 @@ export function LaunchControl({
   actionsPortal,
 }: {
   projectId: string;
+  planId: string;
   taskAnchor: string;
   installed: string[];
   agentsLoading?: boolean;
@@ -724,7 +727,7 @@ export function LaunchControl({
     setMsg(null);
     try {
       await scheduleLaunch({
-        planId: projectId,
+        planId,
         taskAnchor,
         agent: selectedAgent,
         model: model.trim() || null,
