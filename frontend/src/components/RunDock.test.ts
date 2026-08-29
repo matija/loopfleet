@@ -1,7 +1,14 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { finishedRunTone, isMergedRun, worktreeBranch } from "./RunDock";
 import { canMergeFromDock } from "../status";
 import type { RunStatus } from "../types";
+
+const RUN_DOCK_SOURCE = readFileSync(
+  fileURLToPath(new URL("./RunDock.tsx", import.meta.url)),
+  "utf8",
+);
 
 const ALL_STATUSES: RunStatus[] = [
   "queued",
@@ -64,6 +71,26 @@ describe("isMergedRun", () => {
     const run = { status: "completed" as const, accepted: false, mergeable: false };
     expect(isMergedRun(run)).toBe(false);
     expect(canMergeFromDock(run)).toBe(false);
+  });
+});
+
+describe("run-chip merged marker", () => {
+  it("stays a non-interactive span with its accessible name intact", () => {
+    // The merged marker (run-chip__merged) is a status glyph, not a control:
+    // no onClick, no button/tabIndex, just role="img" + aria-label so it
+    // still reads out to assistive tech. A future edit that turns it into a
+    // clickable element or drops the label should fail this test.
+    const markerMatch = RUN_DOCK_SOURCE.match(
+      /<span\s+className="run-chip__merged"[\s\S]*?<\/span>/,
+    );
+    expect(markerMatch).not.toBeNull();
+    const marker = markerMatch![0];
+
+    expect(marker).toContain('role="img"');
+    expect(marker).toContain('aria-label="Merged"');
+    expect(marker).not.toMatch(/onClick/);
+    expect(marker).not.toMatch(/tabIndex/);
+    expect(marker).not.toMatch(/role="button"/);
   });
 });
 
