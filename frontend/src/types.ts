@@ -374,6 +374,7 @@ export type ScheduledLaunchFiredPayload = {
   /// the same identity a manual launch gives its run, which is what makes
   /// retry available on it.
   plan_id: string;
+  project_id: string;
   task_anchor: string;
   /// The agent the run started with and its pass cap.
   agent: string;

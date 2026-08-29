@@ -520,9 +520,9 @@ export default function App() {
   useEffect(() => {
     const un = onScheduledLaunchFired((p) => {
       const entry = pendingLaunchesRef.current.find((x) => x.id === p.id);
-      const project = projectsRef.current.find((x) => x.id === p.plan_id);
+      const project = projectsRef.current.find((x) => x.id === p.project_id);
       const projectName =
-        entry?.projectName ?? (project ? repoName(project.repo_path) : p.plan_id);
+        entry?.projectName ?? (project ? repoName(project.repo_path) : p.project_id);
       const taskText = entry?.taskText ?? p.task_anchor;
       setRuns((prev) =>
         prev.some((r) => r.runId === p.run_id)
@@ -536,7 +536,7 @@ export default function App() {
                 maxIterations: p.max_iterations,
                 startedAt: Date.now(),
                 status: "running",
-                projectId: p.plan_id,
+                projectId: p.project_id,
                 taskAnchor: p.task_anchor,
               },
               ...prev,

@@ -125,6 +125,9 @@ struct ScheduledLaunchFiredPayload {
     id: i64,
     run_id: String,
     plan_id: String,
+    /// Resolved alongside `plan_id` at emit time, so the UI can match the
+    /// fired run to a project without treating `plan_id` as a stand-in for it.
+    project_id: String,
     task_anchor: String,
     agent: String,
     max_iterations: u32,
@@ -2403,6 +2406,7 @@ fn arm_scheduled_launch(
         // Cloned before `spawn_run` consumes it, so the fired event can name
         // the agent the run started with.
         let fired_agent = agent.clone();
+        let fired_project_id = project_id.clone().unwrap_or_default();
         let launch_result = match project_id {
             Some(project_id) => spawn_run(
                 project_id,
@@ -2435,6 +2439,7 @@ fn arm_scheduled_launch(
                         id,
                         run_id,
                         plan_id,
+                        project_id: fired_project_id,
                         task_anchor,
                         agent: fired_agent,
                         max_iterations,
