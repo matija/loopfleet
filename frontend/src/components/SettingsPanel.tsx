@@ -50,8 +50,10 @@ import {
   type RetentionMode,
 } from "../retention";
 import {
+  DEFAULT_AUTOPILOT,
   DEFAULT_RUN_DEFAULTS,
   DEFAULT_WORKTREES,
+  isAutopilotAtDefault,
   isRunDefaultsAtDefault,
   isThemeAtDefault,
   isWorktreesAtDefault,
@@ -68,7 +70,7 @@ import { Select } from "./Select";
 import { Hint } from "./Hint";
 import { NumberField } from "./NumberField";
 import { ThemePreview } from "./ThemePreview";
-import { AgentIcon, DotIcon, FolderIcon, SettingsIcon } from "./Icon";
+import { AgentIcon, DotIcon, FolderIcon, PlayIcon, SettingsIcon } from "./Icon";
 
 // The v1 agent keys (matches the adapters' discovery set). A small stable list;
 // no need to derive it from `agent_status` here.
@@ -135,6 +137,10 @@ export function SettingsPanel({
     concurrency_cap: 3,
     worktree_retention_hours: DEFAULT_RETENTION_HOURS,
     cleanup_after_merge: true,
+    auto_merge_enabled: DEFAULT_AUTOPILOT.auto_merge_enabled,
+    auto_merge_countdown_seconds: DEFAULT_AUTOPILOT.auto_merge_countdown_seconds,
+    auto_advance_enabled: DEFAULT_AUTOPILOT.auto_advance_enabled,
+    auto_advance_delay_seconds: DEFAULT_AUTOPILOT.auto_advance_delay_seconds,
   });
   // `loaded` gates the form until the persisted settings arrive, so a user
   // can't edit the placeholder defaults and have their edits overwritten when
@@ -197,6 +203,16 @@ export function SettingsPanel({
       concurrency_cap: Math.max(0, settings.concurrency_cap || 0),
       worktree_retention_hours: retentionValue(retentionMode, retentionHours),
       cleanup_after_merge: cleanupAfterMerge,
+      auto_merge_enabled: settings.auto_merge_enabled,
+      auto_merge_countdown_seconds: Math.max(
+        1,
+        settings.auto_merge_countdown_seconds || 1,
+      ),
+      auto_advance_enabled: settings.auto_advance_enabled,
+      auto_advance_delay_seconds: Math.max(
+        1,
+        settings.auto_advance_delay_seconds || 1,
+      ),
     };
     setSaving(true);
     setMsg(null);
@@ -232,6 +248,12 @@ export function SettingsPanel({
     setCleanupAfterMerge(DEFAULT_WORKTREES.cleanupAfterMerge);
     setMsg(null);
     setResetNote("Worktree defaults restored — review, then save.");
+  }
+
+  function resetAutopilot() {
+    setSettings({ ...settings, ...DEFAULT_AUTOPILOT });
+    setMsg(null);
+    setResetNote("Autopilot defaults restored — review, then save.");
   }
 
   // Appearance is the exception: theme isn't part of what Save writes, so its
@@ -418,6 +440,103 @@ export function SettingsPanel({
           When a run is accepted, its worktree and <code>agent/…</code> branch
           are deleted. The run's history, diffs and reports are kept either
           way.
+        </p>
+      </section>
+
+      <section className="panel-section">
+        <div className="panel-section__head">
+          <PlayIcon size={16} className="icon panel-section__icon" />
+          <h4 className="panel-section__title">Autopilot</h4>
+          <SectionReset
+            section="Autopilot"
+            disabled={!loaded || isAutopilotAtDefault(settings)}
+            onReset={resetAutopilot}
+          />
+        </div>
+        <div className="settings-row">
+          <label className="field field--checkbox">
+            <input
+              type="checkbox"
+              checked={settings.auto_advance_enabled}
+              disabled={!loaded}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  auto_advance_enabled: e.target.checked,
+                })
+              }
+            />
+            <span>Auto-advance to the next plan step</span>
+          </label>
+        </div>
+        <p className="field-note">
+          Default: on. When a run finishes ready to continue, the plan's next
+          task launches on its own after a countdown, instead of waiting for
+          you to start it.
+        </p>
+        <div className="settings-row">
+          <label className="field">
+            <span>Auto-advance delay (seconds)</span>
+            <NumberField
+              className="control--count"
+              min={1}
+              max={3600}
+              value={settings.auto_advance_delay_seconds}
+              disabled={!loaded || !settings.auto_advance_enabled}
+              onChange={(v) =>
+                setSettings({
+                  ...settings,
+                  auto_advance_delay_seconds: v,
+                })
+              }
+            />
+          </label>
+        </div>
+        <p className="field-note">
+          Default: 5 seconds. How long the countdown waits before advancing,
+          giving you a window to cancel it.
+        </p>
+        <div className="settings-row">
+          <label className="field field--checkbox">
+            <input
+              type="checkbox"
+              checked={settings.auto_merge_enabled}
+              disabled={!loaded}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  auto_merge_enabled: e.target.checked,
+                })
+              }
+            />
+            <span>Auto-merge accepted runs</span>
+          </label>
+        </div>
+        <p className="field-note">
+          Default: on. Once you accept a run, its branch merges on its own
+          after a countdown, instead of waiting for you to merge it.
+        </p>
+        <div className="settings-row">
+          <label className="field">
+            <span>Auto-merge countdown (seconds)</span>
+            <NumberField
+              className="control--count"
+              min={1}
+              max={3600}
+              value={settings.auto_merge_countdown_seconds}
+              disabled={!loaded || !settings.auto_merge_enabled}
+              onChange={(v) =>
+                setSettings({
+                  ...settings,
+                  auto_merge_countdown_seconds: v,
+                })
+              }
+            />
+          </label>
+        </div>
+        <p className="field-note">
+          Default: 10 seconds. How long the countdown waits before merging,
+          giving you a window to cancel it.
         </p>
       </section>
 

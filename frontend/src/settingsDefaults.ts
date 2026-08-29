@@ -29,6 +29,10 @@ export const DEFAULT_SETTINGS: Settings = {
   concurrency_cap: 3,
   worktree_retention_hours: DEFAULT_RETENTION_HOURS,
   cleanup_after_merge: true,
+  auto_merge_enabled: true,
+  auto_merge_countdown_seconds: 10,
+  auto_advance_enabled: true,
+  auto_advance_delay_seconds: 5,
 };
 
 /// The "Run defaults" section: the three fields the launch affordance reads.
@@ -80,6 +84,33 @@ export function isWorktreesAtDefault(draft: WorktreesDraft): boolean {
     return false;
   }
   return draft.mode !== "after" || draft.hours.trim() === DEFAULT_WORKTREES.hours;
+}
+
+/// The "Autopilot" section: the two toggles and their countdown durations.
+export type AutopilotDraft = Pick<
+  Settings,
+  | "auto_merge_enabled"
+  | "auto_merge_countdown_seconds"
+  | "auto_advance_enabled"
+  | "auto_advance_delay_seconds"
+>;
+
+export const DEFAULT_AUTOPILOT: AutopilotDraft = {
+  auto_merge_enabled: DEFAULT_SETTINGS.auto_merge_enabled,
+  auto_merge_countdown_seconds: DEFAULT_SETTINGS.auto_merge_countdown_seconds,
+  auto_advance_enabled: DEFAULT_SETTINGS.auto_advance_enabled,
+  auto_advance_delay_seconds: DEFAULT_SETTINGS.auto_advance_delay_seconds,
+};
+
+export function isAutopilotAtDefault(draft: AutopilotDraft): boolean {
+  return (
+    draft.auto_merge_enabled === DEFAULT_AUTOPILOT.auto_merge_enabled &&
+    draft.auto_merge_countdown_seconds ===
+      DEFAULT_AUTOPILOT.auto_merge_countdown_seconds &&
+    draft.auto_advance_enabled === DEFAULT_AUTOPILOT.auto_advance_enabled &&
+    draft.auto_advance_delay_seconds ===
+      DEFAULT_AUTOPILOT.auto_advance_delay_seconds
+  );
 }
 
 /// The "Appearance" section holds one field, and unlike the sections above it

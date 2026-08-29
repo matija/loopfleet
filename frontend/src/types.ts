@@ -45,6 +45,16 @@ export type Settings = {
   /// Whether an accepted run also deletes its worktree and `agent/…` branch.
   /// The run's history, diffs and reports are kept either way.
   cleanup_after_merge: boolean;
+  /// Whether a run's branch is merged automatically once it's accepted.
+  auto_merge_enabled: boolean;
+  /// Seconds the auto-merge countdown waits before merging, giving the user
+  /// a window to cancel.
+  auto_merge_countdown_seconds: number;
+  /// Whether a run automatically advances to the next step once it's ready.
+  auto_advance_enabled: boolean;
+  /// Seconds the auto-advance countdown waits before advancing, giving the
+  /// user a window to cancel.
+  auto_advance_delay_seconds: number;
 };
 
 // --- adapters: discovery.rs ---
