@@ -51,9 +51,12 @@ impl AgentAdapter for PiAdapter {
         // selects the AgentEvent JSONL transport. In headless mode pi resolves
         // permission prompts automatically — the Seatbelt profile (M2) is the
         // real boundary, so no per-agent bypass flag is passed here.
-        let mut child = crate::base_command(&spec.wrapper, "pi")
-            .arg("-p")
-            .args(["--mode", "json"])
+        let mut cmd = crate::base_command(&spec.wrapper, "pi");
+        cmd.arg("-p").args(["--mode", "json"]);
+        if let Some(model) = &spec.model {
+            cmd.arg("--model").arg(model);
+        }
+        let mut child = cmd
             .arg(&spec.prompt)
             .current_dir(&spec.cwd)
             .stdin(std::process::Stdio::null())
