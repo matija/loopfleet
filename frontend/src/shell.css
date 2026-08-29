@@ -256,39 +256,9 @@
 
 /* Connection row: leading folder icon + status dot + repo name, with the
  * short-path metadata right-aligned and muted. Fixed to --row-h so rows sit
- * on the same rhythm as tree-item below. */
-/* Wraps the connection row's own button together with its remove affordance,
- * which only shows up on hover/focus so the list doesn't carry a permanent
- * trash icon on every row. */
-.project-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  margin-bottom: var(--space-1);
-}
-
-.project-row .project-item {
-  flex: 1;
-  min-width: 0;
-  margin-bottom: 0;
-}
-
-.project-row__remove {
-  position: absolute;
-  right: var(--space-2);
-  opacity: 0;
-  color: var(--c-text-faint);
-}
-
-.project-row:hover .project-row__remove,
-.project-row__remove:focus-visible {
-  opacity: 1;
-}
-
-.project-row__remove:hover {
-  color: var(--c-danger);
-}
-
+ * on the same rhythm as tree-item below. Its remove affordance sits right
+ * after the name, only showing up on hover/focus so the list doesn't carry
+ * a permanent trash icon on every row. */
 .project-item {
   display: flex;
   align-items: center;
@@ -301,6 +271,23 @@
   color: var(--c-text-muted);
   padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
+  margin-bottom: var(--space-1);
+  cursor: pointer;
+}
+
+.project-row__remove {
+  flex: none;
+  opacity: 0;
+  color: var(--c-text-faint);
+}
+
+.project-item:is(:hover, :focus-within) .project-row__remove,
+.project-row__remove:focus-visible {
+  opacity: 1;
+}
+
+.project-row__remove:hover {
+  color: var(--c-danger);
 }
 
 .project-item:hover {

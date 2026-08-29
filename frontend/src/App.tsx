@@ -1024,39 +1024,30 @@ export default function App() {
             <div className="sidebar__list">
               {visibleProjects.map((p) => (
                 <div key={p.id}>
-                  <div className="project-row">
-                    <button
-                      className="project-item"
-                      aria-current={p.id === selectedId}
-                      onClick={() => selectProject(p.id)}
-                    >
-                      <FolderIcon size={16} className="project-item__icon" />
-                      <span
-                        className={`project-item__dot${
-                          activeProjectNames.has(repoName(p.repo_path))
-                            ? " project-item__dot--active"
-                            : ""
-                        }`}
-                      />
-                      <span className="project-item__name">
-                        {repoName(p.repo_path)}
-                      </span>
-                      {(() => {
-                        const h = health[p.id];
-                        if (!h || !marksNoTasks(h)) return null;
-                        return (
-                          <span
-                            className="project-item__flag"
-                            title={planHealthTitle(h) ?? undefined}
-                          >
-                            no tasks
-                          </span>
-                        );
-                      })()}
-                      <span className="project-item__meta">
-                        {parentPath(p.repo_path)}
-                      </span>
-                    </button>
+                  <div
+                    className="project-item"
+                    role="button"
+                    tabIndex={0}
+                    aria-current={p.id === selectedId}
+                    onClick={() => selectProject(p.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        selectProject(p.id);
+                      }
+                    }}
+                  >
+                    <FolderIcon size={16} className="project-item__icon" />
+                    <span
+                      className={`project-item__dot${
+                        activeProjectNames.has(repoName(p.repo_path))
+                          ? " project-item__dot--active"
+                          : ""
+                      }`}
+                    />
+                    <span className="project-item__name">
+                      {repoName(p.repo_path)}
+                    </span>
                     <IconButton
                       icon={TrashIcon}
                       aria-label={`Remove ${repoName(p.repo_path)}`}
@@ -1065,10 +1056,26 @@ export default function App() {
                         if (el) removeButtonsRef.current.set(p.id, el);
                         else removeButtonsRef.current.delete(p.id);
                       }}
-                      onClick={(e) =>
-                        openRemoveProject(p, e.currentTarget)
-                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openRemoveProject(p, e.currentTarget);
+                      }}
                     />
+                    {(() => {
+                      const h = health[p.id];
+                      if (!h || !marksNoTasks(h)) return null;
+                      return (
+                        <span
+                          className="project-item__flag"
+                          title={planHealthTitle(h) ?? undefined}
+                        >
+                          no tasks
+                        </span>
+                      );
+                    })()}
+                    <span className="project-item__meta">
+                      {parentPath(p.repo_path)}
+                    </span>
                   </div>
                   {removeTarget?.id === p.id && (
                     <Popover
