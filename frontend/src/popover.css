@@ -28,7 +28,7 @@
   position: fixed;
   inset: 0;
   z-index: 299;
-  background: var(--c-scrim, rgba(0, 0, 0, 0.4));
+  background: var(--c-scrim);
 }
 
 /* Settle in from the anchor's edge — down into place when opening below the
