@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { finishedRunTone, isMergedRun, worktreeBranch } from "./RunDock";
+import { canMergeFromDock } from "../status";
 import type { RunStatus } from "../types";
 
 const ALL_STATUSES: RunStatus[] = [
@@ -53,6 +54,16 @@ describe("isMergedRun", () => {
     for (const status of ["failed", "stopped", "limit-reached"] as const) {
       expect(isMergedRun({ status, accepted: false })).toBe(false);
     }
+  });
+
+  it("leaves both the merged marker and the merge action off a completed run with nothing to land", () => {
+    // A completed run that produced no mergeable diff: not merged, and the
+    // dock has no merge to offer. The chip falls through to its plain
+    // dismiss action, so this must be legible as "nothing to do" rather than
+    // a state neither slot accounts for.
+    const run = { status: "completed" as const, accepted: false, mergeable: false };
+    expect(isMergedRun(run)).toBe(false);
+    expect(canMergeFromDock(run)).toBe(false);
   });
 });
 
