@@ -20,7 +20,33 @@
 //! [`Inferred`]: UsageSource::Inferred
 //! [`Unknown`]: UsageSource::Unknown
 
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+
+use crate::event::{NormalizedEvent, Usage};
+
+/// A run's total token usage: the sum of every `TurnCompleted` usage its event
+/// log recorded, across all its iterations. `None` if the run has completed no
+/// turns yet (a fresh run, or one that failed before its first `TurnCompleted`).
+pub fn usage_for_run(conn: &Connection, run_id: &str) -> rusqlite::Result<Option<Usage>> {
+    let events = loopfleet_store::load_events(conn, run_id)?;
+    let total = events
+        .iter()
+        .filter_map(|e| match serde_json::from_str(&e.event_json) {
+            Ok(NormalizedEvent::TurnCompleted { usage }) => Some(usage),
+            _ => None,
+        })
+        .fold(None, |acc: Option<Usage>, usage| {
+            Some(match acc {
+                Some(acc) => Usage {
+                    input_tokens: acc.input_tokens + usage.input_tokens,
+                    output_tokens: acc.output_tokens + usage.output_tokens,
+                },
+                None => usage,
+            })
+        });
+    Ok(total)
+}
 
 /// A used fraction at or above this reads as exhausted.
 pub const EXHAUSTED_FRACTION: f64 = 1.0;
@@ -349,6 +375,71 @@ fn clamp_fraction(fraction: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- usage_for_run ---
+
+    #[test]
+    fn no_events_is_none() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        assert_eq!(usage_for_run(&conn, "ghost").unwrap(), None);
+    }
+
+    #[test]
+    fn no_turn_completed_events_is_none() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        loopfleet_store::insert_event(&conn, "r1", r#"{"kind":"turn_started"}"#).unwrap();
+        assert_eq!(usage_for_run(&conn, "r1").unwrap(), None);
+    }
+
+    #[test]
+    fn sums_usage_across_turns() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        loopfleet_store::insert_event(
+            &conn,
+            "r1",
+            r#"{"kind":"turn_completed","usage":{"input_tokens":3,"output_tokens":4}}"#,
+        )
+        .unwrap();
+        loopfleet_store::insert_event(
+            &conn,
+            "r1",
+            r#"{"kind":"turn_completed","usage":{"input_tokens":5,"output_tokens":1}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            usage_for_run(&conn, "r1").unwrap(),
+            Some(Usage {
+                input_tokens: 8,
+                output_tokens: 5,
+            })
+        );
+    }
+
+    #[test]
+    fn only_counts_the_named_run() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        loopfleet_store::insert_event(
+            &conn,
+            "r1",
+            r#"{"kind":"turn_completed","usage":{"input_tokens":3,"output_tokens":4}}"#,
+        )
+        .unwrap();
+        loopfleet_store::insert_event(
+            &conn,
+            "r2",
+            r#"{"kind":"turn_completed","usage":{"input_tokens":100,"output_tokens":100}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            usage_for_run(&conn, "r1").unwrap(),
+            Some(Usage {
+                input_tokens: 3,
+                output_tokens: 4,
+            })
+        );
+    }
 
     const MINUTE: i64 = 60 * 1_000;
     const NOW: i64 = 1_700_000_000_000;

@@ -52,7 +52,8 @@ pub use timeline::{
 };
 pub use usage::{
     fold_rate_limit, is_stale, launch_decision, resolve_display, resolve_display_opt,
-    LaunchDecision, RateLimitNotice, UsageDisplay, UsageSnapshot, UsageSource, UsageThresholds,
+    usage_for_run, LaunchDecision, RateLimitNotice, UsageDisplay, UsageSnapshot, UsageSource,
+    UsageThresholds,
 };
 
 /// Why a project could not be registered.
