@@ -261,6 +261,7 @@
   justify-content: center;
   width: var(--control-h-lg);
   border-left: 1px solid var(--c-border);
-  background: var(--c-ok-wash);
+  /* -tint, not -wash: this slot is icon-sized, not a row/line backing. */
+  background: var(--c-ok-tint);
   color: var(--c-ok);
 }
