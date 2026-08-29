@@ -80,10 +80,15 @@ export type LaunchedRun = {
   maxIterations: number;
 };
 
-/// Claude Code model presets offered in the launch menu (`claude --model`).
-/// Free text is still accepted for a pinned/older version (e.g.
-/// "claude-opus-4-1-20250805") — this list is just the common shortcuts.
-const CLAUDE_MODEL_PRESETS = ["opus", "sonnet", "haiku"];
+/// Model presets offered in the launch menu, per agent — only agents whose
+/// CLI accepts `--model` (Claude Code, pi) get an entry. Free text is still
+/// accepted for anything not listed (e.g. a pinned version like
+/// "claude-opus-4-1-20250805", or a pi "provider/id" pattern) — these are
+/// just the common shortcuts.
+const AGENT_MODEL_PRESETS: Record<string, string[]> = {
+  claude: ["opus", "sonnet", "haiku"],
+  pi: ["opus", "sonnet", "haiku"],
+};
 
 /// What opening the compare view needs: the plan + task and its display text.
 export type CompareTarget = {
@@ -634,11 +639,11 @@ export function LaunchControl({
     writeLaunchPrefs(projectId, { agent, model, passes });
   }, [projectId, agent, model, passes]);
 
-  // A model override only makes sense for the agent that supports one
-  // (Claude Code's `--model`); switching to another agent drops it so a
-  // stray leftover value never gets sent where it can't be honored.
+  // A model override only makes sense for agents whose CLI supports one;
+  // switching to an agent without a preset list drops it so a stray leftover
+  // value never gets sent where it can't be honored.
   useEffect(() => {
-    if (agent !== "claude" && model !== "") setModel("");
+    if (!AGENT_MODEL_PRESETS[agent] && model !== "") setModel("");
   }, [agent, model]);
 
   const noAgents = installed.length === 0;
@@ -880,7 +885,7 @@ export function LaunchControl({
             )}
           </div>
         )}
-        {agent === "claude" && (
+        {AGENT_MODEL_PRESETS[agent] && (
           <div className="launch__model" role="group" aria-label="Model">
             <input
               type="text"
@@ -892,7 +897,7 @@ export function LaunchControl({
               onChange={(e) => setModel(e.target.value)}
             />
             <datalist id="launch-model-presets">
-              {CLAUDE_MODEL_PRESETS.map((m) => (
+              {AGENT_MODEL_PRESETS[agent].map((m) => (
                 <option key={m} value={m} />
               ))}
             </datalist>
