@@ -133,6 +133,7 @@ export function SettingsPanel({
 }) {
   const [settings, setSettings] = useState<Settings>({
     default_agent: "claude",
+    default_model: null,
     default_iterations: 1,
     concurrency_cap: 3,
     worktree_retention_hours: DEFAULT_RETENTION_HOURS,
@@ -199,6 +200,7 @@ export function SettingsPanel({
   async function save() {
     const next: Settings = {
       default_agent: settings.default_agent,
+      default_model: settings.default_model,
       default_iterations: Math.max(1, settings.default_iterations || 1),
       concurrency_cap: Math.max(0, settings.concurrency_cap || 0),
       worktree_retention_hours: retentionValue(retentionMode, retentionHours),

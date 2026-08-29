@@ -16,6 +16,7 @@ describe("DEFAULT_SETTINGS", () => {
   it("matches the backend defaults", () => {
     expect(DEFAULT_SETTINGS).toEqual({
       default_agent: "claude",
+      default_model: null,
       default_iterations: 1,
       concurrency_cap: 3,
       worktree_retention_hours: 48,

@@ -14,6 +14,7 @@ import {
   checkAgentUsage,
   continuePlan,
   exportPlanReport,
+  getSettings,
   launchRun,
   listProjects,
   planOverview,
@@ -624,14 +625,45 @@ export function LaunchControl({
   const rootRef = useRef<HTMLDivElement>(null);
   const chevronRef = useRef<HTMLButtonElement>(null);
 
+  // The global default model (Settings), used only to seed a project that
+  // has never had a model chosen for it — once `readLaunchPrefs` has a value
+  // of its own, that always wins.
+  const [defaultModel, setDefaultModel] = useState<string | null>(null);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
   useEffect(() => {
-    if (agentsLoading || initialized.current) return;
+    let cancelled = false;
+    getSettings()
+      .then((s) => {
+        if (!cancelled) setDefaultModel(s.default_model);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setSettingsLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (agentsLoading || !settingsLoaded || initialized.current) return;
     initialized.current = true;
     const prefs = readLaunchPrefs(projectId, installed);
     setAgent(prefs.agent);
-    setModel(prefs.model);
+    // A project with no stored model preference of its own falls back to the
+    // app-wide default, but only when that default is one of the presets the
+    // chosen agent actually supports — a stale value for a different agent
+    // (or one the agent no longer offers) is silently dropped rather than
+    // sent where it can't be honored.
+    setModel(
+      prefs.model ||
+        (defaultModel && AGENT_MODEL_PRESETS[prefs.agent]?.includes(defaultModel)
+          ? defaultModel
+          : ""),
+    );
     setPasses(prefs.passes);
-  }, [agentsLoading, installed, projectId]);
+  }, [agentsLoading, settingsLoaded, defaultModel, installed, projectId]);
 
   // Persist the user's choices as soon as they diverge from the loaded prefs.
   useEffect(() => {

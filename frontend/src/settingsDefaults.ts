@@ -25,6 +25,7 @@ import { DEFAULT_THEME_ID, type ThemeId } from "./themes";
 /// Mirrors `store::Settings::default`.
 export const DEFAULT_SETTINGS: Settings = {
   default_agent: "claude",
+  default_model: null,
   default_iterations: 1,
   concurrency_cap: 3,
   worktree_retention_hours: DEFAULT_RETENTION_HOURS,

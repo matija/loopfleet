@@ -35,6 +35,9 @@ export type ProjectRemovalPreview = {
 /// Global app defaults. `store::Settings`.
 export type Settings = {
   default_agent: string;
+  /// Pre-selected model in the launch affordance, if any. `null` means the
+  /// agent's own default model is used.
+  default_model: string | null;
   default_iterations: number;
   /// Max simultaneously active runs; `0` means no cap.
   concurrency_cap: number;
