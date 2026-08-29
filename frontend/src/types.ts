@@ -379,6 +379,62 @@ export type ScheduledLaunchDroppedPayload = {
 /// what the UI was last told, so `observed_at_ms` alone moving is not an event.
 export type AgentUsagePayload = UsageSnapshot;
 
+/// Restart recovered one or more `auto_advance`-origin scheduled launches and
+/// turned the oldest into a question, pushed on the `autopilot_resume_prompt`
+/// Tauri event. `src-tauri::AutopilotResumePromptPayload`.
+export type AutopilotResumePromptPayload = {
+  plan_id: string;
+  plan_title: string | null;
+  task_anchor: string;
+  task_text: string;
+  agent: string;
+  pass_count: number;
+  scheduled_launch_id: number;
+};
+
+/// A run was completed, unaccepted, and mergeable when the app last quit, so
+/// its in-memory auto-merge countdown is gone — surfaced as a question,
+/// pushed on the `auto_merge_pending_question` Tauri event.
+/// `src-tauri::AutoMergePendingQuestionPayload`.
+export type AutoMergePendingQuestionPayload = {
+  run_id: string;
+  plan_id: string;
+  task_anchor: string;
+};
+
+/// A run's auto-merge countdown has armed, pushed on the `auto_merge_armed`
+/// Tauri event. `target_branch` is empty for the repo's currently checked-out
+/// branch. `merge_at` is RFC 3339. `src-tauri::AutoMergeArmedPayload`.
+export type AutoMergeArmedPayload = {
+  run_id: string;
+  task_anchor: string;
+  target_branch: string;
+  merge_at: string;
+};
+
+/// A previously armed auto-merge countdown was cancelled before it fired,
+/// pushed on the `auto_merge_cancelled` Tauri event.
+/// `src-tauri::AutoMergeCancelledPayload`.
+export type AutoMergeCancelledPayload = {
+  run_id: string;
+};
+
+/// A fired auto-merge attempt failed, pushed on the `auto_merge_failed` Tauri
+/// event. `src-tauri::AutoMergeFailedPayload`.
+export type AutoMergeFailedPayload = {
+  run_id: string;
+  reason: string;
+};
+
+/// Auto-advance declined to chain the plan's next task after an auto-merge,
+/// pushed on the `auto_advance_stopped` Tauri event. `reason` is
+/// `"concurrency_cap_reached"`, `"launch_already_pending"`, or
+/// `"plan complete"`. `src-tauri::AutoAdvanceStoppedPayload`.
+export type AutoAdvanceStoppedPayload = {
+  plan_id: string;
+  reason: string;
+};
+
 /// Whether a launch should proceed, given an agent's usage state.
 /// `core::usage::LaunchDecision` — externally tagged, so `"proceed"` is a bare
 /// string and the blocked variant is `{ blocked: { reset_at_ms } }`.

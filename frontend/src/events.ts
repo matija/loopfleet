@@ -7,6 +7,12 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AgentUsagePayload,
+  AutoAdvanceStoppedPayload,
+  AutoMergeArmedPayload,
+  AutoMergeCancelledPayload,
+  AutoMergeFailedPayload,
+  AutoMergePendingQuestionPayload,
+  AutopilotResumePromptPayload,
   RunEventPayload,
   RunStatusPayload,
   ScheduledLaunchCancelledPayload,
@@ -103,4 +109,69 @@ export function onAgentUsage(
   handler: (payload: AgentUsagePayload) => void,
 ): Promise<UnlistenFn> {
   return listen<AgentUsagePayload>("agent_usage", (e) => handler(e.payload));
+}
+
+/// Subscribe to the startup question asking whether to resume a stalled
+/// `auto_advance` chain — fires once per restart, for the oldest recovered
+/// scheduled launch, and only when auto-advance left one un-armed.
+export function onAutopilotResumePrompt(
+  handler: (payload: AutopilotResumePromptPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<AutopilotResumePromptPayload>(
+    "autopilot_resume_prompt",
+    (e) => handler(e.payload),
+  );
+}
+
+/// Subscribe to the startup question asking whether to merge a run that was
+/// completed, unaccepted, and mergeable when the app last quit — its
+/// in-memory auto-merge countdown didn't survive the restart.
+export function onAutoMergePendingQuestion(
+  handler: (payload: AutoMergePendingQuestionPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<AutoMergePendingQuestionPayload>(
+    "auto_merge_pending_question",
+    (e) => handler(e.payload),
+  );
+}
+
+/// Subscribe to a run's auto-merge countdown arming — the merge time rides
+/// `merge_at` (RFC 3339).
+export function onAutoMergeArmed(
+  handler: (payload: AutoMergeArmedPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<AutoMergeArmedPayload>("auto_merge_armed", (e) =>
+    handler(e.payload),
+  );
+}
+
+/// Subscribe to a previously armed auto-merge countdown being cancelled
+/// before it fired.
+export function onAutoMergeCancelled(
+  handler: (payload: AutoMergeCancelledPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<AutoMergeCancelledPayload>("auto_merge_cancelled", (e) =>
+    handler(e.payload),
+  );
+}
+
+/// Subscribe to a fired auto-merge attempt failing — a dirty-tree refusal, a
+/// conflict, or any other error from the merge itself.
+export function onAutoMergeFailed(
+  handler: (payload: AutoMergeFailedPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<AutoMergeFailedPayload>("auto_merge_failed", (e) =>
+    handler(e.payload),
+  );
+}
+
+/// Subscribe to auto-advance declining to chain the plan's next task after an
+/// auto-merge — the concurrency cap was met, a launch was already pending, or
+/// the plan had no not-started task left.
+export function onAutoAdvanceStopped(
+  handler: (payload: AutoAdvanceStoppedPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<AutoAdvanceStoppedPayload>("auto_advance_stopped", (e) =>
+    handler(e.payload),
+  );
 }
