@@ -14,6 +14,7 @@ use loopfleet_store::{Connection, Project};
 use serde::Serialize;
 
 use crate::plan::{discover_plans, parse_plan, PlanConvention};
+use crate::task_binding::{resolve as resolve_task_anchor, MatchKind};
 use crate::task_status::{derive_status, TaskRun, TaskStatus};
 use crate::RunState;
 
@@ -27,6 +28,16 @@ pub struct PlanView {
     /// The raw plan file, for the UI to render the frozen PRD verbatim.
     pub markdown: String,
     pub tasks: Vec<TaskView>,
+    /// Runs on this plan that resolve to no task at all — their history is
+    /// stranded. Surfaced rather than swallowed: the tasks they belonged to
+    /// otherwise read as untouched, which is indistinguishable from real work
+    /// never started.
+    pub unbound_runs: usize,
+    /// Runs that resolved, but not by their stored anchor matching the current
+    /// one — recovered via an older text form or by position. A non-zero count
+    /// means this plan's anchors have drifted from what its runs were stored
+    /// against.
+    pub drifted_runs: usize,
 }
 
 /// One task with its authored fields plus the app-derived live state.
@@ -98,29 +109,47 @@ pub fn plan_overview(conn: &Connection, project: &Project) -> Result<Vec<PlanVie
         }
 
         let runs = loopfleet_store::list_runs_for_plan(conn, &pid).map_err(OverviewError::Store)?;
+        let hints = loopfleet_store::task_line_hints(conn, &pid).map_err(OverviewError::Store)?;
+
+        // Resolve each run to its task once. A stored anchor that no longer
+        // matches the current derivation needs the whole task list (and its own
+        // last known line) to place it, not a single equality test per task.
+        let mut bound: Vec<Vec<TaskRun>> = vec![Vec::new(); parsed.tasks.len()];
+        let mut unbound_runs = 0;
+        let mut drifted_runs = 0;
+        for r in &runs {
+            let Some(state) = RunState::from_token(&r.status) else {
+                continue;
+            };
+            match resolve_task_anchor(
+                &parsed.tasks,
+                &r.task_anchor,
+                hints.get(&r.task_anchor).copied(),
+            ) {
+                Some(res) => {
+                    if res.kind != MatchKind::Exact || res.position_disagreed {
+                        drifted_runs += 1;
+                    }
+                    bound[res.task_index].push(TaskRun {
+                        state,
+                        accepted: r.accepted,
+                    });
+                }
+                None => unbound_runs += 1,
+            }
+        }
+
         let tasks = parsed
             .tasks
             .iter()
-            .map(|t| {
-                // Runs bound to this exact anchor, mapped to what derivation needs.
-                let task_runs: Vec<TaskRun> = runs
-                    .iter()
-                    .filter(|r| r.task_anchor == t.anchor.normalized_text)
-                    .filter_map(|r| {
-                        RunState::from_token(&r.status).map(|state| TaskRun {
-                            state,
-                            accepted: r.accepted,
-                        })
-                    })
-                    .collect();
-                TaskView {
-                    anchor: t.anchor.normalized_text.clone(),
-                    line_hint: t.anchor.line_hint,
-                    text: t.text.clone(),
-                    checked: t.checked,
-                    status: derive_status(&task_runs, t.checked),
-                    run_count: task_runs.len(),
-                }
+            .zip(bound)
+            .map(|(t, task_runs)| TaskView {
+                anchor: t.anchor.normalized_text.clone(),
+                line_hint: t.anchor.line_hint,
+                text: t.text.clone(),
+                checked: t.checked,
+                status: derive_status(&task_runs, t.checked),
+                run_count: task_runs.len(),
             })
             .collect();
         // Implemented tasks (Accepted — either an accepted run or an authored
@@ -135,6 +164,8 @@ pub fn plan_overview(conn: &Connection, project: &Project) -> Result<Vec<PlanVie
             title: parsed.title,
             markdown,
             tasks,
+            unbound_runs,
+            drifted_runs,
         });
     }
     Ok(views)
@@ -216,6 +247,60 @@ mod tests {
         assert_eq!(gamma.status, TaskStatus::Accepted);
         // gamma (implemented) still sinks below alpha/beta (not implemented).
         assert_eq!(tasks.last().unwrap().anchor, "gamma");
+    }
+
+    #[test]
+    fn a_run_stored_under_an_older_anchor_still_binds_to_its_task() {
+        // The regression this guards: an accepted run whose stored anchor
+        // predates a change in how anchors are derived. Left unresolved, its
+        // task reads NotStarted — finished work looking untouched.
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let prd = "# Plan\n\
+                   - [ ] **Add the widget to\n  the registry.**\n  Rationale here.\n";
+        let (project, _dir) = project_with_prd(&conn, prd);
+        let pid = loopfleet_store::plan_id(&project.id, &format!("{}/PRD.md", project.repo_path));
+
+        // Simulate the older sync: the anchor truncated at its first physical
+        // line, which is what the run's FK points at.
+        let legacy = "**add the widget to";
+        loopfleet_store::upsert_plan(&conn, &pid, &project.id, "unused").unwrap();
+        loopfleet_store::upsert_task(&conn, &pid, legacy, 2, "**Add the widget to", false).unwrap();
+        let run = run_row(&pid, legacy, "completed");
+        loopfleet_store::insert_run(&conn, &run).unwrap();
+        loopfleet_store::set_run_accepted(&conn, &run.id).unwrap();
+
+        let views = plan_overview(&conn, &project).unwrap();
+        let v = &views[0];
+        assert_eq!(v.tasks.len(), 1);
+        let task = &v.tasks[0];
+        // The current anchor is the bold span; the old run binds to it anyway.
+        assert_eq!(task.anchor, "add the widget to the registry.");
+        assert_eq!(task.status, TaskStatus::Accepted);
+        assert_eq!(task.run_count, 1);
+        // Bound, but not by its stored anchor — reported, not swallowed.
+        assert_eq!(v.drifted_runs, 1);
+        assert_eq!(v.unbound_runs, 0);
+    }
+
+    #[test]
+    fn a_run_matching_nothing_is_counted_as_unbound() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let (project, _dir) = project_with_prd(&conn, "# Plan\n- [ ] alpha\n");
+        let views = plan_overview(&conn, &project).unwrap();
+        let pid = views[0].plan_id.clone();
+
+        // A task that has since vanished from the file entirely.
+        loopfleet_store::upsert_task(&conn, &pid, "long gone", 400, "long gone", false).unwrap();
+        loopfleet_store::insert_run(&conn, &run_row(&pid, "long gone", "completed")).unwrap();
+
+        let v = &plan_overview(&conn, &project).unwrap()[0];
+        // Neither signal reaches: the text matches nothing and line 400 is far
+        // outside the positional window. The run is reported as stranded rather
+        // than pinned onto the unrelated task that happens to survive.
+        assert_eq!(v.unbound_runs, 1);
+        assert_eq!(v.drifted_runs, 0);
+        assert_eq!(v.tasks[0].run_count, 0);
+        assert_eq!(v.tasks[0].status, TaskStatus::NotStarted);
     }
 
     #[test]

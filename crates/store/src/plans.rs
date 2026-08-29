@@ -6,6 +6,8 @@
 //! `checked` is the authored "implemented" baseline (read as `Accepted` by
 //! `derive_status`), not a live progress signal.
 
+use std::collections::HashMap;
+
 use rusqlite::{params, Connection};
 
 /// Deterministic plan id from its project id and plan file path. Re-syncing the
@@ -84,6 +86,20 @@ pub fn upsert_task(
         params![plan_id, normalized_text, line_hint, text, checked as i64],
     )?;
     Ok(())
+}
+
+/// Every stored anchor in a plan mapped to its last known line.
+///
+/// Task rows outlive the file's current contents (`upsert_task` never deletes),
+/// so this is the positional evidence a run carries about where its task used
+/// to sit — the second signal `loopfleet_core::task_binding` resolves against
+/// when a stored anchor no longer matches any parsed task's text.
+pub fn task_line_hints(conn: &Connection, plan_id: &str) -> rusqlite::Result<HashMap<String, u32>> {
+    let mut stmt = conn.prepare("SELECT normalized_text, line_hint FROM tasks WHERE plan_id = ?1")?;
+    let rows = stmt.query_map(params![plan_id], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u32))
+    })?;
+    rows.collect()
 }
 
 /// One task row, read back by its `(plan_id, task_anchor)` key.

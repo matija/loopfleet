@@ -4,7 +4,9 @@
 //! convention) or a `.md` file under a `plans/` folder. The parser extracts a
 //! title (first H1) and the task list (markdown checkboxes). Each task carries a
 //! `{ normalized_text, line_hint }` anchor whose **identity is the normalized
-//! text**; the line is a hint/tiebreaker, never the key (PRD: Plans, Data model).
+//! bold span** — the imperative that names the task, with trailing rationale
+//! prose excluded so rewording it cannot orphan a run's binding. The line is a
+//! hint/tiebreaker, never the key (PRD: Plans, Data model).
 //!
 //! The authored `checked` state is the "implemented" baseline for derived
 //! `TaskStatus` (a pre-checked task reads as `Accepted`); it is never a live
@@ -161,7 +163,7 @@ pub fn parse_plan(content: &str) -> ParsedPlan {
             }
             tasks.push(ParsedTask {
                 anchor: TaskAnchor {
-                    normalized_text: normalize(&text),
+                    normalized_text: anchor_for(&text),
                     // 1-based: humans and editors count lines from 1.
                     line_hint,
                 },
@@ -216,14 +218,56 @@ fn parse_checkbox(line: &str) -> Option<(bool, &str)> {
     Some((checked, text))
 }
 
-/// Normalize task text into its stable identity: trim, collapse internal
-/// whitespace to single spaces, and lowercase. Resilient to whitespace/case
-/// edits so a run's binding survives cosmetic changes to the task line.
+/// The identity-bearing slice of a task's text.
+///
+/// Tasks are authored as a bolded imperative followed by unbolded rationale
+/// prose (`- [ ] **Do the thing.** Because reasons.`). Only the bold span names
+/// the task; the rationale is commentary the author rewords freely. Taking the
+/// bold span alone as the identity keeps a run bound to its task across
+/// rationale edits, which would otherwise silently orphan it.
+///
+/// Falls back to the whole text when there is no leading bold span (a plain
+/// task line) or when the span is empty.
+fn identity_source(text: &str) -> &str {
+    let Some(rest) = text.strip_prefix("**") else {
+        return text;
+    };
+    let Some(end) = rest.find("**") else {
+        return text;
+    };
+    let inner = rest[..end].trim();
+    if inner.is_empty() {
+        text
+    } else {
+        inner
+    }
+}
+
+/// Collapse text to its comparable form: trim, collapse internal whitespace to
+/// single spaces, lowercase. Resilient to whitespace/case edits.
 fn normalize(text: &str) -> String {
     text.split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase()
+}
+
+/// A task's stable identity, derived from its authored text: the normalized
+/// bold span if there is one, else the normalized whole text.
+///
+/// **Changing this function re-keys every task**, unbinding the runs already
+/// stored against the old form. [`legacy_anchor_for`] exists so previously
+/// stored anchors stay resolvable; keep it in step.
+pub fn anchor_for(text: &str) -> String {
+    normalize(identity_source(text))
+}
+
+/// The whole-text anchor form, kept for resolving anchors stored before the
+/// identity was narrowed to the bold span. Not used for new bindings — see
+/// `task_binding`, which matches stored anchors against this and against its
+/// prefixes (older anchors held only a task's first physical line).
+pub fn legacy_anchor_for(text: &str) -> String {
+    normalize(text)
 }
 
 #[cfg(test)]
@@ -286,6 +330,68 @@ mod tests {
         let plan = parse_plan("  - [ ] nested\n");
         assert_eq!(plan.tasks.len(), 1);
         assert_eq!(plan.tasks[0].text, "nested");
+    }
+
+    #[test]
+    fn anchor_is_the_bold_span_not_the_rationale() {
+        // The bold imperative names the task; the prose after it is commentary.
+        let plan = parse_plan("- [ ] **Do the thing.** Because reasons.\n");
+        assert_eq!(plan.tasks[0].anchor.normalized_text, "do the thing.");
+        // Display text still carries the whole authored block.
+        assert_eq!(plan.tasks[0].text, "**Do the thing.** Because reasons.");
+    }
+
+    #[test]
+    fn anchor_survives_a_rationale_reword() {
+        // The edit that used to orphan a run's binding is now a no-op on identity.
+        let before = parse_plan("- [ ] **Do the thing.** Because reasons.\n");
+        let after = parse_plan("- [ ] **Do the thing.** Rewritten justification.\n");
+        assert_eq!(
+            before.tasks[0].anchor.normalized_text,
+            after.tasks[0].anchor.normalized_text
+        );
+    }
+
+    #[test]
+    fn anchor_spans_a_wrapped_bold_imperative() {
+        let plan = parse_plan(
+            "- [ ] **Extend the thing and\n  the other thing with a\n  new field.**\n  Rationale here.\n",
+        );
+        assert_eq!(
+            plan.tasks[0].anchor.normalized_text,
+            "extend the thing and the other thing with a new field."
+        );
+    }
+
+    #[test]
+    fn anchor_falls_back_to_whole_text_without_a_bold_span() {
+        let plan = parse_plan("- [ ] plain task, no bold\n");
+        assert_eq!(plan.tasks[0].anchor.normalized_text, "plain task, no bold");
+        // An unterminated or empty span is not an identity either.
+        assert_eq!(
+            parse_plan("- [ ] **unterminated\n").tasks[0].anchor.normalized_text,
+            "**unterminated"
+        );
+        assert_eq!(
+            parse_plan("- [ ] **** just stars\n").tasks[0].anchor.normalized_text,
+            "**** just stars"
+        );
+    }
+
+    #[test]
+    fn anchor_ignores_bold_that_does_not_lead() {
+        // Only a leading span is the imperative; mid-text emphasis is prose.
+        let plan = parse_plan("- [ ] Do the **thing** now.\n");
+        assert_eq!(plan.tasks[0].anchor.normalized_text, "do the **thing** now.");
+    }
+
+    #[test]
+    fn legacy_anchor_keeps_the_whole_text_form() {
+        // What older runs were stored against, so they stay resolvable.
+        assert_eq!(
+            legacy_anchor_for("**Do the thing.** Because reasons."),
+            "**do the thing.** because reasons."
+        );
     }
 
     #[test]

@@ -144,9 +144,15 @@ pub fn task_report(
 ) -> Result<TaskReport, ReportError> {
     let task_row = loopfleet_store::load_task(conn, plan_id, task_anchor)?
         .ok_or_else(|| ReportError::NotFound(task_anchor.to_string()))?;
+    // Runs stored under this task's older anchor forms count as this task's.
+    // Matched against the stored `text` rather than the parsed file, so a report
+    // still exports after the plan file itself is gone.
     let summaries: Vec<_> = loopfleet_store::list_runs_for_plan(conn, plan_id)?
         .into_iter()
-        .filter(|s| s.task_anchor == task_anchor)
+        .filter(|s| {
+            s.task_anchor == task_anchor
+                || crate::task_binding::is_legacy_form_of(&s.task_anchor, &task_row.text)
+        })
         .collect();
     let status = derive_status(
         &summaries
@@ -182,13 +188,23 @@ pub fn plan_report(conn: &Connection, plan_id: &str) -> Result<PlanReport, Repor
     let markdown = std::fs::read_to_string(&file_path).map_err(ReportError::Io)?;
     let parsed = crate::plan::parse_plan(&markdown);
     let summaries = loopfleet_store::list_runs_for_plan(conn, plan_id)?;
+    let hints = loopfleet_store::task_line_hints(conn, plan_id)?;
+
+    // Same resolution the overview uses, so an exported report and the plan view
+    // agree on which runs belong to which task.
+    let mut bound: Vec<Vec<&loopfleet_store::RunSummary>> = vec![Vec::new(); parsed.tasks.len()];
+    for s in &summaries {
+        if let Some(res) = crate::task_binding::resolve(
+            &parsed.tasks,
+            &s.task_anchor,
+            hints.get(&s.task_anchor).copied(),
+        ) {
+            bound[res.task_index].push(s);
+        }
+    }
 
     let mut tasks = Vec::with_capacity(parsed.tasks.len());
-    for t in &parsed.tasks {
-        let task_summaries: Vec<_> = summaries
-            .iter()
-            .filter(|s| s.task_anchor == t.anchor.normalized_text)
-            .collect();
+    for (t, task_summaries) in parsed.tasks.iter().zip(bound) {
         let status = derive_status(
             &task_summaries
                 .iter()

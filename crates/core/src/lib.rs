@@ -24,6 +24,7 @@ pub mod progress;
 pub mod report;
 pub mod run_loop;
 pub mod supervisor;
+pub mod task_binding;
 pub mod task_status;
 pub mod timeline;
 pub mod usage;
@@ -34,7 +35,8 @@ pub use compare::{compare_view, CompareError, CompareView, RunCompare};
 pub use event::{Lane, NormalizedEvent, Usage};
 pub use overview::{plan_overview, OverviewError, PlanView, TaskView};
 pub use plan::{
-    discover_plans, parse_plan, parse_plan_file, ParsedPlan, ParsedTask, PlanConvention, TaskAnchor,
+    anchor_for, discover_plans, legacy_anchor_for, parse_plan, parse_plan_file, ParsedPlan,
+    ParsedTask, PlanConvention, TaskAnchor,
 };
 pub use progress::{
     contents_mark_complete, file_marks_complete, watch_for_completion, COMPLETION_MARKER,
@@ -45,6 +47,9 @@ pub use report::{
 };
 pub use run_loop::{run_loop, IterationRecord, LoopConfig, LoopOutcome};
 pub use supervisor::{InvalidTransition, RunProcess, RunState};
+pub use task_binding::{
+    is_legacy_form_of, resolve as resolve_task_anchor, MatchKind, Resolution,
+};
 pub use task_status::{derive_status, TaskRun, TaskStatus};
 pub use timeline::{
     run_timeline, DiffView, FileChangeView, IterationView, RunTimeline, TimelineError,

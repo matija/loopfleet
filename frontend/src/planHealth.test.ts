@@ -20,6 +20,8 @@ function plan(plan_id: string, tasks: TaskView[]): PlanView {
     title: plan_id,
     markdown: "",
     tasks,
+    unbound_runs: 0,
+    drifted_runs: 0,
   };
 }
 

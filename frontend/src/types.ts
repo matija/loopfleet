@@ -150,6 +150,11 @@ export type PlanView = {
   /// The raw plan file, for the UI to render the frozen PRD verbatim.
   markdown: string;
   tasks: TaskView[];
+  /// Runs that resolve to no task at all — their history is stranded.
+  unbound_runs: number;
+  /// Runs that resolved, but only via an older anchor form or by position.
+  /// Non-zero means this plan's anchors have drifted from its runs.
+  drifted_runs: number;
 };
 
 // --- store: runs.rs ---
