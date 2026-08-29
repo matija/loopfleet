@@ -18,7 +18,7 @@ import type { ActiveRun } from "./RunDock";
 import { DataGrid, formatDuration, GridFooter, rowsDuration } from "./DataGrid";
 import { RunSubtabs, type RunSubtab } from "./RunSubtabs";
 import { UseRun } from "./UseRun";
-import { RUN_STATUS_ICON, RUN_STATUS_LABEL, isActiveRun } from "../status";
+import { RUN_STATUS_ICON, RUN_STATUS_LABEL, isActiveRun, isMergedRun } from "../status";
 
 export function RunTimeline({
   run,
@@ -72,7 +72,8 @@ export function RunTimeline({
       ? `${passes} ${passes === 1 ? "pass" : "passes"}`
       : null;
   const mergeable = iterations.some((it) => it.shadow_ref !== null);
-  const canUse = !isActiveRun(status) && mergeable;
+  const merged = isMergedRun({ status, accepted: run.accepted });
+  const canUse = !isActiveRun(status) && (mergeable || merged);
   // A rate-limited run gets an explicit banner: what happened, when the limit
   // resets (from the persisted `rate_limited` event), and a way to re-run now.
   const limitReached = status === "limit-reached";
@@ -134,6 +135,7 @@ export function RunTimeline({
           <UseRun
             runId={run.runId}
             mergeable={mergeable}
+            accepted={merged}
             onAccepted={() => onAccepted?.()}
             actionsPortal={toolbarActions}
           />

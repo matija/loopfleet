@@ -15,7 +15,7 @@ import { normalizeDisplayText } from "../displayText";
 import type { CompareView as Compare, RunCompare } from "../types";
 import { Diff, WorktreeReclaimed } from "./RunTimeline";
 import { UseRun } from "./UseRun";
-import { isActiveRun, RUN_STATUS_LABEL } from "../status";
+import { isActiveRun, isMergedRun, RUN_STATUS_LABEL } from "../status";
 
 export function CompareView({
   planId,
@@ -138,6 +138,7 @@ function RunColumn({
       <UseRun
         runId={run.run_id}
         mergeable={run.final_ref !== null}
+        accepted={isMergedRun(run)}
         onAccepted={onAccepted}
         actionsPortal={toolbarActions}
       />

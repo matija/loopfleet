@@ -597,6 +597,19 @@
   opacity: 0.5;
 }
 
+/* Merged marker: same static, ok-hued treatment as the dock chip's
+   .run-chip__merged — once a run has landed, its action slot holds a status
+   glyph, not a control, so a landed run can't be merged twice from here. */
+.use-run__merged {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--c-ok-tint);
+  color: var(--c-ok);
+}
+
 .use-run__hint {
   margin: var(--space-1) 0 0;
   font-size: var(--text-xs);

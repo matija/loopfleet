@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { canMergeFromDock, isActiveRun, type MergeCandidate } from "./status";
+import {
+  canMergeFromDock,
+  isActiveRun,
+  isMergedRun,
+  type MergeCandidate,
+} from "./status";
 import type { RunStatus } from "./types";
 
 const ALL_STATUSES: RunStatus[] = [
@@ -66,5 +71,37 @@ describe("canMergeFromDock", () => {
     const before = structuredClone(run);
     canMergeFromDock(run);
     expect(run).toEqual(before);
+  });
+});
+
+describe("isMergedRun", () => {
+  it("is true only for a finished, accepted run", () => {
+    expect(isMergedRun({ status: "completed", accepted: true })).toBe(true);
+  });
+
+  it("is false while the run is still active, even if marked accepted", () => {
+    expect(isMergedRun({ status: "queued", accepted: true })).toBe(false);
+    expect(isMergedRun({ status: "running", accepted: true })).toBe(false);
+  });
+
+  it("is false for a finished run that wasn't accepted", () => {
+    expect(isMergedRun({ status: "completed", accepted: false })).toBe(false);
+    expect(isMergedRun({ status: "completed" })).toBe(false);
+  });
+
+  it("is false for a finished, unaccepted run regardless of terminal status", () => {
+    for (const status of ["failed", "stopped", "limit-reached"] as const) {
+      expect(isMergedRun({ status, accepted: false })).toBe(false);
+    }
+  });
+
+  it("leaves both the merged marker and the merge action off a completed run with nothing to land", () => {
+    // A completed run that produced no mergeable diff: not merged, and the
+    // dock has no merge to offer. This must be legible as "nothing to do"
+    // rather than a state neither slot accounts for — same rule the dock chip,
+    // the run timeline, and compare all share via this one helper.
+    const run = { status: "completed" as const, accepted: false, mergeable: false };
+    expect(isMergedRun(run)).toBe(false);
+    expect(canMergeFromDock(run)).toBe(false);
   });
 });

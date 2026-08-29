@@ -25,6 +25,7 @@ import {
   RUN_STATUS_LABEL,
   canMergeFromDock,
   isActiveRun,
+  isMergedRun,
 } from "../status";
 import { formatDuration } from "./DataGrid";
 import { Elapsed } from "./Elapsed";
@@ -292,17 +293,6 @@ export function finishedRunTone(status: RunStatus): "warn" | "danger" | undefine
 /// extra field on `ActiveRun`.
 export function worktreeBranch(runId: string): string {
   return `agent/${runId}`;
-}
-
-/// Whether the chip should wear the merged marker instead of the merge action:
-/// the run is finished and its detail says it was already accepted. Kept
-/// distinct from `!canMergeFromDock` — that is also false for runs with nothing
-/// to merge or a detail that hasn't loaded, neither of which has landed.
-export function isMergedRun(run: {
-  status: RunStatus;
-  accepted?: boolean;
-}): boolean {
-  return !isActiveRun(run.status) && run.accepted === true;
 }
 
 function RunChip({

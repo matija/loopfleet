@@ -74,3 +74,15 @@ export function canMergeFromDock(run: MergeCandidate): boolean {
     run.pendingResume === undefined
   );
 }
+
+/// Whether a run has already landed ("use this run" merged it): finished, and
+/// its detail says it was accepted. Every merge-control surface (the dock chip,
+/// the run timeline, compare) swaps its action for a static merged marker under
+/// this condition rather than leaving a live merge control on a run that's
+/// already landed.
+export function isMergedRun(run: {
+  status: RunStatus;
+  accepted?: boolean;
+}): boolean {
+  return !isActiveRun(run.status) && run.accepted === true;
+}
