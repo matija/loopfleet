@@ -89,6 +89,9 @@ pub struct AgentStatus {
     /// Human-readable reason when not installed, or a note when the version
     /// output wasn't recognized.
     pub detail: Option<String>,
+    /// Model names the UI may offer for `--model`, in display order. Empty
+    /// when the CLI has no fixed set. Mirrors `AgentSpec::models`.
+    pub models: Vec<String>,
 }
 
 /// Discover one agent: run `<binary> --version`. A `NotFound` spawn error means
@@ -104,6 +107,7 @@ pub async fn discover(spec: &AgentSpec) -> AgentStatus {
         version: None,
         version_matches: None,
         detail: Some(detail),
+        models: spec.models.iter().map(|m| m.to_string()).collect(),
     };
 
     let output = Command::new(spec.binary)
@@ -134,6 +138,7 @@ pub async fn discover(spec: &AgentSpec) -> AgentStatus {
                     .then(|| "version output not recognized".into()),
                 version,
                 version_matches,
+                models: spec.models.iter().map(|m| m.to_string()).collect(),
             }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -232,6 +237,7 @@ mod tests {
             binary: "loopfleet-nonexistent-binary-xyz",
             version_arg: "--version",
             tested_version: "0.0.0",
+            models: &[],
         };
         let status = discover(&spec).await;
         assert!(!status.installed);

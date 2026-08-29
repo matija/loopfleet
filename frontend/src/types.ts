@@ -74,6 +74,9 @@ export type AgentStatus = {
   version_matches: boolean | null;
   /// Reason when not installed, or a note when the version wasn't recognized.
   detail: string | null;
+  /// Model names the UI may offer for `--model`, in display order. Empty
+  /// when the CLI has no fixed set.
+  models: string[];
 };
 
 // --- core: usage.rs ---
