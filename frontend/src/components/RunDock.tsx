@@ -86,6 +86,11 @@ export type ActiveRun = {
   /// countdown (the `auto_merge_armed` event) — cleared on
   /// `auto_merge_cancelled`, `auto_merge_failed`, or the merge itself landing.
   autoMerge?: ArmedAutoMerge;
+  /// Set on a run whose fired auto-merge attempt failed (`auto_merge_failed`),
+  /// carrying the backend's stated reason. The toast raised at the same time
+  /// auto-dismisses; this is the marker that survives so the failure isn't
+  /// missed. Cleared by merging the run another way ("use this run").
+  autoMergeFailed?: { reason: string };
 };
 
 /// An armed auto-merge countdown on a finished run (PRD: Autopilot). `targetBranch`
@@ -346,6 +351,7 @@ function RunChip({
     r.autoMerge
       ? `auto-merging into ${r.autoMerge.targetBranch || "current branch"}`
       : undefined,
+    r.autoMergeFailed ? `auto-merge failed: ${r.autoMergeFailed.reason}` : undefined,
     r.unseen ? "finished, not yet seen" : undefined,
   ]
     .filter(Boolean)
@@ -408,6 +414,10 @@ function RunChip({
           <span className="run-chip__meta run-chip__meta--warn">
             {r.autoMerge.targetBranch || "current branch"} ·{" "}
             <Countdown target={r.autoMerge.mergeAt} label="Time until merge" />
+          </span>
+        ) : r.autoMergeFailed ? (
+          <span className="run-chip__meta run-chip__meta--error">
+            Auto-merge failed
           </span>
         ) : r.pendingResume ? (
           <span className="run-chip__meta run-chip__meta--warn">

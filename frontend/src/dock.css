@@ -188,6 +188,12 @@
   color: var(--c-warn);
 }
 
+/* A failed auto-merge attempt reads danger, not warn — it's a terminal
+ * failure the toast already announced, not a pending outcome. */
+.run-chip__meta--error {
+  color: var(--c-danger);
+}
+
 /* Live elapsed stamp on running runs (dock + run view); tabular figures keep
    its width steady as the seconds tick. */
 .run-elapsed {

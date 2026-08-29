@@ -27,6 +27,7 @@ import {
   type PlanHealth,
 } from "./planHealth";
 import {
+  onAutoMergeFailed,
   onAutopilotResumePrompt,
   onRunStatus,
   onScheduledLaunch,
@@ -312,7 +313,11 @@ export default function App() {
       try {
         await useRun(runId, null);
         setRuns((prev) =>
-          prev.map((r) => (r.runId === runId ? { ...r, accepted: true } : r)),
+          prev.map((r) =>
+            r.runId === runId
+              ? { ...r, accepted: true, autoMergeFailed: undefined }
+              : r,
+          ),
         );
         setPlanNonce((n) => n + 1);
       } catch (e) {
@@ -410,6 +415,26 @@ export default function App() {
       un.then((f) => f());
     };
   }, []);
+
+  // A fired auto-merge attempt failed (dirty tree, conflict, etc.): the toast
+  // carries the backend's stated reason, but toasts auto-dismiss, so the
+  // reason also lands on the chip as `autoMergeFailed` — persisting until the
+  // run is merged another way — so it isn't missed once the toast clears.
+  useEffect(() => {
+    const un = onAutoMergeFailed((p) => {
+      pushError(p.reason);
+      setRuns((prev) =>
+        prev.map((r) =>
+          r.runId === p.run_id
+            ? { ...r, autoMerge: undefined, autoMergeFailed: { reason: p.reason } }
+            : r,
+        ),
+      );
+    });
+    return () => {
+      un.then((f) => f());
+    };
+  }, [pushError]);
 
   // A scheduled launch found the agent still exhausted through every allowed
   // reschedule and was dropped rather than fired: surface it so the user
