@@ -1048,19 +1048,6 @@ export default function App() {
                     <span className="project-item__name">
                       {repoName(p.repo_path)}
                     </span>
-                    <IconButton
-                      icon={TrashIcon}
-                      aria-label={`Remove ${repoName(p.repo_path)}`}
-                      className="project-row__remove"
-                      buttonRef={(el) => {
-                        if (el) removeButtonsRef.current.set(p.id, el);
-                        else removeButtonsRef.current.delete(p.id);
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openRemoveProject(p, e.currentTarget);
-                      }}
-                    />
                     {(() => {
                       const h = health[p.id];
                       if (!h || !marksNoTasks(h)) return null;
@@ -1073,8 +1060,23 @@ export default function App() {
                         </span>
                       );
                     })()}
-                    <span className="project-item__meta">
-                      {parentPath(p.repo_path)}
+                    <span className="project-item__trail">
+                      <span className="project-item__meta">
+                        {parentPath(p.repo_path)}
+                      </span>
+                      <IconButton
+                        icon={TrashIcon}
+                        aria-label={`Remove ${repoName(p.repo_path)}`}
+                        className="project-row__remove"
+                        buttonRef={(el) => {
+                          if (el) removeButtonsRef.current.set(p.id, el);
+                          else removeButtonsRef.current.delete(p.id);
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openRemoveProject(p, e.currentTarget);
+                        }}
+                      />
                     </span>
                   </div>
                   {removeTarget?.id === p.id && (
