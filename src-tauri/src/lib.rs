@@ -2744,7 +2744,7 @@ async fn merge_and_accept_run(
 
     // Resolve the run's parent repo, its final shadow ref, and enough of its
     // task binding to compose a fallback commit message for it.
-    let (repo_path, source_ref, task_text, agent, model, pass_count) = {
+    let (repo_path, source_ref, task_text, agent, model, pass_count, usage) = {
         let conn = db.lock().unwrap();
         let detail = loopfleet_store::load_run(&conn, run_id)
             .map_err(|e| e.to_string())?
@@ -2761,6 +2761,9 @@ async fn merge_and_accept_run(
             .map_err(|e| e.to_string())?
             .map(|t| t.text)
             .unwrap_or(detail.task_anchor);
+        // Best-effort: a run whose event log can't be summed still merges, it
+        // just lands without the context trailer.
+        let usage = loopfleet_core::usage_for_run(&conn, run_id).unwrap_or(None);
         (
             detail.repo_path,
             source_ref,
@@ -2768,6 +2771,7 @@ async fn merge_and_accept_run(
             detail.agent,
             detail.model,
             pass_count,
+            usage,
         )
     };
 
@@ -2787,6 +2791,7 @@ async fn merge_and_accept_run(
         &agent,
         model.as_deref(),
         pass_count,
+        usage,
     );
 
     let scratch_root = data_dir.join("worktrees");

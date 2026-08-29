@@ -7,7 +7,10 @@
 //! `loopfleet-run:` trailer identifying the run that produced it — parallel to
 //! `loopfleet_gitx::MERGE_COMMIT_TRAILER` but naming the run rather than
 //! crediting an author, since that credit is a separate trailer added later by
-//! the merge itself.
+//! the merge itself, and — when the run's token usage is known — a
+//! `loopfleet-context:` trailer recording what the work cost.
+
+use crate::event::Usage;
 
 /// Subjects longer than this are cut, with the overflow pushed into the body,
 /// matching the conventional git commit subject length.
@@ -30,6 +33,10 @@ const MAX_SUBJECT_CHARS: usize = 72;
 /// `model` is folded into the same parenthetical as the agent, when the run
 /// was launched with a model override, since the two together identify what
 /// actually produced the commit.
+/// `usage` adds a `loopfleet-context:` trailer with the run's summed input and
+/// output tokens, so the commit records what the work cost; it is omitted
+/// entirely for a run that completed no turns, since a zeroed figure would
+/// read as "cost nothing" rather than "not known".
 pub fn compose_commit_message(
     summary: &str,
     task_text: &str,
@@ -37,6 +44,7 @@ pub fn compose_commit_message(
     agent: &str,
     model: Option<&str>,
     pass_count: u32,
+    usage: Option<Usage>,
 ) -> String {
     let chosen = first_line(summary)
         .or_else(|| first_line(task_text).map(|line| strip_plan_syntax(&line)))
@@ -63,7 +71,15 @@ pub fn compose_commit_message(
     body.push_str("Task: ");
     body.push_str(task_text.trim());
 
-    format!("{subject}\n\n{body}\n\nloopfleet-run: {run_id}")
+    let mut trailers = format!("loopfleet-run: {run_id}");
+    if let Some(usage) = usage {
+        trailers.push_str(&format!(
+            "\nloopfleet-context: {}+{} tokens",
+            usage.input_tokens, usage.output_tokens
+        ));
+    }
+
+    format!("{subject}\n\n{body}\n\n{trailers}")
 }
 
 /// The first non-blank line of `text`, trimmed; `None` when `text` has no
@@ -140,7 +156,15 @@ mod tests {
 
     #[test]
     fn composes_subject_body_and_trailer() {
-        let msg = compose_commit_message("Add the widget", "Build the widget", "abc123", "claude", None, 1);
+        let msg = compose_commit_message(
+            "Add the widget",
+            "Build the widget",
+            "abc123",
+            "claude",
+            None,
+            1,
+            None,
+        );
         assert_eq!(
             msg,
             "Add the widget (claude)\n\nTask: Build the widget\n\nloopfleet-run: abc123"
@@ -156,6 +180,7 @@ mod tests {
             "claude",
             Some("opus"),
             1,
+            None,
         );
         assert_eq!(
             msg,
@@ -172,6 +197,7 @@ mod tests {
             "claude",
             Some("  "),
             1,
+            None,
         );
         assert_eq!(
             msg,
@@ -180,8 +206,66 @@ mod tests {
     }
 
     #[test]
+    fn usage_becomes_a_context_trailer_after_the_run_trailer() {
+        let msg = compose_commit_message(
+            "Add the widget",
+            "Build the widget",
+            "abc123",
+            "claude",
+            None,
+            1,
+            Some(Usage {
+                input_tokens: 1200,
+                output_tokens: 340,
+            }),
+        );
+        assert_eq!(
+            msg,
+            "Add the widget (claude)\n\nTask: Build the widget\n\nloopfleet-run: abc123\nloopfleet-context: 1200+340 tokens"
+        );
+    }
+
+    #[test]
+    fn zeroed_usage_still_reports_a_context_trailer() {
+        // A run that completed turns reporting no tokens is a different thing
+        // from a run whose usage is unknown; only the latter drops the trailer.
+        let msg = compose_commit_message(
+            "Add the widget",
+            "Build the widget",
+            "abc123",
+            "claude",
+            None,
+            1,
+            Some(Usage::default()),
+        );
+        assert!(msg.ends_with("loopfleet-context: 0+0 tokens"), "{msg:?}");
+    }
+
+    #[test]
+    fn unknown_usage_omits_the_context_trailer() {
+        let msg = compose_commit_message(
+            "Add the widget",
+            "Build the widget",
+            "abc123",
+            "claude",
+            None,
+            1,
+            None,
+        );
+        assert!(!msg.contains("loopfleet-context"), "{msg:?}");
+    }
+
+    #[test]
     fn multiple_passes_are_noted_in_the_subject() {
-        let msg = compose_commit_message("Add the widget", "Build the widget", "abc123", "claude", None, 3);
+        let msg = compose_commit_message(
+            "Add the widget",
+            "Build the widget",
+            "abc123",
+            "claude",
+            None,
+            3,
+            None,
+        );
         assert_eq!(
             msg,
             "Add the widget (claude, 3 passes)\n\nTask: Build the widget\n\nloopfleet-run: abc123"
@@ -190,7 +274,15 @@ mod tests {
 
     #[test]
     fn trims_surrounding_whitespace() {
-        let msg = compose_commit_message("  Add the widget  ", "  Build the widget  ", "abc123", "claude", None, 1);
+        let msg = compose_commit_message(
+            "  Add the widget  ",
+            "  Build the widget  ",
+            "abc123",
+            "claude",
+            None,
+            1,
+            None,
+        );
         assert_eq!(
             msg,
             "Add the widget (claude)\n\nTask: Build the widget\n\nloopfleet-run: abc123"
@@ -199,7 +291,15 @@ mod tests {
 
     #[test]
     fn falls_back_to_first_line_of_task_when_summary_is_blank() {
-        let msg = compose_commit_message("", "Build the widget\nwith extra care", "abc123", "claude", None, 1);
+        let msg = compose_commit_message(
+            "",
+            "Build the widget\nwith extra care",
+            "abc123",
+            "claude",
+            None,
+            1,
+            None,
+        );
         assert_eq!(
             msg,
             "Build the widget (claude)\n\nTask: Build the widget\nwith extra care\n\nloopfleet-run: abc123"
@@ -208,7 +308,7 @@ mod tests {
 
     #[test]
     fn falls_back_to_run_id_when_summary_and_task_are_blank() {
-        let msg = compose_commit_message("   ", "   ", "abc1234567890", "claude", None, 1);
+        let msg = compose_commit_message("   ", "   ", "abc1234567890", "claude", None, 1, None);
         assert_eq!(
             msg,
             "Apply loopfleet run abc12345 (claude)\n\nTask: \n\nloopfleet-run: abc1234567890"
@@ -217,7 +317,15 @@ mod tests {
 
     #[test]
     fn chosen_subject_is_trimmed_to_a_single_line() {
-        let msg = compose_commit_message("Add the widget\nand more", "Build the widget", "abc123", "claude", None, 1);
+        let msg = compose_commit_message(
+            "Add the widget\nand more",
+            "Build the widget",
+            "abc123",
+            "claude",
+            None,
+            1,
+            None,
+        );
         assert_eq!(
             msg,
             "Add the widget (claude)\n\nTask: Build the widget\n\nloopfleet-run: abc123"
@@ -226,7 +334,15 @@ mod tests {
 
     #[test]
     fn strips_plan_syntax_from_task_derived_subject() {
-        let msg = compose_commit_message("", "- [ ] **Build the widget**", "abc123", "claude", None, 1);
+        let msg = compose_commit_message(
+            "",
+            "- [ ] **Build the widget**",
+            "abc123",
+            "claude",
+            None,
+            1,
+            None,
+        );
         assert_eq!(
             msg,
             "Build the widget (claude)\n\nTask: - [ ] **Build the widget**\n\nloopfleet-run: abc123"
@@ -235,7 +351,15 @@ mod tests {
 
     #[test]
     fn strips_bare_bullet_and_checked_box_from_task_derived_subject() {
-        let msg = compose_commit_message("", "* [x] Build the widget", "abc123", "claude", None, 1);
+        let msg = compose_commit_message(
+            "",
+            "* [x] Build the widget",
+            "abc123",
+            "claude",
+            None,
+            1,
+            None,
+        );
         assert_eq!(
             msg,
             "Build the widget (claude)\n\nTask: * [x] Build the widget\n\nloopfleet-run: abc123"
@@ -250,7 +374,15 @@ mod tests {
         let cut = full_subject[..limit].rfind(' ').unwrap();
         let (expected_subject, expected_overflow) = full_subject.split_at(cut);
 
-        let msg = compose_commit_message(summary, "Build the widget", "abc123", "claude", None, 1);
+        let msg = compose_commit_message(
+            summary,
+            "Build the widget",
+            "abc123",
+            "claude",
+            None,
+            1,
+            None,
+        );
 
         assert_eq!(
             msg,
@@ -266,7 +398,15 @@ mod tests {
         // Regression: a subject landing right around the 72-char cap used to
         // slice mid-word, e.g. "...(cla" / "ude)...".
         let summary = "Add pure should_auto_merge decision in crates/core/src/autopilot.rs";
-        let msg = compose_commit_message(summary, "Build the widget", "abc123", "claude", None, 1);
+        let msg = compose_commit_message(
+            summary,
+            "Build the widget",
+            "abc123",
+            "claude",
+            None,
+            1,
+            None,
+        );
         let subject = msg.lines().next().unwrap();
 
         assert!(
