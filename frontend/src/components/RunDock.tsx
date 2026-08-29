@@ -33,6 +33,7 @@ import {
   BoxIcon,
   CheckIcon,
   ClockIcon,
+  DoubleCheckIcon,
   FolderIcon,
   GitBranchIcon,
   PlayIcon,
@@ -483,7 +484,7 @@ function RunChip({
           aria-label="Merged"
           title="Already merged into your branch"
         >
-          <CheckIcon size={14} />
+          <DoubleCheckIcon size={14} />
         </span>
       ) : null}
       {canMergeFromDock(r) && !r.autoMerge && (

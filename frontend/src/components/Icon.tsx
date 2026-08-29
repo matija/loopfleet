@@ -166,6 +166,15 @@ export function CheckIcon({ size = 16, className }: IconProps) {
   );
 }
 
+export function DoubleCheckIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...defaultProps}>
+      <path d="M2 12l4 4L14 8" />
+      <path d="M10 12l4 4L22 8" />
+    </svg>
+  );
+}
+
 export function ClockIcon({ size = 16, className }: IconProps) {
   return (
     <svg width={size} height={size} className={className} {...defaultProps}>
