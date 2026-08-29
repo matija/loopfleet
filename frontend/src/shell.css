@@ -434,6 +434,33 @@
   border-color: var(--c-danger);
 }
 
+/* Autopilot resume prompt: same dialog shape as `.remove-project`, anchored
+ * to the titlebar's command-palette trigger since it has no per-row anchor. */
+.resume-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 280px;
+}
+
+.resume-prompt__title {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--c-text);
+}
+
+.resume-prompt__task {
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+}
+
+.resume-prompt__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
 /* --- sidebar footer ---
  * Pinned below the scrolling `.sidebar__list` (a sibling, not inside it), so
  * it stays visible regardless of scroll — same pattern as the dock below the

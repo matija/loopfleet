@@ -7,6 +7,7 @@ import {
 } from "react";
 import {
   acknowledgeRuns,
+  answerAutopilotPrompt,
   cancelScheduledLaunch,
   cancelScheduledResume,
   launchRun,
@@ -26,6 +27,7 @@ import {
   type PlanHealth,
 } from "./planHealth";
 import {
+  onAutopilotResumePrompt,
   onRunStatus,
   onScheduledLaunch,
   onScheduledLaunchCancelled,
@@ -34,7 +36,11 @@ import {
   onScheduledResume,
   onScheduledResumeCancelled,
 } from "./events";
-import type { Project, ProjectRemovalPreview } from "./types";
+import type {
+  AutopilotResumePromptPayload,
+  Project,
+  ProjectRemovalPreview,
+} from "./types";
 import { isActiveRun } from "./status";
 import { AppShell } from "./components/AppShell";
 import { AddProject, pickAndRegisterProject } from "./components/AddProject";
@@ -500,6 +506,31 @@ export default function App() {
     };
   }, []);
 
+  // A stalled auto-advance chain was recovered on startup and needs the user
+  // to say whether to resume it. Fires at most once per restart (per the
+  // oldest un-armed recovered launch), so a single slot is enough.
+  const [resumePrompt, setResumePrompt] =
+    useState<AutopilotResumePromptPayload | null>(null);
+  const resumePromptAnchorRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const un = onAutopilotResumePrompt((p) => setResumePrompt(p));
+    return () => {
+      un.then((f) => f());
+    };
+  }, []);
+  const answerResumePrompt = useCallback(
+    (accept: boolean) => {
+      setResumePrompt((prompt) => {
+        if (!prompt) return prompt;
+        answerAutopilotPrompt(prompt.scheduled_launch_id, accept).catch((e) =>
+          pushError(String(e)),
+        );
+        return null;
+      });
+    },
+    [pushError],
+  );
+
   // Acknowledge on focus: returning to the app (its window regaining focus)
   // means the user is looking again, so clear every finished run's attention
   // marker. Opening a specific finished run acknowledges just that one (below).
@@ -789,15 +820,51 @@ export default function App() {
       onToggleSidebar={toggleSidebarHidden}
       notice={null}
       titlebarTrailing={
-        <button
-          className="titlebar__k"
-          onClick={() => setPaletteOpen(true)}
-          title="Command palette"
-          aria-label="Open command palette"
-        >
-          <span>Search</span>
-          <kbd>⌘K</kbd>
-        </button>
+        <>
+          <button
+            ref={resumePromptAnchorRef}
+            className="titlebar__k"
+            onClick={() => setPaletteOpen(true)}
+            title="Command palette"
+            aria-label="Open command palette"
+          >
+            <span>Search</span>
+            <kbd>⌘K</kbd>
+          </button>
+          {resumePrompt && (
+            <Popover
+              open
+              onClose={() => answerResumePrompt(false)}
+              anchorRef={resumePromptAnchorRef}
+              role="dialog"
+              placement="bottom-end"
+              aria-label="Resume autopilot?"
+              className="resume-prompt"
+            >
+              <p className="resume-prompt__title">
+                Resume auto-advance on{" "}
+                {resumePrompt.plan_title ?? resumePrompt.plan_id}?
+              </p>
+              <p className="resume-prompt__task">
+                {taskSummary(resumePrompt.task_text)}
+              </p>
+              <div className="resume-prompt__actions">
+                <Button
+                  variant="quiet"
+                  onClick={() => answerResumePrompt(false)}
+                >
+                  Not now
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => answerResumePrompt(true)}
+                >
+                  Start
+                </Button>
+              </div>
+            </Popover>
+          )}
+        </>
       }
       dock={
         <RunDock

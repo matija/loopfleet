@@ -190,6 +190,19 @@ export function cancelScheduledLaunch(id: number): Promise<void> {
   return invoke("cancel_scheduled_launch", { id });
 }
 
+/// Answer a startup `autopilot_resume_prompt`: `accept` fires the stalled
+/// scheduled launch immediately; declining drops it, leaving the chain
+/// stopped.
+export function answerAutopilotPrompt(
+  scheduledLaunchId: number,
+  accept: boolean,
+): Promise<void> {
+  return invoke("answer_autopilot_prompt", {
+    scheduledLaunchId,
+    accept,
+  });
+}
+
 /// Run a worktree sweep pass immediately (same eligibility rules as the
 /// hourly background sweep) and report how much it reclaimed, for the
 /// settings panel's "Clean up now" control.
