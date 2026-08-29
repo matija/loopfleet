@@ -292,6 +292,7 @@
   top: 50%;
   right: 0;
   transform: translateY(-50%);
+  transition: opacity var(--motion-fast) var(--ease-out);
 }
 
 .project-row__remove {
