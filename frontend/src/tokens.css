@@ -139,6 +139,10 @@
 
 :root,
 [data-theme="dark"] {
+  /* Native chrome (scrollbars, form controls, overlay-titlebar traffic
+   * lights) reads against this, so it must track the field per theme. */
+  color-scheme: dark;
+
   /* --- color: surfaces ---
    * One black field, not a stack of grey panels. --c-bg and --c-surface are the
    * same near-black: chrome (titlebar, sidebar, main) reads as a single sheet,
@@ -292,6 +296,8 @@
  * the 3:1 UI-graphics floor applies instead. */
 
 [data-theme="rose-pine-moon"] {
+  color-scheme: dark;
+
   /* --- color: surfaces ---
    * base is the single field (chrome and main share it); surface and overlay
    * are the state steps for hover fills, inputs, and the selected row. */
