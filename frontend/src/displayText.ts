@@ -20,6 +20,12 @@ const SUMMARY_LIMIT = 90;
 // characters cut at a word boundary, whichever is shorter. Ends with an
 // ellipsis whenever text was dropped. Measured against the normalized text so
 // Markdown syntax never counts toward the limit.
+//
+// For fixed-width surfaces that need a hard character cap decided before
+// render — the command palette's result rows, the resume prompt — rather
+// than a container that can size itself and clamp with CSS. A row that
+// stretches with its content (e.g. the plan tree/list rows) should render
+// `normalizeDisplayText` directly and let its own CSS clamp instead.
 export function taskSummary(value: string): string {
   const text = normalizeDisplayText(value);
 
