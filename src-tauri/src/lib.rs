@@ -3107,51 +3107,13 @@ pub fn run() {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             let conn = loopfleet_store::open(dir.join("loopfleet.db"))?;
-
-            // Crash recovery: runs don't survive an app restart in v1, so any run
-            // still marked queued/running was interrupted by a prior crash or
-            // quit — its background task and agent process are gone. Mark them
-            // failed (shadow refs are kept). Then prune orphan worktree metadata
-            // for each project (worktrees whose checkout vanished on the crash).
-            let interrupted = loopfleet_store::fail_interrupted_runs(&conn).unwrap_or_default();
-            if !interrupted.is_empty() {
-                eprintln!(
-                    "crash recovery: marked {} interrupted run(s) failed",
-                    interrupted.len()
-                );
-            }
-            let repos: Vec<String> = loopfleet_store::list_projects(&conn)
-                .map(|ps| ps.into_iter().map(|p| p.repo_path).collect())
-                .unwrap_or_default();
-
             let git = GitActor::spawn();
             let db = Arc::new(Mutex::new(conn));
 
-            // After orphaned worktree *metadata* is pruned per-repo, sweep
-            // finished runs' on-disk footprint (worktree/profile/progress dir)
-            // and any worktree directory with no run row at all. Then keep
-            // sweeping hourly for the life of the app.
-            let sweep_git = git.clone();
-            let sweep_db = db.clone();
-            let sweep_dir = dir.clone();
-            tauri::async_runtime::spawn(async move {
-                for repo in repos {
-                    let _ = sweep_git.cleanup_orphans(PathBuf::from(repo)).await;
-                }
-                sweep_worktrees(&sweep_db, &sweep_git, &sweep_dir).await;
-
-                let mut ticker = tokio::time::interval(std::time::Duration::from_secs(60 * 60));
-                ticker.tick().await; // first tick fires immediately; already swept above
-                loop {
-                    ticker.tick().await;
-                    sweep_worktrees(&sweep_db, &sweep_git, &sweep_dir).await;
-                }
-            });
-
             app.manage(AppState {
-                db,
-                git,
-                data_dir: dir,
+                db: db.clone(),
+                git: git.clone(),
+                data_dir: dir.clone(),
                 stops: Arc::new(Mutex::new(HashMap::new())),
                 edits: Arc::new(Mutex::new(HashMap::new())),
                 unacknowledged_runs: Arc::new(AtomicI64::new(0)),
@@ -3161,18 +3123,64 @@ pub fn run() {
                 published_usage: Arc::new(Mutex::new(HashMap::new())),
             });
 
-            // Recover any rate-limit resume a crash or quit interrupted mid-wait
-            // (see `rearm_pending_resumes`), so the resume chip and its Cancel
-            // action reappear exactly as they were before the restart.
-            rearm_pending_resumes(&app.handle().clone());
-            // Same recovery for user-scheduled launches (see
-            // `rearm_scheduled_launches`).
-            rearm_scheduled_launches(&app.handle().clone());
-            // A run left completed, unaccepted, and mergeable was mid
-            // auto-merge-countdown when the app quit (see
-            // `question_stalled_auto_merges`); ask the user rather than
-            // silently re-arming it.
-            question_stalled_auto_merges(&app.handle().clone());
+            // After orphaned worktree *metadata* is pruned per-repo, sweep
+            // finished runs' on-disk footprint (worktree/profile/progress dir)
+            // and any worktree directory with no run row at all. Then keep
+            // sweeping hourly for the life of the app.
+            let sweep_git = git;
+            let sweep_db = db;
+            let sweep_dir = dir;
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                // Crash recovery: runs don't survive an app restart in v1, so any
+                // run still marked queued/running was interrupted by a prior
+                // crash or quit — its background task and agent process are
+                // gone. Mark them failed (shadow refs are kept). Then prune
+                // orphan worktree metadata for each project (worktrees whose
+                // checkout vanished on the crash).
+                let interrupted = {
+                    let conn = sweep_db.lock().unwrap();
+                    loopfleet_store::fail_interrupted_runs(&conn).unwrap_or_default()
+                };
+                if !interrupted.is_empty() {
+                    eprintln!(
+                        "crash recovery: marked {} interrupted run(s) failed",
+                        interrupted.len()
+                    );
+                }
+                let repos: Vec<String> = {
+                    let conn = sweep_db.lock().unwrap();
+                    loopfleet_store::list_projects(&conn)
+                        .map(|ps| ps.into_iter().map(|p| p.repo_path).collect())
+                        .unwrap_or_default()
+                };
+
+                for repo in repos {
+                    let _ = sweep_git.cleanup_orphans(PathBuf::from(repo)).await;
+                }
+                sweep_worktrees(&sweep_db, &sweep_git, &sweep_dir).await;
+
+                // Recover any rate-limit resume a crash or quit interrupted
+                // mid-wait (see `rearm_pending_resumes`), so the resume chip
+                // and its Cancel action reappear exactly as they were before
+                // the restart.
+                rearm_pending_resumes(&app_handle);
+                // Same recovery for user-scheduled launches (see
+                // `rearm_scheduled_launches`).
+                rearm_scheduled_launches(&app_handle);
+                // A run left completed, unaccepted, and mergeable was mid
+                // auto-merge-countdown when the app quit (see
+                // `question_stalled_auto_merges`); ask the user rather than
+                // silently re-arming it.
+                question_stalled_auto_merges(&app_handle);
+
+                let mut ticker = tokio::time::interval(std::time::Duration::from_secs(60 * 60));
+                ticker.tick().await; // first tick fires immediately; already swept above
+                loop {
+                    ticker.tick().await;
+                    sweep_worktrees(&sweep_db, &sweep_git, &sweep_dir).await;
+                }
+            });
 
             // Regaining focus counts as acknowledging any runs that finished
             // while the user was away — clear the dock badge along with it.
