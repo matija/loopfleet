@@ -26,7 +26,7 @@
 
 :root {
   /* --- type scale (1.25 ratio off a 12px base) ---
-   * Inter Variable (self-hosted via @fontsource) is the UI face; system
+   * Readex Pro Variable (self-hosted via @fontsource) is the UI face; system
    * fonts remain as the fallback stack.
    *
    * The scale is one step tighter than the original 13px-base cut: base and
@@ -39,8 +39,8 @@
    * leaves --text-sm and --text-base rendering at the same 12px — intended
    * for a density pass, where body copy converges on the dense label size
    * rather than the small labels shrinking below legibility. */
-  --font-sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont,
-    "SF Pro Text", system-ui, sans-serif;
+  --font-sans: "Readex Pro Variable", "Readex Pro", -apple-system,
+    BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
 
   /* --text-2xs is below the 1.25 ratio and the only step under the 11px text
