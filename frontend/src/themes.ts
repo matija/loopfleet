@@ -16,6 +16,7 @@ export type ThemeId =
   | "dark"
   | "rose-pine-moon"
   | "github-dark"
+  | "github-light"
   | "tokyo-night"
   | "tokyo-night-storm";
 
@@ -32,6 +33,7 @@ export const THEMES: readonly Theme[] = [
   { id: "dark", label: "Dark" },
   { id: "rose-pine-moon", label: "Rosé Pine Moon" },
   { id: "github-dark", label: "GitHub Dark" },
+  { id: "github-light", label: "GitHub Light" },
   { id: "tokyo-night", label: "Tokyo Night" },
   { id: "tokyo-night-storm", label: "Tokyo Night Storm" },
 ] as const;
