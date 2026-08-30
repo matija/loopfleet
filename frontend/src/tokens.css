@@ -890,20 +890,32 @@
   --c-text-faint: #545a74;
 
   /* --- color: accent + semantic ---
-   * Tokyo Night Day's editor blue (#2e7de9) reads only 3.11:1 on this bg, so
-   * --c-accent darkens it just enough to clear AA (4.50:1, the tightest
-   * margin in this block) and serves as both the swatch and the text color,
-   * the same single-value pattern github-light uses. accent-quiet/-hover are
-   * that same blue blended into the field at 12%/20%, the light-theme mirror
-   * of the dark blocks' recessed fill. */
+   * Tokyo Night Day's editor blue (#2e7de9) reads only 3.11:1 on this bg.
+   * --c-accent darkens it just enough to clear AA on the field alone
+   * (4.50:1) and serves as the swatch/border color, but that margin
+   * disappears against the darker surface steps (3.93:1 on --c-surface-3,
+   * below the 4.5:1 floor) — unlike github-light, one value can't cover both
+   * jobs here. --c-accent-text therefore darkens one step further so every
+   * text use clears AA against every canvas (measured below), and
+   * --c-accent-text-hover deepens further still. accent-quiet/-hover are the
+   * swatch blue blended into the field at 12%/20%, the light-theme mirror of
+   * the dark blocks' recessed fill.
+   *
+   * Measured WCAG 2.1 contrast for --c-accent-text, the tightest step in
+   * this block:
+   *   --c-accent-text  vs --c-bg #e1e2e7:            5.26:1
+   *   --c-accent-text  vs --c-surface-2 #dbdce1:     4.97:1
+   *   --c-accent-text  vs --c-surface-3 #d3d4d9:     4.60:1  (tightest margin)
+   *   --c-accent-text  vs hover on canvas:           4.88:1
+   */
   --c-accent: #2564ba;
   --c-accent-quiet: #cad3e2;
-  --c-accent-text: #2564ba;
+  --c-accent-text: #215aa7;
   --c-accent-border: rgba(37, 100, 186, 0.32);
   --c-accent-quiet-hover: #bbc9de;
   --c-accent-border-hover: rgba(37, 100, 186, 0.5);
-  /* Hover deepens the accent instead of lightening it, as in github-light. */
-  --c-accent-text-hover: #215aa7;
+  /* Hover deepens the accent-text further still, as in github-light. */
+  --c-accent-text-hover: #1a4a8b;
   /* Ink on a *solid* accent fill: accent is dark enough on the field that
    * white text goes on top (5.82:1), matching github-light's own choice. */
   --c-on-accent: #ffffff;
