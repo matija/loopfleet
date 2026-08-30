@@ -80,6 +80,7 @@ import {
   type PaletteOpenTask,
 } from "./components/CommandPalette";
 import { useSidebarCollapsed } from "./sidebarCollapse";
+import { matchShortcut, shortcutEventFromDOM } from "./shortcuts";
 import {
   readLastProject,
   writeLastProject,
@@ -606,25 +607,20 @@ export default function App() {
     return () => window.removeEventListener("focus", onFocus);
   }, []);
 
-  // Global ⌘K / Ctrl-K toggles the command palette from anywhere. preventDefault
-  // stops the browser's default "focus search" behavior on Ctrl-K.
+  // Global shortcuts (⌘K palette, ⌘B sidebar) dispatched from the registry in
+  // shortcuts.ts. preventDefault stops e.g. the browser's default "focus
+  // search" behavior on Ctrl-K.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setPaletteOpen((o) => !o);
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  // Global ⌘B / Ctrl-B toggles the sidebar from anywhere, mirroring ⌘K above.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "b") {
-        e.preventDefault();
-        setSidebarHidden((h) => !h);
+      switch (matchShortcut(shortcutEventFromDOM(e))) {
+        case "commandPalette":
+          e.preventDefault();
+          setPaletteOpen((o) => !o);
+          break;
+        case "toggleSidebar":
+          e.preventDefault();
+          setSidebarHidden((h) => !h);
+          break;
       }
     }
     window.addEventListener("keydown", onKey);
