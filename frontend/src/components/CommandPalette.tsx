@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { planOverview } from "../commands";
 import { taskSummary } from "../displayText";
 import { fuzzyMatch } from "../fuzzy";
+import { SHORTCUTS, shortcutKeyGlyphs } from "../shortcuts";
 import type { PlanView as Plan, Project } from "../types";
 import { RUN_STATUS_LABEL } from "../status";
 import type { ActiveRun } from "./RunDock";
@@ -68,6 +69,15 @@ type Item = {
   /// trash glyph so it doesn't read as another way to open the project).
   icon?: typeof FolderIcon;
 };
+
+/// Footer hint rows for the palette's own (non-global) keys — arrow
+/// navigation, Enter to open, Esc to close — rendered the same data-driven
+/// way as the global shortcuts below them.
+const NAV_HINTS: { keys: string[]; label: string }[] = [
+  { keys: ["↑", "↓"], label: "navigate" },
+  { keys: ["↵"], label: "open" },
+  { keys: ["esc"], label: "close" },
+];
 
 function repoName(path: string): string {
   const parts = path.replace(/\/+$/, "").split("/");
@@ -348,9 +358,22 @@ export function CommandPalette({
           {tasksLoading && (
             <span className="palette__foot-loading">Indexing tasks…</span>
           )}
-          <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
-          <span><kbd>↵</kbd> open</span>
-          <span><kbd>esc</kbd> close</span>
+          {NAV_HINTS.map((hint) => (
+            <span key={hint.label}>
+              {hint.keys.map((k) => (
+                <kbd key={k}>{k}</kbd>
+              ))}{" "}
+              {hint.label}
+            </span>
+          ))}
+          {SHORTCUTS.map((s) => (
+            <span key={s.id}>
+              {shortcutKeyGlyphs(s).map((g, i) => (
+                <kbd key={i}>{g}</kbd>
+              ))}{" "}
+              {s.label}
+            </span>
+          ))}
         </div>
       </div>
     </div>

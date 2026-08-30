@@ -193,7 +193,8 @@
 
 .palette__foot {
   display: flex;
-  gap: var(--space-5);
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-5);
   padding: var(--space-2) var(--space-4);
   border-top: 1px solid var(--c-border);
   font-size: var(--text-xs);

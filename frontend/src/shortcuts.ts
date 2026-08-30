@@ -62,6 +62,20 @@ export const SHORTCUTS: readonly Shortcut[] = [
   },
 ] as const;
 
+const MODIFIER_GLYPH: Record<Modifier, string> = {
+  mod: "⌘",
+  shift: "⇧",
+  alt: "⌥",
+};
+
+/// The glyphs to render for a shortcut, one `<kbd>` per element: its
+/// modifiers in registry order, then the key itself. Used by the command
+/// palette's footer hint row (and any future shortcuts help panel) so the
+/// on-screen keys stay in sync with the registry instead of being retyped.
+export function shortcutKeyGlyphs(shortcut: Shortcut): string[] {
+  return [...shortcut.mods.map((m) => MODIFIER_GLYPH[m]), shortcut.key.toUpperCase()];
+}
+
 /// The minimal shape matchShortcut needs from a keystroke: the modifier keys
 /// and character a KeyboardEvent already carries, plus whether the target is
 /// editable (a KeyboardEvent alone doesn't say that — see `isEditableTarget`).
