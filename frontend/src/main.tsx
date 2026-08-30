@@ -1,3 +1,4 @@
+import { emit } from "@tauri-apps/api/event";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
@@ -27,3 +28,13 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <App />
   </React.StrictMode>,
 );
+
+// Signals an actual paint, not a guessed delay. React's initial commit lands
+// synchronously, but the browser hasn't necessarily painted it yet; two
+// nested rAFs do — the first is scheduled before the paint, the second runs
+// only after that frame has been rendered to the screen.
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
+    void emit("frontend-ready");
+  });
+});
