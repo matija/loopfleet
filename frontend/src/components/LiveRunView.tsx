@@ -17,7 +17,7 @@ import type { AgentStatus } from "../types";
 import { RUN_STATUS_ICON, RUN_STATUS_LABEL, isActiveRun } from "../status";
 import { CommandBar } from "./CommandBar";
 import { Elapsed } from "./Elapsed";
-import { DataGrid, eventText, formatDuration, rowsDuration, GridFooter, type GridRow } from "./DataGrid";
+import { DataGrid, formatDuration, rowsDuration, GridFooter, type GridRow } from "./DataGrid";
 import { RunSubtabs, type RunSubtab } from "./RunSubtabs";
 import type { ActiveRun } from "./RunDock";
 
@@ -34,9 +34,9 @@ export function LiveRunView({
   /// The toolbar's action-slot DOM node. Stop portals there instead of
   /// rendering inline.
   toolbarActions: HTMLElement | null;
-  /// The toolbar's filter-slot DOM node. The task pill, event filter,
-  /// freshness stamp, and agent pill portal there instead of rendering as a
-  /// separate per-tab bar.
+  /// The toolbar's filter-slot DOM node. The task pill, freshness stamp,
+  /// and agent pill portal there instead of rendering as a separate
+  /// per-tab bar.
   toolbarFilter: HTMLElement | null;
 }) {
   // The stream carries no persisted ts (see file header), so we stamp arrival
@@ -46,9 +46,7 @@ export function LiveRunView({
   // Changed files accumulate as a set (an agent touches a path repeatedly); we
   // keep insertion order for a stable list.
   const [files, setFiles] = useState<string[]>([]);
-  // Client-side `WHERE …` event filter and the last-activity stamp the command
-  // bar's "Xs ago" freshness ticks against.
-  const [filter, setFilter] = useState("");
+  // The last-activity stamp the command bar's "Xs ago" freshness ticks against.
   const [lastAt, setLastAt] = useState(() => Date.now());
   const [agents, setAgents] = useState<AgentStatus[]>([]);
   // The Events / Diff / Files subtab. Panels stay mounted (toggled with
@@ -66,7 +64,6 @@ export function LiveRunView({
   useEffect(() => {
     setEvents([]);
     setFiles([]);
-    setFilter("");
     setLastAt(Date.now());
     pinnedRef.current = true;
     const un = onRunEvent((p) => {
@@ -121,10 +118,6 @@ export function LiveRunView({
       ? `${run.maxIterations} ${run.maxIterations === 1 ? "pass" : "passes"}`
       : null;
   const StatusIcon = RUN_STATUS_ICON[run.status];
-  const q = filter.trim().toLowerCase();
-  const shown = q
-    ? events.filter((e) => eventText(e.event).toLowerCase().includes(q))
-    : events;
 
   return (
     <section className="run-view">
@@ -163,7 +156,6 @@ export function LiveRunView({
 
       <CommandBar
         toolbarFilter={toolbarFilter}
-        filter={{ value: filter, onChange: setFilter }}
         agent={
           agents.length
             ? {
@@ -196,17 +188,13 @@ export function LiveRunView({
                   ? "Waiting for events… they stream in as the agent works."
                   : "No events streamed while this view was open."}
               </p>
-            ) : shown.length === 0 ? (
-              <p className="run-view__empty">
-                No events match “{filter.trim()}”.
-              </p>
             ) : (
-              <DataGrid rows={shown} />
+              <DataGrid rows={events} />
             )}
           </div>
           <GridFooter
-            count={shown.length}
-            duration={formatDuration(rowsDuration(shown))}
+            count={events.length}
+            duration={formatDuration(rowsDuration(events))}
           />
         </div>
 

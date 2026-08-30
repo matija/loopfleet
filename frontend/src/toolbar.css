@@ -41,23 +41,6 @@
   flex: 1 1 auto;
 }
 
-.toolbar__filter-input {
-  flex: 1 1 auto;
-  min-width: 0;
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  background: var(--c-surface);
-  color: var(--c-text);
-  padding: var(--space-1) var(--space-2);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-}
-
-.toolbar__filter-input::placeholder {
-  color: var(--c-text-muted);
-  font-family: var(--font-sans);
-}
-
 .toolbar__status {
   flex: 0 0 auto;
   display: flex;

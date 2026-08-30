@@ -86,12 +86,6 @@ export function eventDetail(e: NormalizedEvent): string {
   }
 }
 
-/// The searchable text for the command bar's `WHERE …` filter: the pill label
-/// plus the detail, so a query matches on either the event type or its content.
-export function eventText(e: NormalizedEvent): string {
-  return `${eventPill(e).label} ${eventDetail(e)}`;
-}
-
 function formatTs(ts: number | null): string | null {
   if (ts === null) return null;
   const d = new Date(ts);
