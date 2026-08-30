@@ -12,7 +12,12 @@
 // Nothing else in the app should hardcode a theme id or touch data-theme.
 
 /// Ids must match the [data-theme="…"] blocks in tokens.css exactly.
-export type ThemeId = "dark" | "rose-pine-moon" | "github-dark";
+export type ThemeId =
+  | "dark"
+  | "rose-pine-moon"
+  | "github-dark"
+  | "tokyo-night"
+  | "tokyo-night-storm";
 
 export type Theme = {
   id: ThemeId;
@@ -27,6 +32,8 @@ export const THEMES: readonly Theme[] = [
   { id: "dark", label: "Dark" },
   { id: "rose-pine-moon", label: "Rosé Pine Moon" },
   { id: "github-dark", label: "GitHub Dark" },
+  { id: "tokyo-night", label: "Tokyo Night" },
+  { id: "tokyo-night-storm", label: "Tokyo Night Storm" },
 ] as const;
 
 export const DEFAULT_THEME_ID: ThemeId = "dark";
