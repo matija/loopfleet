@@ -3196,11 +3196,25 @@ pub fn run() {
                 });
 
                 // The window starts hidden (see tauri.conf.json) to avoid a
-                // blank flash; the frontend emits this once it's actually
-                // painted something worth showing.
+                // blank flash; the frontend emits this once React's initial
+                // commit has landed.
                 let show_window = window.clone();
                 app.once("frontend-ready", move |_event| {
                     let _ = show_window.show();
+                });
+
+                // Last resort: if the frontend never reports in — a bundle
+                // that failed to load, a throw before the emit — show the
+                // window anyway rather than leave a running app with no way
+                // to reach it. `show()` on an already-visible window is a
+                // no-op, so the normal path is unaffected.
+                let fallback_window = window.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    if !fallback_window.is_visible().unwrap_or(false) {
+                        eprintln!("frontend never signalled ready; showing window anyway");
+                        let _ = fallback_window.show();
+                    }
                 });
             }
             Ok(())

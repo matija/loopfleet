@@ -29,12 +29,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   </React.StrictMode>,
 );
 
-// Signals an actual paint, not a guessed delay. React's initial commit lands
-// synchronously, but the browser hasn't necessarily painted it yet; two
-// nested rAFs do — the first is scheduled before the paint, the second runs
-// only after that frame has been rendered to the screen.
-requestAnimationFrame(() => {
-  requestAnimationFrame(() => {
-    void emit("frontend-ready");
-  });
-});
+// Signals that React's initial commit has landed. This deliberately does not
+// wait for a paint: the window starts hidden (see tauri.conf.json), and a
+// hidden WKWebView never paints, so a requestAnimationFrame callback here
+// would never run and the window would stay invisible forever.
+void emit("frontend-ready");
