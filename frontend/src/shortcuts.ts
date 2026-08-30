@@ -8,6 +8,12 @@
 // This module only answers "which shortcut, if any, does this keystroke
 // mean" — the effect a matched id triggers (opening the palette, toggling the
 // sidebar, …) stays wherever it already lived.
+//
+// Escape is deliberately left out. It's layer-local: whichever surface is
+// topmost (Popover, CommandPalette) owns closing itself on Escape, and each
+// already wires its own listener for that. A global registry entry for
+// Escape would have no way to know which surface is topmost, so it would
+// risk closing the wrong one.
 
 export type ShortcutId = "commandPalette" | "toggleSidebar" | "openSettings";
 
