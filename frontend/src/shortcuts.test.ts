@@ -69,14 +69,13 @@ describe("matchShortcut", () => {
     expect(matchShortcut(event({ key: "z", metaKey: true }))).toBeNull();
   });
 
-  it("skips a not-editable shortcut while the target is editable", () => {
+  it("skips a modifier-less shortcut while the target is editable", () => {
     const custom: Shortcut[] = [
       {
         id: "commandPalette",
         key: "/",
         mods: [],
         label: "Focus search",
-        when: "not-editable",
       },
     ];
     expect(
@@ -87,16 +86,25 @@ describe("matchShortcut", () => {
     ).toBe("commandPalette");
   });
 
-  it("an 'always' shortcut fires even while the target is editable", () => {
+  it("a modifier shortcut fires even while the target is editable", () => {
     expect(
       matchShortcut(event({ key: "k", metaKey: true, editable: true })),
     ).toBe("commandPalette");
+    expect(
+      matchShortcut(event({ key: ",", metaKey: true, editable: true })),
+    ).toBe("openSettings");
+  });
+
+  it("does not open settings when a bare comma is typed into an editable field", () => {
+    expect(
+      matchShortcut(event({ key: ",", editable: true })),
+    ).toBeNull();
   });
 
   it("checks the registry in order and returns the first match", () => {
     const custom: Shortcut[] = [
-      { id: "commandPalette", key: "k", mods: ["mod"], label: "First", when: "always" },
-      { id: "toggleSidebar", key: "k", mods: ["mod"], label: "Second", when: "always" },
+      { id: "commandPalette", key: "k", mods: ["mod"], label: "First" },
+      { id: "toggleSidebar", key: "k", mods: ["mod"], label: "Second" },
     ];
     expect(matchShortcut(event({ key: "k", metaKey: true }), custom)).toBe(
       "commandPalette",

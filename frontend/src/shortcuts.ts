@@ -17,24 +17,19 @@ export type ShortcutId = "commandPalette" | "toggleSidebar" | "openSettings";
 /// either produces one unambiguous, testable match.
 export type Modifier = "mod" | "shift" | "alt";
 
-export type ShortcutWhen =
-  /// Fires no matter what's focused.
-  | "always"
-  /// Fires everywhere except while the event target is editable (a form
-  /// field or contenteditable) — for shortcuts that would otherwise steal an
-  /// ordinary keystroke from whatever the user is typing.
-  | "not-editable";
-
 export type Shortcut = {
   id: ShortcutId;
   /// Matched case-insensitively against KeyboardEvent.key.
   key: string;
   /// Modifiers that must be held. Any modifier not listed must be up — a
-  /// shortcut matches one exact combination, never a superset of it.
+  /// shortcut matches one exact combination, never a superset of it. A
+  /// shortcut with no modifiers is skipped while the event target is
+  /// editable (a form field or contenteditable), so it never steals an
+  /// ordinary keystroke from whatever the user is typing; a shortcut with at
+  /// least one modifier always fires.
   mods: readonly Modifier[];
   /// Human-readable description, for a future shortcuts help panel.
   label: string;
-  when: ShortcutWhen;
 };
 
 /// Both entries mirror shortcuts App.tsx already wires up directly (⌘K/Ctrl-K
@@ -46,21 +41,18 @@ export const SHORTCUTS: readonly Shortcut[] = [
     key: "k",
     mods: ["mod"],
     label: "Open command palette",
-    when: "always",
   },
   {
     id: "toggleSidebar",
     key: "b",
     mods: ["mod"],
     label: "Toggle sidebar",
-    when: "always",
   },
   {
     id: "openSettings",
     key: ",",
     mods: ["mod"],
     label: "Open run defaults",
-    when: "always",
   },
 ] as const;
 
@@ -87,8 +79,9 @@ function modsMatch(event: ShortcutEvent, mods: readonly Modifier[]): boolean {
 }
 
 /// The shortcut `event` invokes, if any. Checked in registry order, first
-/// match wins; an entry whose `when` excludes the current target (e.g.
-/// `not-editable` while `event.editable` is true) is skipped as if absent.
+/// match wins; a modifier-less entry is skipped while `event.editable` is
+/// true, as if absent, so it never steals an ordinary keystroke from a form
+/// field or contenteditable.
 export function matchShortcut(
   event: ShortcutEvent,
   shortcuts: readonly Shortcut[] = SHORTCUTS,
@@ -97,7 +90,7 @@ export function matchShortcut(
     (s) =>
       s.key.toLowerCase() === event.key.toLowerCase() &&
       modsMatch(event, s.mods) &&
-      (s.when === "always" || !event.editable),
+      (s.mods.length > 0 || !event.editable),
   );
   return match?.id ?? null;
 }
