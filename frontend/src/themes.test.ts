@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyTheme,
@@ -91,6 +93,26 @@ describe("THEMES", () => {
 
   it("includes the default theme", () => {
     expect(THEMES.map((theme) => theme.id)).toContain(DEFAULT_THEME_ID);
+  });
+
+  // tokens.css carries one [data-theme="<id>"] color block per theme, hand
+  // matched to this registry — nothing in the type system enforces the two
+  // stay in sync, so a typo on either side would silently ship a theme with
+  // no palette (or a palette nothing offers). Parsed straight out of the CSS
+  // file, same approach scripts/check-contrast.mjs uses to walk every theme.
+  it("has exactly one [data-theme] block in tokens.css per registry id", () => {
+    const tokensPath = fileURLToPath(new URL("./tokens.css", import.meta.url));
+    const css = readFileSync(tokensPath, "utf8");
+    // Anchored to a following `{` so a comment mentioning the selector
+    // syntax (as the file header does) doesn't count as a block.
+    const cssIds = [...css.matchAll(/\[data-theme="([^"]+)"\]\s*\{/g)].map(
+      (m) => m[1],
+    );
+
+    const registryIds = THEMES.map((theme) => theme.id);
+
+    expect(new Set(cssIds)).toEqual(new Set(registryIds));
+    expect(cssIds.length).toBe(registryIds.length);
   });
 });
 
