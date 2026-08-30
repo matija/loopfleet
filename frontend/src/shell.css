@@ -539,6 +539,9 @@
   display: flex;
   flex-direction: column;
   padding: var(--space-1) 0 var(--space-2) var(--space-3);
+  /* Contain the tree's internal reflow so group collapse/expand doesn't
+   * relayout the sidebar around it. */
+  contain: layout style;
 }
 
 .plan-tree__note {
@@ -575,6 +578,9 @@
   color: var(--c-text-muted);
   padding: 0 var(--space-2);
   border-radius: var(--radius-sm);
+  /* Offscreen sidebar rows skip layout/paint; rows are a fixed --row-h. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--row-h);
 }
 
 .tree-item:hover {

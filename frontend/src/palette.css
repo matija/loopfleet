@@ -12,7 +12,9 @@
   align-items: flex-start;
   padding-top: 12vh;
   background: var(--c-scrim);
-  backdrop-filter: blur(2px);
+  /* No backdrop-filter here: a blur forces WebKit to allocate a full-window
+   * GPU surface on every open; over flat dark chrome a plain scrim reads
+   * identically. */
   animation: palette-fade var(--motion-fast) var(--ease-out);
 }
 

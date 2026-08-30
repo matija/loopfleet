@@ -7,6 +7,9 @@
   --grid-cols: 6em minmax(0, 1fr) 6.5em;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
+  /* Contain the grid's internal reflow so streaming rows don't relayout the
+   * panel around it. */
+  contain: layout style;
 }
 
 .data-grid__row {
@@ -39,6 +42,14 @@
   text-transform: uppercase;
   letter-spacing: var(--tracking-wide);
   border-bottom: 1px solid var(--c-border-strong);
+}
+
+/* Every row but the sticky header skips layout/paint when offscreen, so a long
+ * event log only re-rasterizes the visible rows. The header is excluded — it
+ * must stay laid out to keep sticking. */
+.data-grid__row:not(.data-grid__row--head) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 24px;
 }
 
 .data-grid__cell {

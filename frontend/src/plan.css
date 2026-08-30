@@ -88,6 +88,9 @@
   display: flex;
   flex-direction: column;
   gap: 0;
+  /* Contain the list's internal reflow: a row expanding/collapsing changes
+   * this column's height, not the shell around it. */
+  contain: layout style;
 }
 
 .task-row {
@@ -114,6 +117,12 @@
   border: 0;
   border-top: 1px solid var(--c-border);
   transition: background-color var(--motion-fast) var(--ease-out);
+  /* Skip layout/paint for offscreen rows so expanding one task or switching
+   * projects only re-rasterizes the visible viewport, not the whole list.
+   * `auto` reuses the row's last rendered height; the fallback is the
+   * single-line --row-h. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--row-h);
 }
 
 /* The header's hairline (or the review banner's own frame) already separates
@@ -593,6 +602,12 @@
   padding: 0 var(--space-3);
   color: var(--c-accent-text);
   font-weight: 600;
+  /* Press swaps to --shadow-chip-pressed; the global button rule no longer
+   * transitions box-shadow, so the chip declares its own. */
+  transition: background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
 }
 
 .launch__run .toolbar-split__chevron {
