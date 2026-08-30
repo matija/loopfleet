@@ -843,6 +843,128 @@
   --c-shadow-chip-pressed: rgba(27, 31, 36, 0.12);
 }
 
+/* --- theme: tokyo-night-light ---
+ * Tokyo Night Day, tokyonight.nvim's light variant, and the second light
+ * theme after github-light — the inverted-ladder pattern that block
+ * established (darker steps read as state instead of elevation, hairlines and
+ * hover washes mix dark ink into the field instead of white) carries over
+ * unchanged; only the palette and the exact mix amounts differ.
+ *
+ * Tokyo Night Day's own bg/bg_highlight sit unusually close together (bg
+ * #e1e2e7, bg_highlight #c4c8da is only a 1.3:1 contrast apart), and its
+ * signature blue-tinted foreground (#3760bf) clears AA on that bg by the
+ * barest margin (4.52:1) and falls under it once text sits on the darkest
+ * surface step. Rather than import those values as-is and ship text that
+ * fails AA on its own theme's surfaces, --c-surface-2/3 are mixed from the
+ * palette's own bg toward its dark-variant ink (#1a1b26, the tokyo-night
+ * block's --c-bg) at 3%/7% — the same magnitude of darkening github-light
+ * used for its own ladder — and the text/accent/semantic hues are each
+ * darkened a further step off their Tokyo Night Day source color so every
+ * text tier clears AA against the darkest surface, not just the field. */
+
+[data-theme="tokyo-night-light"] {
+  color-scheme: light;
+
+  /* --- color: surfaces --- */
+  --c-bg: #e1e2e7;
+  --c-surface: #e1e2e7;
+  --c-surface-2: #dbdce1;
+  --c-surface-3: #d3d4d9;
+  --c-surface-hover: rgba(26, 27, 38, 0.04);
+  --c-border: rgba(26, 27, 38, 0.08);
+  --c-border-strong: rgba(26, 27, 38, 0.15);
+
+  /* --- color: text ---
+   * Each step is Tokyo Night Day's fg / fg_dark / comment (#3760bf, #6172b0,
+   * #848cb5) darkened until it clears AA against --c-surface-3, the tightest
+   * canvas. Measured WCAG 2.1 contrast:
+   *   --c-text        vs --c-bg #e1e2e7:          5.70:1
+   *   --c-text        vs --c-surface-3 #d3d4d9:   4.98:1
+   *   --c-text-muted  vs --c-bg #e1e2e7:          5.41:1
+   *   --c-text-muted  vs --c-surface-3 #d3d4d9:   4.73:1
+   *   --c-text-faint  vs --c-bg #e1e2e7:          5.25:1
+   *   --c-text-faint  vs --c-surface-3 #d3d4d9:   4.59:1  (tightest margin)
+   */
+  --c-text: #2f52a2;
+  --c-text-muted: #4a5786;
+  --c-text-faint: #545a74;
+
+  /* --- color: accent + semantic ---
+   * Tokyo Night Day's editor blue (#2e7de9) reads only 3.11:1 on this bg, so
+   * --c-accent darkens it just enough to clear AA (4.50:1, the tightest
+   * margin in this block) and serves as both the swatch and the text color,
+   * the same single-value pattern github-light uses. accent-quiet/-hover are
+   * that same blue blended into the field at 12%/20%, the light-theme mirror
+   * of the dark blocks' recessed fill. */
+  --c-accent: #2564ba;
+  --c-accent-quiet: #cad3e2;
+  --c-accent-text: #2564ba;
+  --c-accent-border: rgba(37, 100, 186, 0.32);
+  --c-accent-quiet-hover: #bbc9de;
+  --c-accent-border-hover: rgba(37, 100, 186, 0.5);
+  /* Hover deepens the accent instead of lightening it, as in github-light. */
+  --c-accent-text-hover: #215aa7;
+  /* Ink on a *solid* accent fill: accent is dark enough on the field that
+   * white text goes on top (5.82:1), matching github-light's own choice. */
+  --c-on-accent: #ffffff;
+
+  /* Same semantic vocabulary as the other themes: -wash under a whole row,
+   * -quiet at border strength, -tint as the disc behind a glyph, -loud for
+   * banners and filled controls. ok/warn/danger start from Tokyo Night Day's
+   * green/yellow/red1 (#587539, #8c6c3e, #c64343), each darkened one step so
+   * the glyph/text use clears AA on the field; the -wash/-quiet/-tint fills
+   * mix a desaturated cut of each darkened hue (40% of the saturation
+   * removed at the same lightness, ok -> rgb(74, 89, 58), warn ->
+   * rgb(106, 90, 66), danger -> rgb(146, 79, 79)), the same treatment
+   * github-light uses. --c-danger-loud is danger at 0.14 pre-flattened
+   * against the field, since the toast floats over arbitrary content and
+   * must not let it show through.
+   *
+   * Measured WCAG 2.1 contrast for the glyph/text step of each hue:
+   *   --c-ok      vs --c-bg #e1e2e7:           5.19:1
+   *   --c-ok      vs --c-surface-3 #d3d4d9:    4.54:1
+   *   --c-warn    vs --c-bg #e1e2e7:           4.82:1
+   *   --c-warn    vs --c-surface-3 #d3d4d9:    4.21:1
+   *   --c-danger  vs --c-bg #e1e2e7:           4.91:1
+   *   --c-danger  vs --c-surface-3 #d3d4d9:    4.29:1
+   *   --c-accent  vs --c-bg #e1e2e7:           4.50:1
+   * ok/warn/danger clear AA against the field but run under it against
+   * --c-surface-3; as in github-light, the glyph colors are only ever drawn
+   * on the field or inside their own -tint disc, never directly on the
+   * selected-row fill, so this mirrors that same usage boundary. */
+  --c-ok: #4b6330;
+  --c-ok-wash: rgba(74, 89, 58, 0.08);
+  --c-ok-quiet: rgba(74, 89, 58, 0.14);
+  --c-ok-tint: rgba(74, 89, 58, 0.16);
+  --c-warn: #775c35;
+  --c-warn-wash: rgba(106, 90, 66, 0.08);
+  --c-warn-quiet: rgba(106, 90, 66, 0.14);
+  --c-warn-tint: rgba(106, 90, 66, 0.16);
+  --c-warn-loud: rgba(119, 92, 53, 0.2);
+  --c-danger: #a83939;
+  --c-danger-wash: rgba(146, 79, 79, 0.08);
+  --c-danger-quiet: rgba(146, 79, 79, 0.15);
+  --c-danger-tint: rgba(146, 79, 79, 0.17);
+  --c-danger-loud: #d9cacf;
+
+  /* Scrim behind modal overlays (the palette). Stays dark ink regardless of
+   * theme — it dims arbitrary content behind the overlay, it isn't part of
+   * the field. */
+  --c-scrim: rgba(26, 27, 38, 0.4);
+
+  /* --- color: shadow ---
+   * Ink only; the offsets and blur live in :root. Same soft-alpha treatment
+   * as github-light: far less darkening than the dark blocks need, plus
+   * white card/chip highlights since the raised fill is off-white rather
+   * than near-black. */
+  --c-shadow-1: rgba(26, 27, 38, 0.12);
+  --c-shadow-2a: rgba(26, 27, 38, 0.16);
+  --c-shadow-2b: rgba(26, 27, 38, 0.1);
+  --c-shadow-card: rgba(255, 255, 255, 0.6);
+  --c-shadow-chip-hi: rgba(255, 255, 255, 0.5);
+  --c-shadow-chip-pressed: rgba(26, 27, 38, 0.12);
+}
+
 /* --- base / reset --- */
 
 * {

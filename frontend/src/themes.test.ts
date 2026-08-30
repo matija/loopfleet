@@ -77,6 +77,7 @@ describe("THEMES", () => {
       { id: "github-light", label: "GitHub Light" },
       { id: "tokyo-night", label: "Tokyo Night" },
       { id: "tokyo-night-storm", label: "Tokyo Night Storm" },
+      { id: "tokyo-night-light", label: "Tokyo Night Light" },
     ]);
   });
 
@@ -101,6 +102,7 @@ describe("isThemeId", () => {
     expect(isThemeId("github-light")).toBe(true);
     expect(isThemeId("tokyo-night")).toBe(true);
     expect(isThemeId("tokyo-night-storm")).toBe(true);
+    expect(isThemeId("tokyo-night-light")).toBe(true);
   });
 
   it("rejects anything else", () => {
