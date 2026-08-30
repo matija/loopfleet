@@ -28,6 +28,13 @@ describe("SHORTCUTS", () => {
       expect(s.label.length).toBeGreaterThan(0);
     }
   });
+
+  it("has no two entries sharing a chord", () => {
+    const chords = SHORTCUTS.map(
+      (s) => `${[...s.mods].sort().join("+")}:${s.key.toLowerCase()}`,
+    );
+    expect(new Set(chords).size).toBe(chords.length);
+  });
 });
 
 describe("matchShortcut", () => {
