@@ -41,6 +41,9 @@ describe("matchShortcut", () => {
     expect(matchShortcut(event({ key: "b", metaKey: true }))).toBe(
       "toggleSidebar",
     );
+    expect(matchShortcut(event({ key: ",", metaKey: true }))).toBe(
+      "openSettings",
+    );
   });
 
   it("is case-insensitive on the key", () => {

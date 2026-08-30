@@ -9,7 +9,7 @@
 // mean" — the effect a matched id triggers (opening the palette, toggling the
 // sidebar, …) stays wherever it already lived.
 
-export type ShortcutId = "commandPalette" | "toggleSidebar";
+export type ShortcutId = "commandPalette" | "toggleSidebar" | "openSettings";
 
 /// "mod" is the platform's primary modifier: Cmd on macOS, Ctrl elsewhere.
 /// Matching accepts either key for it (mirroring the app's existing
@@ -53,6 +53,13 @@ export const SHORTCUTS: readonly Shortcut[] = [
     key: "b",
     mods: ["mod"],
     label: "Toggle sidebar",
+    when: "always",
+  },
+  {
+    id: "openSettings",
+    key: ",",
+    mods: ["mod"],
+    label: "Open run defaults",
     when: "always",
   },
 ] as const;

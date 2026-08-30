@@ -125,6 +125,9 @@ function readDockCollapsed(): boolean {
 // selected project's plan (or the overview when no project is selected). The
 // sidebar's plan tree and the bottom run dock are the always-present navigators.
 
+// The overview's three machine-level surfaces, each an entry-point tile.
+type OverviewSection = "agents" | "defaults" | "sandbox";
+
 type View =
   | { kind: "overview" }
   | { kind: "plan"; projectId: string }
@@ -152,6 +155,11 @@ export default function App() {
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>({ kind: "overview" });
+  // Which overview card is expanded — lifted out of the Overview component so
+  // the ⌘,/Ctrl-, shortcut can force "Run defaults" open (see
+  // `paletteOpenOverview`) without a click.
+  const [overviewExpanded, setOverviewExpanded] =
+    useState<OverviewSection | null>(null);
   // The picked palette. Seeded from localStorage rather than the default so a
   // reload doesn't briefly re-render in dark before the stored value lands —
   // the inline script in index.html has already set data-theme to this same
@@ -607,9 +615,9 @@ export default function App() {
     return () => window.removeEventListener("focus", onFocus);
   }, []);
 
-  // Global shortcuts (⌘K palette, ⌘B sidebar) dispatched from the registry in
-  // shortcuts.ts. preventDefault stops e.g. the browser's default "focus
-  // search" behavior on Ctrl-K.
+  // Global shortcuts (⌘K palette, ⌘B sidebar, ⌘, run defaults) dispatched
+  // from the registry in shortcuts.ts. preventDefault stops e.g. the
+  // browser's default "focus search" behavior on Ctrl-K.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       switch (matchShortcut(shortcutEventFromDOM(e))) {
@@ -620,6 +628,10 @@ export default function App() {
         case "toggleSidebar":
           e.preventDefault();
           setSidebarHidden((h) => !h);
+          break;
+        case "openSettings":
+          e.preventDefault();
+          paletteOpenOverview("defaults");
           break;
       }
     }
@@ -849,10 +861,13 @@ export default function App() {
       })
       .catch((e) => pushError(String(e)));
   }, [pushError]);
-  const paletteOpenOverview = useCallback(
-    () => setView({ kind: "overview" }),
-    [],
-  );
+  // `expand` forces the named card open (used by the ⌘,/Ctrl-, shortcut to
+  // land straight on "Run defaults" instead of making the user click the
+  // card); omitted, it leaves whatever section was already expanded alone.
+  const paletteOpenOverview = useCallback((expand?: OverviewSection) => {
+    setView({ kind: "overview" });
+    if (expand) setOverviewExpanded(expand);
+  }, []);
   // Opens the same remove-project confirmation as the sidebar's trash icon,
   // anchored to that project's own (always-mounted) sidebar row button.
   const paletteRemoveProject = useCallback(
@@ -1278,7 +1293,14 @@ export default function App() {
             toolbarActions={toolbarActionsEl}
           />
         ) : (
-          <Overview themeId={themeId} onThemeChange={setThemeId} />
+          <Overview
+            themeId={themeId}
+            onThemeChange={setThemeId}
+            expanded={overviewExpanded}
+            onToggle={(section) =>
+              setOverviewExpanded((cur) => (cur === section ? null : section))
+            }
+          />
         )}
       </div>
       <CommandPalette
@@ -1297,26 +1319,23 @@ export default function App() {
   );
 }
 
-// The overview's three machine-level surfaces, each an entry-point tile.
-type OverviewSection = "agents" | "defaults" | "sandbox";
-
 // The no-project main pane: a surface-card grid over the machine-level panels.
 // Each card toggles its panel open beneath the grid — one section at a time,
 // clicking the open card's tile again collapses it. The panels themselves
 // (agent chips, settings form, sandbox rules) are unchanged; the cards only
-// gate when they mount.
+// gate when they mount. `expanded` is lifted to App so a shortcut
+// (⌘,/Ctrl-,) can force the "Run defaults" card open without a click.
 function Overview({
   themeId,
   onThemeChange,
+  expanded,
+  onToggle,
 }: {
   themeId: ThemeId;
   onThemeChange: (id: ThemeId) => void;
+  expanded: OverviewSection | null;
+  onToggle: (section: OverviewSection) => void;
 }) {
-  const [expanded, setExpanded] = useState<OverviewSection | null>(null);
-
-  const toggle = (section: OverviewSection) =>
-    setExpanded((cur) => (cur === section ? null : section));
-
   return (
     <div className="overview">
       <SurfaceCardGrid>
@@ -1324,19 +1343,19 @@ function Overview({
           icon={<AgentIcon />}
           title="Agents"
           description="Agent CLIs on this machine, with version drift"
-          onClick={() => toggle("agents")}
+          onClick={() => onToggle("agents")}
         />
         <SurfaceCard
           icon={<SettingsIcon />}
           title="Run defaults"
           description="Default agent, iteration count, concurrency cap, theme"
-          onClick={() => toggle("defaults")}
+          onClick={() => onToggle("defaults")}
         />
         <SurfaceCard
           icon={<BoxIcon />}
           title="Sandbox boundary"
           description="What every run's OS sandbox does and doesn't confine"
-          onClick={() => toggle("sandbox")}
+          onClick={() => onToggle("sandbox")}
         />
       </SurfaceCardGrid>
       {expanded === "agents" ? (
