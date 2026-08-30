@@ -1,4 +1,4 @@
-// The live run view's task pill, `WHERE …`-style client-side event filter,
+// The live run view's `WHERE …`-style client-side event filter,
 // freshness stamp, and agent status pill. Portals into the shell's toolbar
 // (`.toolbar__filter`, see Toolbar) so the run view has exactly one control
 // strip instead of the toolbar plus a redundant per-tab bar underneath it.
@@ -9,19 +9,15 @@
 //
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { normalizeDisplayText } from "../displayText";
 
 export function CommandBar({
   toolbarFilter,
-  task,
   filter,
   agent,
   since,
 }: {
   /// The toolbar's filter-slot DOM node to portal into; renders nothing until set.
   toolbarFilter: HTMLElement | null;
-  /// Object-name pill text — the task the tab is bound to.
-  task: string;
   /// The `WHERE …` client-side event filter, when the tab has an event stream.
   filter?: { value: string; onChange: (v: string) => void };
   /// Agent connection pill: `connected` reflects `agent_status.installed`.
@@ -35,9 +31,6 @@ export function CommandBar({
   if (!toolbarFilter) return null;
   return createPortal(
     <>
-      <span className="toolbar__task" title={normalizeDisplayText(task)}>
-        {normalizeDisplayText(task)}
-      </span>
       {filter && (
         <input
           className="toolbar__filter-input"

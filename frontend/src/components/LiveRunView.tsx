@@ -163,7 +163,6 @@ export function LiveRunView({
 
       <CommandBar
         toolbarFilter={toolbarFilter}
-        task={run.taskText}
         filter={{ value: filter, onChange: setFilter }}
         agent={
           agents.length

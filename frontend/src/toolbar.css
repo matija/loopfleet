@@ -41,20 +41,6 @@
   flex: 1 1 auto;
 }
 
-.toolbar__task {
-  flex: 0 0 auto;
-  max-width: 40%;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--c-text);
-  padding: var(--space-1) var(--space-2);
-  background: var(--c-surface-3);
-  border-radius: var(--radius-md);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .toolbar__filter-input {
   flex: 1 1 auto;
   min-width: 0;
