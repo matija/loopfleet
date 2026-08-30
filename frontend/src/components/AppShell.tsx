@@ -71,7 +71,6 @@ export function AppShell({
         <div className="sidebar__top" data-tauri-drag-region="deep">
           <div className="titlebar__brand-group">
             <div className="titlebar__brand">
-              <span className="titlebar__mark" aria-hidden="true" />
               <span className="titlebar__name">loopfleet</span>
             </div>
             <button

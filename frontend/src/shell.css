@@ -51,21 +51,6 @@
   gap: var(--space-2);
 }
 
-/* 20px rounded-square brand mark: a quiet indigo aurora, not a loud logo
- * block, so it sits comfortably beside the wordmark in the top strip. */
-.titlebar__mark {
-  flex: none;
-  width: 20px;
-  height: 20px; /* tokens-allow: fixed 20px brand mark, off the space scale */
-  border-radius: var(--radius-sm);
-  background: linear-gradient(
-    135deg,
-    var(--c-accent) 0%,
-    var(--c-accent-quiet-hover) 100%
-  );
-  box-shadow: var(--shadow-chip-hi);
-}
-
 /* Box-less slot for the strip's trailing content (the ⌘K trigger): it must
  * not add a flex item — `display: contents` keeps `.titlebar__k` positioned
  * against the strip itself. */
