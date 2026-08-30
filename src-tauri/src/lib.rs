@@ -13,7 +13,7 @@ use loopfleet_core::{
 use loopfleet_gitx::GitActor;
 use loopfleet_sandbox::{confine_prefix, RenderParams};
 use loopfleet_store::{Connection, NewRun, Project, RunSummary};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Listener, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 use time::format_description::well_known::Rfc3339;
@@ -3185,6 +3185,14 @@ pub fn run() {
                         #[cfg(target_os = "macos")]
                         let _ = badge_window.set_badge_count(None);
                     }
+                });
+
+                // The window starts hidden (see tauri.conf.json) to avoid a
+                // blank flash; the frontend emits this once it's actually
+                // painted something worth showing.
+                let show_window = window.clone();
+                app.once("frontend-ready", move |_event| {
+                    let _ = show_window.show();
                 });
             }
             Ok(())
