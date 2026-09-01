@@ -165,7 +165,13 @@
    * palette's frame, empty-state cards) and each came down one step in this
    * density pass: 16->14, 24->20, 32->28, 48->40. That puts them on a 2px
    * grid rather than a strict 4px one, which is what keeps --space-4 from
-   * collapsing onto --space-3. */
+   * collapsing onto --space-3. The measured reference confirms the band: its
+   * insets run 8-13 CSS px, which --space-2/3 (8/12) already cover, and the
+   * steps above sit at the reference's next inset and strip values —
+   * --space-4 at its 13px toolbar inset, --space-5 at its 20px pagination
+   * inset, --space-6 at the 28px compact-strip rhythm --control-h shares —
+   * with no card-padding analogue above that (settings cards are the Phase 3
+   * target). */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -183,19 +189,36 @@
    * "round this completely" sentinel, so padding decides the disc's size. */
   --radius-pill: 999px;
 
-  /* --- layout --- */
-  --sidebar-w: 268px;
+  /* --- layout ---
+   * Measured rhythm, taken from the esploro reference capture
+   * (docs/esploro-density-measurements.md): every height here is that
+   * reference's strip height in CSS px, so the shell reads as instrument
+   * strips sharing one baseline rather than as regions with independent
+   * padding (Story 18). --titlebar-h and --control-h were exact matches as
+   * measured and stay; --toolbar-h came down 44 -> 36 and --control-h-lg
+   * 30 -> 24, the reference's toolbar buttons sitting in its 36px strip with
+   * ~6px of margin either side — the breathing room the toolbar comment
+   * below mentions. --row-h sits at the reference's 32px row content, so
+   * the 1px hairline each plan row carries below makes the reference's
+   * 33px pitch. */
+  --sidebar-w: 318px;
   --titlebar-h: 38px;
-  /* The per-view toolbar strip below the titlebar. Taller than a control row
-   * because it frames --control-h-lg controls with breathing room either side. */
-  --toolbar-h: 44px;
+  /* The per-view toolbar strip below the titlebar, at the reference's 36px.
+   * Taller than a control row because it frames --control-h-lg buttons with
+   * ~6px of breathing room either side. */
+  --toolbar-h: 36px;
   /* Shared height for compact control strips (steppers, tab bars) so they share
-   * one baseline instead of drifting a pixel apart. */
+   * one baseline instead of drifting a pixel apart. Matches the reference's
+   * 28px filter bar exactly. */
   --control-h: 28px;
-  /* Taller variant for toolbar-class controls (primary action bars). */
-  --control-h-lg: 30px;
-  /* Shared height for navigation and list rows. */
-  --row-h: 30px;
+  /* Toolbar-class controls — buttons in the toolbar strip, square icon
+   * targets in the dock — at the reference's 24px button height. Tighter
+   * than --control-h because it sizes a control inside a strip, not the
+   * strip itself. */
+  --control-h-lg: 24px;
+  /* Shared height for navigation and list rows: the reference's 32px row
+   * content, with the hairline each row carries making its 33px pitch. */
+  --row-h: 32px;
 
   /* --- motion ---
    * Restrained by design: two short durations and one standard ease. A cockpit
