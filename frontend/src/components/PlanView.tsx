@@ -428,7 +428,57 @@ function TaskRow({
       ref={rowRef}
       {...(lastRun ? handlers : {})}
     >
-      <div className="task-row__main">
+      {/* The title leads, truncating to the single --row-h line; the rest of
+        * the row — the run count, derived status, launch control — is the
+        * right metadata column, so those cells line up down the list (Story
+        * 17). The full text rides in the title attribute, so truncation never
+        * costs the content (Story 16). */}
+      <button
+        type="button"
+        className="task-row__text"
+        aria-expanded={expanded}
+        onClick={toggleExpanded}
+        title={normalizeDisplayText(task.text)}
+      >
+        {normalizeDisplayText(task.text)}
+      </button>
+      {task.checked && (
+        <span
+          className="task-row__checked"
+          title="Authored as checked — counts as implemented (Accepted), still runnable."
+        >
+          authored ✓
+        </span>
+      )}
+      <span className="task-row__meta">
+        {/* The run-count slot is always present — empty on rows that have
+          * never been run — so the status cell and the launch control sit at
+          * the same x on every row and the cluster reads as one fixed column. */}
+        <span className="task-row__runs">
+          {task.run_count > 0 && (
+            <button
+              className="task-row__compare"
+              onClick={() =>
+                onCompare({
+                  planId,
+                  taskAnchor: task.anchor,
+                  taskText: task.text,
+                })
+              }
+              title="Compare this task's runs and use one"
+            >
+              {/* The count is the always-visible readout; the "compare" cue
+                * and chip chrome only surface on row hover/focus (plan.css). */}
+              <span className="task-row__run-count">
+                {task.run_count} {task.run_count === 1 ? "run" : "runs"}
+              </span>
+              <span className="task-row__compare-cue">
+                {" "}
+                · compare
+              </span>
+            </button>
+          )}
+        </span>
         {/* The glyph alone carries the status at rest — the word repeats what
           * the icon and its hue already say. The visible label is revealed on
           * row hover/focus (plan.css); the screen-reader copy is always there
@@ -440,72 +490,33 @@ function TaskRow({
             {STATUS_LABEL[task.status]}
           </span>
         </span>
-        <button
-          type="button"
-          className="task-row__text"
-          aria-expanded={expanded}
-          onClick={toggleExpanded}
-        >
-          {normalizeDisplayText(task.text)}
-        </button>
-        {task.checked && (
-          <span
-            className="task-row__checked"
-            title="Authored as checked — counts as implemented (Accepted), still runnable."
-          >
-            authored ✓
-          </span>
-        )}
-        {task.run_count > 0 && (
-          <button
-            className="task-row__compare"
-            onClick={() =>
-              onCompare({
-                planId,
-                taskAnchor: task.anchor,
-                taskText: task.text,
-              })
-            }
-            title="Compare this task's runs and use one"
-          >
-            {/* The count is the always-visible readout; the "compare" cue and
-              * chip chrome only surface on row hover/focus (plan.css). */}
-            <span className="task-row__run-count">
-              {task.run_count} {task.run_count === 1 ? "run" : "runs"}
-            </span>
-            <span className="task-row__compare-cue">
-              {" "}
-              · compare
-            </span>
-          </button>
-        )}
-      </div>
-      <LaunchControl
-        projectId={projectId}
-        planId={planId}
-        taskAnchor={task.anchor}
-        installed={installed}
-        agentsLoading={agentsLoading}
-        onLaunched={onLaunched}
-        onLaunch={(runId, agent, model, maxIterations) => {
-          setLastRun({
-            runId,
-            agent,
-            model,
-            maxIterations,
-            startedAt: Date.now(),
-            status: "running",
-          });
-          onLaunch({
-            runId,
-            taskText: task.text,
-            taskAnchor: task.anchor,
-            agent,
-            model,
-            maxIterations,
-          });
-        }}
-      />
+        <LaunchControl
+          projectId={projectId}
+          planId={planId}
+          taskAnchor={task.anchor}
+          installed={installed}
+          agentsLoading={agentsLoading}
+          onLaunched={onLaunched}
+          onLaunch={(runId, agent, model, maxIterations) => {
+            setLastRun({
+              runId,
+              agent,
+              model,
+              maxIterations,
+              startedAt: Date.now(),
+              status: "running",
+            });
+            onLaunch({
+              runId,
+              taskText: task.text,
+              taskAnchor: task.anchor,
+              agent,
+              model,
+              maxIterations,
+            });
+          }}
+        />
+      </span>
       {lastRun && (
         <Popover
           open={open}
