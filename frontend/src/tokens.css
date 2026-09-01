@@ -1267,30 +1267,38 @@
  * (#50fa7b/#f1fa8c/#ff5555) the semantic ramp. All five map straight across
  * from the palette — they're the values Dracula itself names for those jobs.
  *
- * What the palette doesn't supply is the app's two state steps. Dracula's
- * only intermediate surface is current line (#44475a), and it sits too far
- * from the field to take the selected-row job at full strength: red
- * measures 2.91:1 on it, under the 3:1 glyph floor. --c-surface-2/3 are
- * therefore background pulled toward current line at ~40%/~68% rather than
- * palette steps taken verbatim (the tairiki blocks' approach), landing red
- * back over the 3:1 line on the darkest step (3.36:1, see below). */
+ * This block makes the one structural departure from the canonical
+ * palette: the app's two state steps. Dracula's only intermediate surface
+ * is current line (#44475a), and lifted whole to the selected-row step it
+ * leaves the derived inks under AA — --c-text-faint at 3.81:1 and
+ * --c-accent-text at 3.79:1, both under the 4.5:1 body-text floor (red
+ * sits at 2.91:1 on it too, under the 3:1 glyph floor). --c-surface-2/3
+ * are therefore interpolated between background and current line (#31333f
+ * and #3b3e4d, see the surfaces section) rather than palette steps taken
+ * verbatim (the tairiki blocks' approach), so the darkest step stays dark
+ * enough for secondary ink — those same inks clear the body-text floor on
+ * #3b3e4d (4.72:1 and 5.19:1) and red clears the glyph floor (3.37:1, see
+ * below) — while current line itself keeps the --c-border-strong job. */
 
 [data-theme="dracula"] {
   color-scheme: dark;
 
   /* --- color: surfaces ---
-   * background is the single field; the two state steps are blends toward
-   * current line, since the palette's only intermediate surface is too far
-   * from the field to use at full strength (see the header note). */
+   * background is the single field; the two state steps are the ramp
+   * interpolated between it and current line — #31333f and #3b3e4d — since
+   * the palette's only intermediate surface is too far from the field to
+   * use at full strength (see the header note). */
   --c-bg: #282a36;
   --c-surface: #282a36;
-  --c-surface-2: #333644;
-  --c-surface-3: #3b3e4f;
+  --c-surface-2: #31333f;
+  --c-surface-3: #3b3e4d;
   --c-surface-hover: rgba(255, 255, 255, 0.04);
   /* Hairlines, not lines: translucent white so a divider reads the same
-   * weight over the base field and over a raised fill. */
+   * weight over the base field and over a raised fill. Current line
+   * (#44475a) itself keeps the strong step: dark enough to read as a line
+   * without carrying the selected-row job. */
   --c-border: rgba(255, 255, 255, 0.07);
-  --c-border-strong: rgba(255, 255, 255, 0.12);
+  --c-border-strong: #44475a;
 
   /* --- color: text ---
    * foreground is the ink; the two dimmer steps are comment (#6272a4) —
@@ -1302,11 +1310,11 @@
    * steps clear AA's 4.5:1 body-text floor everywhere, --c-text-faint with
    * the least headroom:
    *   --c-text        vs --c-bg #282a36:         13.36:1
-   *   --c-text        vs --c-surface-3 #3b3e4f:   9.91:1
+   *   --c-text        vs --c-surface-3 #3b3e4d:   9.94:1
    *   --c-text-muted  vs --c-bg #282a36:          7.82:1
-   *   --c-text-muted  vs --c-surface-3 #3b3e4f:   5.80:1
+   *   --c-text-muted  vs --c-surface-3 #3b3e4d:   5.82:1
    *   --c-text-faint  vs --c-bg #282a36:          6.34:1
-   *   --c-text-faint  vs --c-surface-3 #3b3e4f:   4.70:1  (tightest margin)
+   *   --c-text-faint  vs --c-surface-3 #3b3e4d:   4.72:1  (tightest margin)
    *   --c-text-faint  vs --c-surface-hover:       5.58:1
    */
   --c-text: #f8f8f2;
@@ -1315,9 +1323,9 @@
 
   /* --- color: accent + semantic ---
    * purple is light enough to serve as its own text step on the recessed
-   * fill (5.38:1, see below), but it lands 4.38:1 on --c-surface-3, under
+   * fill (5.38:1, see below), but it lands 4.39:1 on --c-surface-3, under
    * the 4.5:1 body-text floor — so, as in tokyo-night-light, --c-accent-text
-   * lightens one step (5.18:1 on the same canvas) for every text use, while
+   * lightens one step (5.19:1 on the same canvas) for every text use, while
    * the base purple stays the swatch/border/glyph color (held to the 3:1
    * UI-graphics floor, tightest at 3.94:1 on the recessed hover fill).
    * --c-accent-quiet/-hover are purple blended into this theme's own bg at
@@ -1340,18 +1348,18 @@
    * colors, so they're not checked here). All three clear the 3:1 glyph
    * floor on every canvas, --c-danger with the least headroom:
    *   --c-ok      vs --c-bg #282a36:          10.38:1
-   *   --c-ok      vs --c-surface-3 #3b3e4f:    7.70:1
+   *   --c-ok      vs --c-surface-3 #3b3e4d:    7.72:1
    *   --c-warn    vs --c-bg #282a36:          12.74:1
-   *   --c-warn    vs --c-surface-3 #3b3e4f:    9.45:1
+   *   --c-warn    vs --c-surface-3 #3b3e4d:    9.48:1
    *   --c-danger  vs --c-bg #282a36:           4.53:1
-   *   --c-danger  vs --c-surface-3 #3b3e4f:    3.36:1  (tightest margin)
+   *   --c-danger  vs --c-surface-3 #3b3e4d:    3.37:1  (tightest margin)
    *   --c-danger  vs --c-danger-loud #46303a:  3.83:1
    *   --c-text    vs --c-danger-loud #46303a: 11.29:1
    *   --c-accent  vs --c-bg #282a36:           5.90:1
-   *   --c-accent  vs --c-surface-3 #3b3e4f:    4.38:1
+   *   --c-accent  vs --c-surface-3 #3b3e4d:    4.39:1
    *   --c-accent  vs --c-accent-quiet:         4.55:1
    *   --c-accent  vs --c-accent-quiet-hover:   3.94:1  (tightest accent case)
-   *   --c-accent-text vs --c-surface-3:        5.18:1
+   *   --c-accent-text vs --c-surface-3:        5.19:1
    *   --c-accent-text vs --c-accent-quiet:     5.38:1
    *   --c-accent-text vs --c-accent-quiet-hover: 4.65:1
    *
