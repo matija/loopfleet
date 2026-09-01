@@ -70,6 +70,12 @@ afterEach(() => {
   delete (globalThis as { document?: unknown }).document;
 });
 
+// The three ids the registry gained after the existing cases were written
+// (commit "Add Tairiki Dark, Tairiki Light, Dracula to theme registry"). No
+// current test names them, so the preview, pick, and relaunch flows below are
+// the first to exercise the newest palettes.
+const NEW_THEME_IDS = ["tairiki-dark", "tairiki-light", "dracula"] as const;
+
 describe("THEMES", () => {
   it("lists every theme as an { id, label } pair", () => {
     expect(THEMES).toEqual([
@@ -155,6 +161,16 @@ describe("resolveThemeId", () => {
     expect(resolveThemeId({ id: "dark" })).toBe(DEFAULT_THEME_ID);
     expect(resolveThemeId(7)).toBe(DEFAULT_THEME_ID);
   });
+
+  it("round-trips each new id from the stored value back to itself", () => {
+    for (const id of NEW_THEME_IDS) {
+      localStorage.setItem(THEME_STORAGE_KEY, id);
+      // What the index.html bootstrap (and readStoredThemeId) do on launch:
+      // resolve the stored string back to a live id. Coming back to the same
+      // id is what makes the first paint after a relaunch already correct.
+      expect(resolveThemeId(localStorage.getItem(THEME_STORAGE_KEY))).toBe(id);
+    }
+  });
 });
 
 describe("themeById", () => {
@@ -183,6 +199,23 @@ describe("previewThemeId", () => {
   it("does not fall back to the default when the applied theme differs", () => {
     // The preview shows what the app is wearing, not what it shipped with.
     expect(previewThemeId(null, "rose-pine-moon")).not.toBe(DEFAULT_THEME_ID);
+  });
+
+  it("paints each new id on the fake root while highlighted and restores the applied theme after", () => {
+    const root = new FakeElement();
+    const applied = DEFAULT_THEME_ID;
+    for (const id of NEW_THEME_IDS) {
+      // What the picker does while browsing: paint the preview box in the
+      // highlighted theme (ThemePreview renders data-theme on its own box,
+      // never the document root).
+      applyTheme(previewThemeId(id, applied), root as unknown as Element);
+      expect(root.attrs.get("data-theme")).toBe(id);
+      // Highlight cleared (popup closed): the preview falls back to the
+      // applied theme, so the box is painted back rather than left on the
+      // previewed id.
+      applyTheme(previewThemeId(null, applied), root as unknown as Element);
+      expect(root.attrs.get("data-theme")).toBe(applied);
+    }
   });
 });
 
@@ -221,6 +254,18 @@ describe("applyTheme", () => {
   it("is a no-op outside a DOM instead of throwing", () => {
     expect(() => applyTheme("dark")).not.toThrow();
     expect(applyTheme("dark")).toBe("dark");
+  });
+
+  it("persists each new id to storage alongside painting it", () => {
+    const root = new FakeElement();
+    for (const id of NEW_THEME_IDS) {
+      // The commit path in App.tsx: apply to the root, then persist so the
+      // pick survives a relaunch.
+      applyTheme(id, root as unknown as Element);
+      storeThemeId(id);
+      expect(root.attrs.get("data-theme")).toBe(id);
+      expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe(id);
+    }
   });
 });
 
