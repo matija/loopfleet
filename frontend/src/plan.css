@@ -710,10 +710,6 @@
 
 /* --- single-task tab (opened from the plan tree) --- */
 
-.task-tab {
-  max-width: 72ch;
-}
-
 .task-tab__toolbar {
   display: flex;
   align-items: center;

@@ -5,7 +5,6 @@
 /* --- generic panel --- */
 
 .panel {
-  max-width: 72ch;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-lg);
