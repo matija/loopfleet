@@ -1173,7 +1173,7 @@
    * swatch/border color (5.14:1 on white) but, like tokyo-night-light's
    * accent, can't cover the text job across every canvas: 4.17:1 on
    * --c-surface-3 is under AA. --c-accent-text therefore darkens one step
-   * (#0062a6, measured below) so every text use clears AA everywhere, and
+   * (#005ea6, measured below) so every text use clears AA everywhere, and
    * --c-accent-text-hover deepens further. --c-accent-quiet/-hover are blue
    * blended into the field at 14.5%/22.3%, the same recessed-fill technique
    * and amounts tairiki-dark uses, inverted onto white instead of #151515;
@@ -1207,9 +1207,9 @@
    *   --c-accent  vs --c-surface-3 #e8e8e0:    4.17:1
    *   --c-accent  vs --c-accent-quiet:         4.19:1
    *   --c-accent  vs --c-accent-quiet-hover:   3.73:1  (tightest accent case)
-   *   --c-accent-text vs --c-surface-3:        5.17:1
-   *   --c-accent-text vs --c-accent-quiet:     5.18:1
-   *   --c-accent-text vs --c-accent-quiet-hover: 4.62:1
+   *   --c-accent-text vs --c-surface-3:        5.41:1
+   *   --c-accent-text vs --c-accent-quiet:     5.42:1
+   *   --c-accent-text vs --c-accent-quiet-hover: 4.83:1
    *
    * ok/warn/danger clear the 3:1 glyph floor everywhere but run under AA
    * against --c-surface-3; as in github-light, the glyph colors are only
@@ -1217,7 +1217,7 @@
    * on the selected-row fill. */
   --c-accent: #0070c1;
   --c-accent-quiet: #daeaf6;
-  --c-accent-text: #0062a6;
+  --c-accent-text: #005ea6;
   --c-accent-border: rgba(0, 112, 193, 0.32);
   --c-accent-quiet-hover: #c6dff1;
   --c-accent-border-hover: rgba(0, 112, 193, 0.5);
