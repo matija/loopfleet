@@ -3,11 +3,20 @@
 Agent cockpit for spec-and-loop driven development.
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="loopfleet app screenshot" width="900">
+  <img src="docs/screenshot.png" alt="loopfleet main view — fleet of runs across harnesses and models" width="900">
+  <br><em>Fleet view — every scheduled run, its harness, model, and status at a glance.</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshot-diff.png" alt="loopfleet diff review" width="900">
+  <br><em>Diff review — inspect exactly what each agent produced before accepting a task.</em>
 </p>
 
 Write a PRD, break it into tasks, and let coding agents loop on them until every task is accepted. 🚀
-loopfleet is a native macOS app that keeps the plan, the runs, and the resulting diffs in one place.
+
+loopfleet is a native macOS app for **scheduled and continuous task execution**. Configure runs with your own settings — choose a harness (pi, Claude, Cursor, …), pick a model, set the cadence — and agents work through your task list around the clock, on repeat or until everything is accepted.
+
+Context is kept deliberately small per run, so each agent stays focused on its current task instead of drowning in accumulated history. The app keeps the plan, the runs, and the resulting diffs in one place: scan the fleet, review what changed, and accept or reject tasks without losing the thread.
 
 ## Download 📦
 
