@@ -80,6 +80,9 @@ describe("THEMES", () => {
       { id: "tokyo-night", label: "Tokyo Night" },
       { id: "tokyo-night-storm", label: "Tokyo Night Storm" },
       { id: "tokyo-night-light", label: "Tokyo Night Light" },
+      { id: "tairiki-dark", label: "Tairiki Dark" },
+      { id: "tairiki-light", label: "Tairiki Light" },
+      { id: "dracula", label: "Dracula" },
     ]);
   });
 
