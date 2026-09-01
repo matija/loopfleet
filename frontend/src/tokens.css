@@ -1267,17 +1267,20 @@
  * (#50fa7b/#f1fa8c/#ff5555) the semantic ramp. All five map straight across
  * from the palette — they're the values Dracula itself names for those jobs.
  *
- * This block makes the one structural departure from the canonical
- * palette: the app's two state steps. Dracula's only intermediate surface
- * is current line (#44475a), and lifted whole to the selected-row step it
- * leaves the derived inks under AA — --c-text-faint at 3.81:1 and
- * --c-accent-text at 3.79:1, both under the 4.5:1 body-text floor (red
+ * This block makes two structural departures from the canonical palette:
+ * the app's two state steps (surfaces section) and the two dimmer ink
+ * steps (text section) — the latter step down from foreground rather than
+ * up from comment, since the palette's only de-emphasis color is a syntax
+ * color for code, not a UI ink. Dracula's only intermediate surface is
+ * current line (#44475a), and lifted whole to the selected-row step it
+ * leaves the derived inks under AA — --c-text-faint at 4.04:1 and
+ * --c-accent-text at 4.48:1, both under the 4.5:1 body-text floor (red
  * sits at 2.91:1 on it too, under the 3:1 glyph floor). --c-surface-2/3
  * are therefore interpolated between background and current line (#31333f
  * and #3b3e4d, see the surfaces section) rather than palette steps taken
  * verbatim (the tairiki blocks' approach), so the darkest step stays dark
  * enough for secondary ink — those same inks clear the body-text floor on
- * #3b3e4d (4.72:1 and 5.19:1) and red clears the glyph floor (3.37:1, see
+ * #3b3e4d (4.67:1 and 5.19:1) and red clears the glyph floor (3.37:1, see
  * below) — while current line itself keeps the --c-border-strong job. */
 
 [data-theme="dracula"] {
@@ -1301,25 +1304,26 @@
   --c-border-strong: #44475a;
 
   /* --- color: text ---
-   * foreground is the ink; the two dimmer steps are comment (#6272a4) —
-   * Dracula's own de-emphasis color — lightened along its hue toward
-   * foreground, because comment as-is measures only 3.02:1 on the field,
-   * well under AA. Measured WCAG 2.1 contrast against every canvas the text
-   * sits on (--c-bg/--c-surface, --c-surface-2, --c-surface-3, and the
-   * blended --c-surface-hover fill, which flattens to #31333e). All three
-   * steps clear AA's 4.5:1 body-text floor everywhere, --c-text-faint with
-   * the least headroom:
+   * foreground is the ink; the two dimmer steps step down from it — muted
+   * #c8cad8, faint #a8abc1 — rather than up from comment: Dracula's
+   * comment (#6272a4) is a syntax color for de-emphasized code in a
+   * buffer, not a UI secondary ink, and at 3.03:1 on the field it couldn't
+   * be one (under AA's 4.5:1 floor). Measured WCAG 2.1 contrast against
+   * every canvas the text sits on (--c-bg/--c-surface, --c-surface-2,
+   * --c-surface-3, and the blended --c-surface-hover fill, which flattens
+   * to #31333e). All three steps clear AA's 4.5:1 body-text floor
+   * everywhere, --c-text-faint with the least headroom:
    *   --c-text        vs --c-bg #282a36:         13.36:1
    *   --c-text        vs --c-surface-3 #3b3e4d:   9.94:1
-   *   --c-text-muted  vs --c-bg #282a36:          7.82:1
-   *   --c-text-muted  vs --c-surface-3 #3b3e4d:   5.82:1
-   *   --c-text-faint  vs --c-bg #282a36:          6.34:1
-   *   --c-text-faint  vs --c-surface-3 #3b3e4d:   4.72:1  (tightest margin)
-   *   --c-text-faint  vs --c-surface-hover:       5.58:1
+   *   --c-text-muted  vs --c-bg #282a36:          8.74:1
+   *   --c-text-muted  vs --c-surface-3 #3b3e4d:   6.51:1
+   *   --c-text-faint  vs --c-bg #282a36:          6.28:1
+   *   --c-text-faint  vs --c-surface-3 #3b3e4d:   4.67:1  (tightest margin)
+   *   --c-text-faint  vs --c-surface-hover:       5.53:1
    */
   --c-text: #f8f8f2;
-  --c-text-muted: #bcbfd3;
-  --c-text-faint: #a6acc7;
+  --c-text-muted: #c8cad8;
+  --c-text-faint: #a8abc1;
 
   /* --- color: accent + semantic ---
    * purple is light enough to serve as its own text step on the recessed
