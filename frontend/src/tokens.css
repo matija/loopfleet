@@ -22,7 +22,94 @@
  * lives beside terminals reads best dark — so it also applies with no
  * data-theme attribute set at all. Its :root arm and every [data-theme] arm
  * share the same specificity (0,1,0), so on the root itself the later block in
- * source order wins: theme blocks must stay below dark's. */
+ * source order wins: theme blocks must stay below dark's.
+ *
+ * --- derivation rules: upstream roles → tokens ---
+ *
+ * Every color token below is derived from an upstream theme palette, mapped
+ * by the *job* a palette role does rather than by its palette-specific name —
+ * Rosé Pine's base/surface/overlay/muted/subtle/text + love/gold/rose/pine/
+ * foam/iris, GitHub's canvas-*/fg-*/accent-fg/success-fg/attention-fg/
+ * danger-fg, tokyonight's bg/bg_highlight/fg/fg_dark/comment/blue/green/
+ * yellow/red, tairiki's bg/bg_light/bg_light2/fg/fg_dark/fg_dark2/blue/
+ * green/yellow/red, Dracula's Background/Foreground/Current Line/Comment/
+ * Purple/Green/Yellow/Red. Each block comment below records its palette's
+ * names for those roles and the measured ratios behind every value; these
+ * rules are the general shape, so the next port reads them once instead of
+ * re-deriving them per theme.
+ *
+ *   the one field (chrome and main share it) → --c-bg, --c-surface
+ *   first state step (hover fill, inputs)    → --c-surface-2
+ *   selected/active step                     → --c-surface-3
+ *   primary ink                              → --c-text
+ *   secondary ink                            → --c-text-muted
+ *   tertiary ink                             → --c-text-faint
+ *   the accent hue                           → --c-accent + the -quiet/-text/
+ *     -border trio, their -hover steps, and --c-on-accent
+ *   success/green                            → --c-ok (+ -wash/-quiet/-tint/-loud)
+ *   warning/yellow                           → --c-warn (+ fills)
+ *   danger/red                               → --c-danger (+ fills)
+ * A palette step that is not a neutral — a syntax or de-emphasis color for
+ * code, not a UI ink (Dracula's Comment, tairiki-light's comment) — feeds no
+ * text token; a de-emphasis step that can't carry text may still ink the
+ * hairlines (Rosé Pine's muted → --c-border/--c-border-strong).
+ *
+ * Kept versus stepped. An upstream hue is kept as-is when it clears its
+ * threshold on every canvas it is actually drawn on — 4.5:1 (WCAG AA body
+ * text) for the text roles, 3:1 (UI graphics) for --c-ok/-warn/-danger and
+ * for --c-accent as swatch/border/ring — against --c-bg/--c-surface (one
+ * field), --c-surface-2, --c-surface-3, and the blended --c-surface-hover
+ * fill: the four canvases check-contrast.mjs enforces. tairiki-dark is the
+ * near-transcription case, every upstream value clearing unchanged. The
+ * glyph colors get their headroom from the usage boundary the app upholds —
+ * they are only ever drawn on the field or inside their own -tint disc,
+ * never on the selected-row fill.
+ *
+ * A hue that falls short is *stepped* along its own hue — lightened on dark
+ * themes, darkened on light ones — just far enough to clear, and the block
+ * comment records the derived value and its ratios. The steppings that recur:
+ *   - tertiary ink, when the palette's own third text step misses AA (Rosé
+ *     Pine's subtle, GitHub's fg-subtle, tokyonight's comment, tairiki-
+ *     light's fg_dark2); a palette whose only de-emphasis color is a syntax
+ *     color (Dracula's Comment) steps its dimmer inks down from the primary
+ *     ink instead;
+ *   - --c-accent-text, when the base accent clears only the 3:1 graphics
+ *     floor on some canvas (dark's indigo at 3.56:1 on its quiet fill,
+ *     Dracula's Purple at 4.39:1 and tairiki-light's blue at 4.17:1 on the
+ *     selected-row step, tokyo-night-light's editor blue even on the field):
+ *     the accent splits from the text step — it is held to the 3:1 floor for
+ *     fills, borders, and rings (kept, or stepped only as far as its own
+ *     swatch job needs, as tokyo-night-light darkens its editor blue one
+ *     step), while --c-accent-text moves one step further toward the 4.5:1
+ *     text floor and its hover pair steps again. An accent that clears the
+ *     text floor everywhere (iris, GitHub's accent-fg, tairiki-dark's blue)
+ *     is kept as its own text step — --c-accent-text repeats it;
+ *   - semantic glyphs: kept at the palette hue while they clear the 3:1
+ *     floor everywhere; tokyo-night-light is the one block that steps them
+ *     anyway, darkening each hue one step so it clears AA on the field
+ *     rather than the enforced 3:1.
+ *
+ * The recessed fills never come from the palette: --c-accent-quiet/-hover
+ * are the accent blended into the theme's own --c-bg at ≈14.5%/22.3%
+ * (lighter than the field on light themes), the -wash/-quiet/-tint fills are
+ * each hue with ~40% of its chroma removed toward an equal-luminance grey,
+ * -loud is the hue at fixed alpha pre-flattened against the field (dark) or
+ * the toast fill (light), and --c-on-accent repeats --c-bg on a light accent
+ * and goes white on a dark one.
+ *
+ * Surface steps follow the same kept-versus-built rule: the palette's own
+ * state steps lift verbatim when they work (tairiki, Rosé Pine, GitHub's
+ * canvas-default/canvas-subtle pair), and are built when they don't —
+ * Dracula's Current Line is too far from Background to be the selected-row
+ * step (it would drop the dimmer inks under their floors), so --c-surface-2/3
+ * sit between them and Current Line keeps --c-border-strong; tokyo-night-
+ * light's bg and bg_highlight are too close, so its steps mix the bg toward
+ * the dark-variant ink; github-light's selected-row step is a dark mix sized
+ * so fg-muted still clears it. Light themes invert the ladder: state steps go
+ * *darker* than the field, hairlines and hover washes mix dark ink rather
+ * than white, and the --c-border*/--c-shadow* inks flip accordingly — the
+ * inverted-ladder pattern github-light established and every light block
+ * inherits. */
 
 :root {
   /* --- type scale (1.25 ratio off a 12px base) ---
