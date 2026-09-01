@@ -584,6 +584,19 @@
   color: var(--c-text-muted);
 }
 
+/* The launch menu's segmented boxes clip (overflow: hidden, for their rounded
+   corners), which would crop the global :focus-visible outline off the flush
+   buttons and the model input inside them. Same inset ring as the dock chips:
+   the outline moves inside the box so keyboard focus stays fully visible.
+   Text ink, not accent — the selected agent's own accent-quiet fill would
+   swallow an accent ring, and text reads on every fill these controls take. */
+.launch__agent:focus-visible,
+.launch__count-btn:focus-visible,
+.launch__model-input:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--c-text);
+}
+
 /* `Run ▾` split button (toolbar-split from Button.tsx) — a quiet accent chip
  * rather than a loud solid block. Recessed indigo surface, accent-tinted
  * text, faint top highlight; the fill deepens on hover so it stays clearly
