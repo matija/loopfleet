@@ -681,7 +681,7 @@
    *   --c-danger  vs --c-danger-loud #3b3144:   4.64:1  (toast text-on-fill case)
    *   --c-accent  vs --c-bg #24283b:            5.78:1
    *   --c-accent  vs --c-accent-quiet:          4.47:1
-   *   --c-accent  vs --c-accent-quiet-hover:    4.53:1
+   *   --c-accent  vs --c-accent-quiet-hover:    3.87:1
    */
   --c-ok: #9ece6a;
   --c-ok-wash: rgba(157, 186, 126, 0.08);
@@ -752,9 +752,9 @@
    * (--c-bg/--c-surface, --c-surface-2, --c-surface-3, and the blended
    * --c-surface-hover fill). All three steps clear AA's 4.5:1 body-text
    * floor everywhere, --c-text-muted with the least headroom:
-   *   --c-text        vs --c-bg #ffffff:         16.15:1
-   *   --c-text        vs --c-surface-3 #ecf0f4:  13.98:1
-   *   --c-text-muted  vs --c-bg #ffffff:          5.24:1
+   *   --c-text        vs --c-bg #ffffff:         15.80:1
+   *   --c-text        vs --c-surface-3 #ecf0f4:  13.79:1
+   *   --c-text-muted  vs --c-bg #ffffff:          5.25:1
    *   --c-text-muted  vs --c-surface-3 #ecf0f4:   4.58:1  (tightest margin)
    *   --c-text-faint  vs --c-bg #ffffff:          5.93:1
    *   --c-text-faint  vs --c-surface-3 #ecf0f4:   5.18:1
@@ -794,12 +794,12 @@
    * content and must not let it show through.
    *
    * Measured WCAG 2.1 contrast for the glyph/text step of each hue:
-   *   --c-ok      vs --c-bg #ffffff:           4.72:1
-   *   --c-ok      vs --c-surface-3 #ecf0f4:    4.09:1
-   *   --c-warn    vs --c-bg #ffffff:           4.62:1
-   *   --c-warn    vs --c-surface-3 #ecf0f4:    4.00:1
-   *   --c-danger  vs --c-bg #ffffff:           4.83:1
-   *   --c-danger  vs --c-surface-3 #ecf0f4:    4.19:1
+   *   --c-ok      vs --c-bg #ffffff:           5.08:1
+   *   --c-ok      vs --c-surface-3 #ecf0f4:    4.43:1
+   *   --c-warn    vs --c-bg #ffffff:           4.87:1
+   *   --c-warn    vs --c-surface-3 #ecf0f4:    4.25:1
+   *   --c-danger  vs --c-bg #ffffff:           5.36:1
+   *   --c-danger  vs --c-surface-3 #ecf0f4:    4.68:1
    *   --c-accent  vs --c-bg #ffffff:           5.19:1
    * ok/warn/danger clear AA against the white field but run under it against
    * --c-surface-3; as in dark's own ramp, the glyph colors are only ever
