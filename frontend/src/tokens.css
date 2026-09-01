@@ -1112,6 +1112,154 @@
   --c-shadow-chip-pressed: rgba(0, 0, 0, 0.3);
 }
 
+/* --- theme: tairiki-light ---
+ * Tairiki Light, mapped onto the same token set as the themes above, and the
+ * third light theme after github-light and tokyo-night-light — the
+ * inverted-ladder pattern those blocks established (state steps read darker
+ * than the field, hairlines and hover washes mix dark ink at low alpha
+ * instead of white) carries over unchanged; only the palette and the mix
+ * amounts differ.
+ *
+ * palette/light.lua supplies the surfaces and the ink: bg (#ffffff) and
+ * bg_light/bg_light2 (#f0f0f8/#e8e8e0) are the one field plus the state
+ * steps, fg (#001070) the text, and blue/green/yellow/red (#0070c1/#008000/
+ * #7c5c20/#a31515) the accent and semantic ramp. comment (#cd0009) is a red,
+ * not a neutral — it feeds no text step here.
+ *
+ * The two dimmer text steps can't be ported as-is: fg_dark (#698989) and
+ * fg_dark2 (#797979) measure 3.79:1 and 4.35:1 against the field, both under
+ * AA — so --c-text-muted and --c-text-faint are darkened off them (values
+ * and ratios below) until every text tier clears AA against the darkest
+ * surface, not just the field. --c-text-faint lands exactly on the palette's
+ * own fg_dark3 (#595959). */
+
+[data-theme="tairiki-light"] {
+  color-scheme: light;
+
+  /* --- color: surfaces ---
+   * bg is the single field; bg_light and bg_light2 are the state steps for
+   * hover fills, inputs, and the selected row. */
+  --c-bg: #ffffff;
+  --c-surface: #ffffff;
+  --c-surface-2: #f0f0f8;
+  --c-surface-3: #e8e8e0;
+  --c-surface-hover: rgba(0, 16, 112, 0.04);
+  --c-border: rgba(0, 16, 112, 0.08);
+  --c-border-strong: rgba(0, 16, 112, 0.15);
+
+  /* --- color: text ---
+   * Measured WCAG 2.1 contrast against every canvas the text sits on
+   * (--c-bg/--c-surface, --c-surface-2, --c-surface-3, and the blended
+   * --c-surface-hover fill, which flattens to #f5f5f9). All three steps
+   * clear AA's 4.5:1 body-text floor everywhere, --c-text-muted with the
+   * least headroom:
+   *   --c-text        vs --c-bg #ffffff:         16.05:1
+   *   --c-text        vs --c-surface-2 #f0f0f8:  14.16:1
+   *   --c-text        vs --c-surface-3 #e8e8e0:  13.03:1
+   *   --c-text-muted  vs --c-bg #ffffff:          5.57:1
+   *   --c-text-muted  vs --c-surface-2 #f0f0f8:   4.91:1
+   *   --c-text-muted  vs --c-surface-3 #e8e8e0:   4.52:1  (tightest margin)
+   *   --c-text-faint  vs --c-bg #ffffff:          7.00:1
+   *   --c-text-faint  vs --c-surface-2 #f0f0f8:   6.18:1
+   *   --c-text-faint  vs --c-surface-3 #e8e8e0:   5.69:1
+   *   --c-text-faint  vs --c-surface-hover:       6.44:1
+   */
+  --c-text: #001070;
+  --c-text-muted: #5c6b6b;
+  --c-text-faint: #595959;
+
+  /* --- color: accent + semantic ---
+   * The palette's blue (#0070c1) is dark enough on the field to be the
+   * swatch/border color (5.14:1 on white) but, like tokyo-night-light's
+   * accent, can't cover the text job across every canvas: 4.17:1 on
+   * --c-surface-3 is under AA. --c-accent-text therefore darkens one step
+   * (#0062a6, measured below) so every text use clears AA everywhere, and
+   * --c-accent-text-hover deepens further. --c-accent-quiet/-hover are blue
+   * blended into the field at 14.5%/22.3%, the same recessed-fill technique
+   * and amounts tairiki-dark uses, inverted onto white instead of #151515;
+   * the chip's own text is --c-text (13.06:1 on the quiet fill), so the
+   * base accent appears on those fills only as a border or glyph and is
+   * held to the 3:1 UI-graphics floor (4.19:1 / 3.73:1).
+   *
+   * The semantic ramps keep the shared vocabulary — -wash under a whole
+   * row, -quiet at border strength, -tint as the disc behind a glyph, -loud
+   * for banners and filled controls. As in github-light and tokyo-night-light,
+   * the -wash/-quiet/-tint fills mix a softened cut of each hue (40% of the
+   * saturation removed at the same lightness, ok #008000 -> rgb(26, 102, 26),
+   * warn #7c5c20 -> rgb(106, 86, 50), danger #a31515 -> rgb(135, 49, 49)).
+   * --c-warn-loud still mixes yellow at full saturation, --c-danger-loud is
+   * red at 0.14 pre-flattened against the field, and the glyph steps below
+   * are untouched, so the measured ratios hold.
+   *
+   * Measured WCAG 2.1 contrast for the glyph/text step of each hue (the
+   * -wash/-quiet/-tint fills sit under or behind content and aren't text
+   * colors, so they're not checked here). All three clear the 3:1 glyph
+   * floor on every canvas, --c-ok with the least headroom:
+   *   --c-ok      vs --c-bg #ffffff:           5.14:1
+   *   --c-ok      vs --c-surface-3 #e8e8e0:    4.17:1  (tightest margin)
+   *   --c-warn    vs --c-bg #ffffff:           6.16:1
+   *   --c-warn    vs --c-surface-3 #e8e8e0:    5.00:1
+   *   --c-danger  vs --c-bg #ffffff:           7.85:1
+   *   --c-danger  vs --c-surface-3 #e8e8e0:    6.37:1
+   *   --c-danger  vs --c-danger-loud #f2dede:  6.08:1  (toast text-on-fill case)
+   *   --c-text    vs --c-danger-loud #f2dede: 12.44:1
+   *   --c-accent  vs --c-bg #ffffff:           5.14:1
+   *   --c-accent  vs --c-surface-3 #e8e8e0:    4.17:1
+   *   --c-accent  vs --c-accent-quiet:         4.19:1
+   *   --c-accent  vs --c-accent-quiet-hover:   3.73:1  (tightest accent case)
+   *   --c-accent-text vs --c-surface-3:        5.17:1
+   *   --c-accent-text vs --c-accent-quiet:     5.18:1
+   *   --c-accent-text vs --c-accent-quiet-hover: 4.62:1
+   *
+   * ok/warn/danger clear the 3:1 glyph floor everywhere but run under AA
+   * against --c-surface-3; as in github-light, the glyph colors are only
+   * ever drawn on the field or inside their own -tint disc, never directly
+   * on the selected-row fill. */
+  --c-accent: #0070c1;
+  --c-accent-quiet: #daeaf6;
+  --c-accent-text: #0062a6;
+  --c-accent-border: rgba(0, 112, 193, 0.32);
+  --c-accent-quiet-hover: #c6dff1;
+  --c-accent-border-hover: rgba(0, 112, 193, 0.5);
+  /* Hover deepens the accent-text further still, as in github-light. */
+  --c-accent-text-hover: #005694;
+  /* Ink on a *solid* accent fill: accent is dark enough on the field that
+   * white text goes on top (5.14:1), matching github-light's own choice. */
+  --c-on-accent: #ffffff;
+
+  --c-ok: #008000;
+  --c-ok-wash: rgba(26, 102, 26, 0.08);
+  --c-ok-quiet: rgba(26, 102, 26, 0.14);
+  --c-ok-tint: rgba(26, 102, 26, 0.16);
+  --c-warn: #7c5c20;
+  --c-warn-wash: rgba(106, 86, 50, 0.08);
+  --c-warn-quiet: rgba(106, 86, 50, 0.14);
+  --c-warn-tint: rgba(106, 86, 50, 0.16);
+  --c-warn-loud: rgba(124, 92, 32, 0.2);
+  --c-danger: #a31515;
+  --c-danger-wash: rgba(135, 49, 49, 0.08);
+  --c-danger-quiet: rgba(135, 49, 49, 0.15);
+  --c-danger-tint: rgba(135, 49, 49, 0.17);
+  --c-danger-loud: #f2dede;
+
+  /* Scrim behind modal overlays (the palette). Stays dark ink regardless of
+   * theme — it dims arbitrary content behind the overlay, it isn't part of
+   * the field. */
+  --c-scrim: rgba(0, 16, 112, 0.4);
+
+  /* --- color: shadow ---
+   * Ink only; the offsets and blur live in :root. Same soft-alpha treatment
+   * as github-light: far less darkening than the dark blocks need, plus
+   * white card/chip highlights since the raised fill is off-white rather
+   * than near-black. */
+  --c-shadow-1: rgba(0, 16, 112, 0.12);
+  --c-shadow-2a: rgba(0, 16, 112, 0.16);
+  --c-shadow-2b: rgba(0, 16, 112, 0.1);
+  --c-shadow-card: rgba(255, 255, 255, 0.6);
+  --c-shadow-chip-hi: rgba(255, 255, 255, 0.5);
+  --c-shadow-chip-pressed: rgba(0, 16, 112, 0.12);
+}
+
 /* --- base / reset --- */
 
 * {
