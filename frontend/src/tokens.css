@@ -1273,14 +1273,15 @@
  * up from comment, since the palette's only de-emphasis color is a syntax
  * color for code, not a UI ink. Dracula's only intermediate surface is
  * current line (#44475a), and lifted whole to the selected-row step it
- * leaves the derived inks under AA — --c-text-faint at 4.04:1 and
- * --c-accent-text at 4.48:1, both under the 4.5:1 body-text floor (red
- * sits at 2.91:1 on it too, under the 3:1 glyph floor). --c-surface-2/3
+ * leaves the dimmer inks under AA — --c-text-faint at 4.04:1, under the
+ * 4.5:1 body-text floor, and red at 2.91:1, under the 3:1 glyph floor
+ * (the lightened --c-accent-text alone would clear it, 4.65:1).
+ * --c-surface-2/3
  * are therefore interpolated between background and current line (#31333f
  * and #3b3e4d, see the surfaces section) rather than palette steps taken
  * verbatim (the tairiki blocks' approach), so the darkest step stays dark
  * enough for secondary ink — those same inks clear the body-text floor on
- * #3b3e4d (4.67:1 and 5.19:1) and red clears the glyph floor (3.37:1, see
+ * #3b3e4d (4.67:1 and 5.38:1) and red clears the glyph floor (3.37:1, see
  * below) — while current line itself keeps the --c-border-strong job. */
 
 [data-theme="dracula"] {
@@ -1326,14 +1327,15 @@
   --c-text-faint: #a8abc1;
 
   /* --- color: accent + semantic ---
-   * purple is light enough to serve as its own text step on the recessed
-   * fill (5.38:1, see below), but it lands 4.39:1 on --c-surface-3, under
-   * the 4.5:1 body-text floor — so, as in tokyo-night-light, --c-accent-text
-   * lightens one step (5.19:1 on the same canvas) for every text use, while
-   * the base purple stays the swatch/border/glyph color (held to the 3:1
-   * UI-graphics floor, tightest at 3.94:1 on the recessed hover fill).
+   * purple lands 4.39:1 on --c-surface-3, just under AA's 4.5:1 body-text
+   * floor, so it stays --c-accent — the swatch, ring, and border color,
+   * held to the 3:1 UI-graphics floor (tightest at 3.94:1 on the recessed
+   * hover fill) — while the lightened --c-accent-text (#cbaafa) carries
+   * every text use, the same split dark and tokyo-night make. The lightened
+   * step clears the body-text floor on every canvas it sits on, tightest
+   * on --c-surface-3 at 5.38:1 (see below).
    * --c-accent-quiet/-hover are purple blended into this theme's own bg at
-   * 14.5%/22.3%, the same recessed-fill technique tokyo-night and
+   * 14.5%/22.3%, the same recessed-fill technique dark, tokyo-night, and
    * github-dark use.
    *
    * The semantic ramps keep the shared vocabulary — -wash under a whole
@@ -1363,9 +1365,9 @@
    *   --c-accent  vs --c-surface-3 #3b3e4d:    4.39:1
    *   --c-accent  vs --c-accent-quiet:         4.55:1
    *   --c-accent  vs --c-accent-quiet-hover:   3.94:1  (tightest accent case)
-   *   --c-accent-text vs --c-surface-3:        5.19:1
-   *   --c-accent-text vs --c-accent-quiet:     5.38:1
-   *   --c-accent-text vs --c-accent-quiet-hover: 4.65:1
+   *   --c-accent-text vs --c-surface-3:        5.38:1  (tightest text case)
+   *   --c-accent-text vs --c-accent-quiet:     5.58:1
+   *   --c-accent-text vs --c-accent-quiet-hover: 4.82:1
    *
    * --c-danger vs --c-danger-loud lands at 3.83:1, under AA's 4.5:1
    * body-text floor (though above the 3:1 glyph floor it's held to); as in
@@ -1375,15 +1377,16 @@
    * --c-text (11.29:1) instead. */
   --c-accent: #bd93f9;
   --c-accent-quiet: #3e3952;
-  --c-accent-text: #c8a6fa;
+  --c-accent-text: #cbaafa;
   --c-accent-border: rgba(189, 147, 249, 0.32);
   --c-accent-quiet-hover: #494161;
   --c-accent-border-hover: rgba(189, 147, 249, 0.5);
   /* Hover lightens the accent-text further still, matching the dark
    * themes' brighten-on-hover step. */
   --c-accent-text-hover: #d6bbfb;
-  /* Ink on a *solid* purple fill: purple is a light hue, so the field color
-   * goes on top rather than white (5.90:1). */
+  /* Ink on a *solid* purple fill: purple is a light hue, so --c-on-accent
+   * repeats --c-bg (dark/github-dark put the field on a light accent too)
+   * rather than white — 5.90:1. */
   --c-on-accent: #282a36;
 
   --c-ok: #50fa7b;
