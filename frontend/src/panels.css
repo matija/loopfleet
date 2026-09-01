@@ -4,23 +4,25 @@
 
 /* --- generic panel --- */
 
-.panel {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
-}
+/* The panels sit directly on the canvas: no card frame — no background,
+ * border, radius, or padding of their own. Structure comes from the head's
+ * hairline and the section rules between groups, exactly as the plan view
+ * carries its list; a padded bordered box here would be the gratuitous card
+ * DESIGN.md rejects, and the reference has no cards anywhere. */
 
 /* Every panel opens the same way: a glyph, the title, and — when the panel
  * has one — a tag naming the machinery behind it. The glyph is what makes a
  * panel findable by shape before its title is read, and it's the same glyph
  * the surface card that opens the panel carries, so the tile and the panel
- * read as one thing. */
+ * read as one thing. The hairline under the head is the surface's top strip
+ * rule, the same one the plan view's header carries. */
 .panel__head {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--c-border);
 }
 
 .panel__head h3 {
@@ -177,13 +179,15 @@
 
 /* A panel with more than one group of controls splits into labelled sections,
  * each led by a glyph so a group is findable by shape before its title is
- * read. Separated by a rule rather than boxed: the panel is already a card,
- * and nested cards would read as separate surfaces. Named for the panel
- * rather than for Settings, because Settings is only the panel with the most
- * of them. */
+ * read. Separated by a hairline rather than boxed: each group is a strip of
+ * the same surface, not a card of its own — nested cards would read as
+ * separate surfaces. The rule runs the panel's full width because the panel
+ * itself carries no frame (see the generic-panel note above). Named for the
+ * panel rather than for Settings, because Settings is only the panel with the
+ * most of them. */
 .panel-section + .panel-section {
-  margin-top: var(--space-5);
-  padding-top: var(--space-5);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--c-border);
 }
 
