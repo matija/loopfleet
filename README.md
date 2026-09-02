@@ -18,12 +18,16 @@ loopfleet is a native macOS app for **scheduled and continuous task execution**.
 
 Context is kept deliberately small per run, so each agent stays focused on its current task instead of drowning in accumulated history. The app keeps the plan, the runs, and the resulting diffs in one place: scan the fleet, review what changed, and accept or reject tasks without losing the thread.
 
-## Download 📦
+## Download
 
-### [🍎 Download for Apple Silicon](https://github.com/matija/loopfleet/releases/download/0.1.1/loopfleet_0.1.1_aarch64.dmg) &nbsp;·&nbsp; [💻 Download for Intel](https://github.com/matija/loopfleet/releases/download/0.1.1/loopfleet_0.1.1_x64.dmg)
+<!-- download-links:start -->
+**Download loopfleet 0.1.12** —
+[Apple Silicon](https://github.com/matija/loopfleet/releases/download/0.1.12/loopfleet_0.1.12_aarch64.dmg)
+· [Intel](https://github.com/matija/loopfleet/releases/download/0.1.12/loopfleet_0.1.12_x64.dmg)
+<!-- download-links:end -->
 
-Signed and notarized `.dmg` builds — the app updates itself from there. ✨
-All releases: [github.com/matija/loopfleet/releases](https://github.com/matija/loopfleet/releases)
+Signed and notarized `.dmg` builds; the app updates itself from there.
+Older builds: [all releases](https://github.com/matija/loopfleet/releases).
 
 > WIP.
 

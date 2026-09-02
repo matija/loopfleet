@@ -9,6 +9,10 @@
 #   - frontend/package.json
 #   - src-tauri/tauri.conf.json
 #
+# It also rewrites the download links in README.md (the block between the
+# `download-links` markers), so the advertised .dmg URLs always point at the
+# release being cut.
+#
 # Usage:
 #   build/bump.sh <version>   # set every manifest to <version>
 #   build/bump.sh             # print the current version and exit
@@ -71,8 +75,30 @@ for json in \
   sed_i "s/\"version\": \".*\"/\"version\": \"$NEW\"/" "$json"
 done
 
+# README download links — regenerate the whole block between the markers, so
+# the URLs, the file names, and the version in the label all stay consistent.
+# The repo is the same default release.sh uses; override with GH_REPO.
+README_REPO="${GH_REPO:-matija/loopfleet}"
+awk -v new="$NEW" -v repo="$README_REPO" '
+  /<!-- download-links:start -->/ {
+    base = "https://github.com/" repo "/releases/download/" new
+    print
+    print "**Download loopfleet " new "** —"
+    print "[Apple Silicon](" base "/loopfleet_" new "_aarch64.dmg)"
+    print "· [Intel](" base "/loopfleet_" new "_x64.dmg)"
+    skip = 1
+    next
+  }
+  /<!-- download-links:end -->/ { skip = 0 }
+  !skip { print }
+' "$ROOT/README.md" > "$ROOT/README.md.tmp" && mv "$ROOT/README.md.tmp" "$ROOT/README.md"
+
+if ! grep -q '<!-- download-links:start -->' "$ROOT/README.md"; then
+  echo "warning: README.md has no <!-- download-links:start --> marker; download links left untouched" >&2
+fi
+
 echo "Bumped version to $NEW"
 echo
-git -C "$ROOT" --no-pager diff -- Cargo.toml Cargo.lock package.json frontend/package.json src-tauri/tauri.conf.json
+git -C "$ROOT" --no-pager diff -- Cargo.toml Cargo.lock package.json frontend/package.json src-tauri/tauri.conf.json README.md
 echo
 echo "Next step: review the diff above, then commit the bump (e.g. \`git add -u && git commit -m \"Bump version to $NEW\"\`)."

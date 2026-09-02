@@ -39,7 +39,7 @@ this directory are self-contained:
 
 | Script                   | What it does                                                                                    |
 | ------------------------ | ------------------------------------------------------------------------------------------------ |
-| `build/bump.sh`          | Set (or print) the version across every manifest.                                                |
+| `build/bump.sh`          | Set (or print) the version across every manifest, and refresh the README download links.         |
 | `build/release.sh`       | Build, notarize, and publish the `aarch64-apple-darwin` release to GitHub.                       |
 | `build/release-intel.sh` | Build and notarize the `x86_64-apple-darwin` bundle, and add it to an *existing* release.         |
 | `release-common.sh`      | Shared helpers (sourced by the release scripts, not run directly).                               |
@@ -55,6 +55,14 @@ of them at once:
 build/bump.sh            # print the current version
 build/bump.sh 0.2.0      # set every manifest to 0.2.0
 ```
+
+It also regenerates the download links in the top-level `README.md` — the
+block between the `<!-- download-links:start -->` and
+`<!-- download-links:end -->` markers — so the advertised `.dmg` URLs point at
+the release being cut. Keep those markers in place; without them `bump.sh`
+warns and leaves the links alone. The URLs are built from `GH_REPO`
+(default `matija/loopfleet`) and Tauri's bundle naming
+(`loopfleet_<version>_aarch64.dmg` / `_x64.dmg`).
 
 ### Required environment variables
 
