@@ -10,6 +10,7 @@
   gap: var(--space-3);
   max-width: 52ch;
   margin: var(--space-8) auto;
+  /* density-allow: .empty-state is the designed no-content card (tokens.css names empty-state cards among the band's users) */
   padding: var(--space-6) var(--space-5);
   background: var(--c-surface);
   border: 1px solid var(--c-border);

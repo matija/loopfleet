@@ -45,6 +45,7 @@
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-lg);
+  /* density-allow: .prd-doc is the document sheet, deliberately framed — its 72ch prose measure lives inside */
   padding: var(--space-4) var(--space-5);
 }
 
