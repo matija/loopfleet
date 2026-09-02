@@ -41,7 +41,8 @@
 // standing sample of the current one rather than a box that goes blank.
 
 import { useEffect, useState } from "react";
-import { getSettings, saveSettings, sweepWorktreesNow } from "../commands";
+import { appSettings, saveAppSettings } from "../appData";
+import { sweepWorktreesNow } from "../commands";
 import type { Settings } from "../types";
 import {
   DEFAULT_RETENTION_HOURS,
@@ -176,7 +177,7 @@ export function SettingsPanel({
 
   useEffect(() => {
     let cancelled = false;
-    getSettings()
+    appSettings()
       .then((s) => {
         if (cancelled) return;
         setSettings(s);
@@ -220,7 +221,7 @@ export function SettingsPanel({
     setMsg(null);
     setResetNote(null);
     try {
-      await saveSettings(next);
+      await saveAppSettings(next);
       setSettings(next);
       // Reflect what actually got persisted, so a draft the fallback rejected
       // ("", "abc") doesn't keep showing next to the saved value.

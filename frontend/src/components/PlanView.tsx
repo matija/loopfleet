@@ -9,12 +9,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAgentUsage } from "../agentUsage";
+import { agentCatalog, appSettings } from "../appData";
 import {
-  agentStatus,
   checkAgentUsage,
   continuePlan,
   exportPlanReport,
-  getSettings,
   launchRun,
   listProjects,
   planOverview,
@@ -130,9 +129,11 @@ export function PlanView({
     reload();
   }, [reload]);
 
-  // The agent menu. Small, stable — fetched once.
+  // The agent menu. Small, stable — fetched once per session, not per mount:
+  // discovery spawns a `--version` per agent, and this view remounts on every
+  // return to the plan.
   useEffect(() => {
-    agentStatus()
+    agentCatalog()
       .then(setAgents)
       .catch(() => {})
       .finally(() => setAgentsLoading(false));
@@ -651,7 +652,7 @@ export function LaunchControl({
 
   useEffect(() => {
     let cancelled = false;
-    getSettings()
+    appSettings()
       .then((s) => {
         if (!cancelled) setDefaultModel(s.default_model);
       })

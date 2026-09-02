@@ -4,7 +4,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { agentStatus, exportTaskReport, planOverview } from "../commands";
+import { agentCatalog } from "../appData";
+import { exportTaskReport, planOverview } from "../commands";
 import { normalizeDisplayText } from "../displayText";
 import type { AgentStatus, PlanView as Plan } from "../types";
 import { ExportButton } from "./ExportButton";
@@ -60,7 +61,7 @@ export function TaskTab({
   }, [reload, nonce]);
 
   useEffect(() => {
-    agentStatus()
+    agentCatalog()
       .then(setAgents)
       .catch(() => {})
       .finally(() => setAgentsLoading(false));

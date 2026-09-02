@@ -11,7 +11,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { agentStatus } from "../commands";
+import { agentCatalog } from "../appData";
 import { onRunEvent } from "../events";
 import type { AgentStatus } from "../types";
 import { RUN_STATUS_ICON, RUN_STATUS_LABEL, isActiveRun } from "../status";
@@ -86,7 +86,7 @@ export function LiveRunView({
 
   // Agent availability drives the command bar's Connected/missing pill.
   useEffect(() => {
-    agentStatus()
+    agentCatalog()
       .then(setAgents)
       .catch(() => {});
   }, []);

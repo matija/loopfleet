@@ -17,7 +17,7 @@
 
 import { useEffect, useState } from "react";
 import { refreshAgentUsage, useAgentUsage } from "../agentUsage";
-import { agentStatus } from "../commands";
+import { refreshAgentCatalog } from "../appData";
 import type { AgentStatus, UsageSnapshot } from "../types";
 import { formatCountdown, formatResetTime, usageIndicator } from "../usage";
 import { AgentIcon } from "./Icon";
@@ -32,7 +32,7 @@ export function AgentStatusPanel() {
 
   useEffect(() => {
     let cancelled = false;
-    agentStatus()
+    refreshAgentCatalog()
       .then((a) => {
         if (cancelled) return;
         setAgents(a);

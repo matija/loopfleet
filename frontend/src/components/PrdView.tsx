@@ -20,10 +20,9 @@
 // that changed nothing reads as an intentional state, not a dead end.
 
 import { useEffect, useMemo, useState } from "react";
+import { agentCatalog, appSettings } from "../appData";
 import {
-  agentStatus,
   exportPlanReport,
-  getSettings,
   planEdit,
   planEditApply,
   planEditDiscard,
@@ -69,7 +68,7 @@ export function PrdView({
   );
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getSettings(), agentStatus()])
+    Promise.all([appSettings(), agentCatalog()])
       .then(([settings, statuses]) => {
         if (cancelled) return;
         const s = statuses.find((a) => a.key === settings.default_agent);
