@@ -29,7 +29,7 @@
  * Every color token below is derived from an upstream theme palette, mapped
  * by the *job* a palette role does rather than by its palette-specific name —
  * Rosé Pine's base/surface/overlay/muted/subtle/text + love/gold/rose/pine/
- * foam/iris, GitHub's canvas-*/fg-*/accent-fg/success-fg/attention-fg/
+ * foam/iris, GitHub's canvas-*, fg-*, accent-fg/success-fg/attention-fg/
  * danger-fg, tokyonight's bg/bg_highlight/fg/fg_dark/comment/blue/green/
  * yellow/red, tairiki's bg/bg_light/bg_light2/fg/fg_dark/fg_dark2/blue/
  * green/yellow/red, Dracula's Background/Foreground/Current Line/Comment/
@@ -107,7 +107,7 @@
  * the dark-variant ink; github-light's selected-row step is a dark mix sized
  * so fg-muted still clears it. Light themes invert the ladder: state steps go
  * *darker* than the field, hairlines and hover washes mix dark ink rather
- * than white, and the --c-border*/--c-shadow* inks flip accordingly — the
+ * than white, and the --c-border* and --c-shadow* inks flip accordingly — the
  * inverted-ladder pattern github-light established and every light block
  * inherits. */
 
