@@ -521,7 +521,9 @@ fn set_project_sandbox_writes(
 /// The plan overview for a project: its plan(s) with a derived `TaskStatus`
 /// overlay per task. Syncs plan + tasks into the store as a side effect (so runs
 /// can bind to them); never edits the frozen plan file.
-#[tauri::command]
+/// Off the main thread (`command(async)`): reads the plan file and re-syncs
+/// every task into the store, so it must not block the webview thread.
+#[tauri::command(async)]
 fn plan_overview(project_id: String, state: State<'_, AppState>) -> Result<Vec<PlanView>, String> {
     let conn = state.db.lock().unwrap();
     let project = get_project(&conn, &project_id)?;
@@ -532,7 +534,8 @@ fn plan_overview(project_id: String, state: State<'_, AppState>) -> Result<Vec<P
 /// unlike `plan_overview` it neither parses tasks nor syncs anything into the
 /// store — it just reads the frozen plan file recorded for the plan and returns
 /// it verbatim, for the UI to render the full PRD on demand.
-#[tauri::command]
+/// Off the main thread (`command(async)`): reads a whole plan file off disk.
+#[tauri::command(async)]
 fn plan_document(plan_id: String, state: State<'_, AppState>) -> Result<String, String> {
     let file_path = {
         let conn = state.db.lock().unwrap();
@@ -2681,7 +2684,9 @@ fn plan_runs(plan_id: String, state: State<'_, AppState>) -> Result<Vec<RunSumma
 
 /// A run's timeline: its iterations as rows, the events that occurred during
 /// each, and each iteration's diff (read-only over the app-owned shadow refs).
-#[tauri::command]
+/// Off the main thread (`command(async)`): builds a diff per iteration, which
+/// is too much work to freeze the webview thread for.
+#[tauri::command(async)]
 fn run_timeline(run_id: String, state: State<'_, AppState>) -> Result<RunTimeline, String> {
     let conn = state.db.lock().unwrap();
     loopfleet_core::run_timeline(&conn, &run_id).map_err(|e| e.to_string())
@@ -2689,7 +2694,15 @@ fn run_timeline(run_id: String, state: State<'_, AppState>) -> Result<RunTimelin
 
 /// The compare view for a task: every run bound to it, side by side, each with
 /// its final-ref cumulative diff (read-only over the app-owned shadow refs).
-#[tauri::command]
+///
+/// Runs off the main thread (`command(async)`): a plain `#[tauri::command]` fn
+/// is dispatched by Tauri as `sync` and executes on the webview's own thread,
+/// so its whole duration is a frozen UI. This one opens the repo and builds a
+/// full libgit2 tree diff — including the serialized patch text — once per
+/// run, which is far too much to hold the UI for: a click that lands while it
+/// is in flight (the "← Back" out of the compare view) would sit unhandled
+/// until it finished.
+#[tauri::command(async)]
 fn compare_task(
     plan_id: String,
     task_anchor: String,
