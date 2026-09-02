@@ -9,8 +9,8 @@
 }
 
 /* Collapses the sidebar column to zero width (toggled by the panel-left
- * button in the strip below, the restore button in the main pane, or ⌘B —
- * see App.tsx). The sidebar itself stays mounted so its scroll position and
+ * button in the strip below, the toolbar's trailing panel-left button, or ⌘B
+ * — see App.tsx). The sidebar itself stays mounted so its scroll position and
  * disclosure state survive the round trip; `.sidebar--hidden` just clips it. */
 .app-shell--sidebar-hidden {
   grid-template-columns: 0 1fr;
@@ -641,29 +641,12 @@
   overflow-y: auto;
 }
 
-/* Mirrors `.sidebar__collapse-btn`: floats over the main pane's top-left
- * corner while the sidebar is collapsed, so it's always there to bring the
- * sidebar back regardless of scroll position. */
-.main__restore-sidebar {
-  position: absolute;
-  top: var(--space-3);
-  left: var(--space-3);
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px; /* tokens-allow: fixed icon-button hit target, off the space/row scale */
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-sm);
-  background: var(--c-surface-2);
-  color: var(--c-text-muted);
-}
-
-.main__restore-sidebar:hover {
-  background: var(--c-surface-hover);
-  color: var(--c-text);
-  border-color: var(--c-border-strong);
+/* With the sidebar collapsed the main pane starts at the window's left edge,
+ * so its toolbar runs under the native traffic lights. Inset it by the same
+ * 76px `.sidebar__top` uses, so the breadcrumb clears them; the toggle that
+ * brings the sidebar back is the toolbar's own trailing panel-left button. */
+.app-shell--sidebar-hidden .toolbar {
+  padding-left: 76px;
 }
 
 /* The run/task/compare views fill the pane so their internal event streams

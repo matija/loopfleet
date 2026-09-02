@@ -19,7 +19,7 @@ import {
   stopRun,
   useRun,
 } from "./commands";
-import { normalizeDisplayText, taskSummary } from "./displayText";
+import { taskSummary } from "./displayText";
 import {
   marksNoTasks,
   planHealth,
@@ -1175,14 +1175,13 @@ export default function App() {
                       filter={projectFilter}
                       nonce={planNonce}
                       activeTaskId={
-                        view.kind === "task"
+                        view.kind === "task" || view.kind === "compare"
                           ? `task:${view.planId}:${view.taskAnchor}`
                           : null
                       }
                       onOpenTask={(t) =>
                         setView({
-                          kind: "task",
-                          projectId: p.id,
+                          kind: "compare",
                           planId: t.planId,
                           taskAnchor: t.taskAnchor,
                           taskText: t.taskText,
@@ -1430,7 +1429,13 @@ export type Crumb = {
 // name/id (set at launch, see `onLaunch`), which is how the `run` case finds
 // its project without a projects lookup. `compare` has no projectId on the
 // view itself, so it best-effort recovers one from a run sharing its task
-// anchor — the compare flow is only reachable from a task with existing runs.
+// anchor; a task opened from the sidebar before it has any runs simply gets
+// the task crumb alone.
+//
+// Task labels are the compact `taskSummary`, not the full text: the strip is
+// one fixed-height row shared with the filter and action slots, so a full
+// task paragraph would crowd everything else out (CSS ellipsis alone still
+// lets the crumb claim the whole row).
 export function crumbsFor(
   view: View,
   projects: Project[],
@@ -1473,7 +1478,7 @@ export function crumbsFor(
       return [
         projectCrumb(view.projectId, p ? repoName(p.repo_path) : "Project"),
         planCrumb(view.projectId),
-        { label: normalizeDisplayText(view.taskText) },
+        { label: taskSummary(view.taskText) },
       ];
     }
     case "run": {
@@ -1482,7 +1487,7 @@ export function crumbsFor(
       return [
         projectCrumb(r.projectId, r.projectName),
         planCrumb(r.projectId),
-        { label: normalizeDisplayText(r.taskText), icon: PlayIcon },
+        { label: taskSummary(r.taskText), icon: PlayIcon },
       ];
     }
     case "compare": {
@@ -1493,7 +1498,7 @@ export function crumbsFor(
         crumbs.push(planCrumb(r.projectId));
       }
       crumbs.push({
-        label: normalizeDisplayText(view.taskText),
+        label: taskSummary(view.taskText),
         icon: DiffIcon,
       });
       return crumbs;

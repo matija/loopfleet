@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { crumbsFor } from "./App";
+import { taskSummary } from "./displayText";
 import { FolderIcon, PlayIcon, DiffIcon } from "./components/Icon";
 import type { ActiveRun } from "./components/RunDock";
 import type { Project } from "./types";
@@ -144,7 +145,7 @@ describe("crumbsFor", () => {
     expect(crumbs).toEqual([{ label: "Compare iterations", icon: DiffIcon }]);
   });
 
-  it("a long task label is passed through untruncated for the caller to truncate", () => {
+  it("a long task label is shortened to the compact summary", () => {
     const longText = "Refactor the run dock so it ".repeat(20).trim();
     const crumbs = crumbsFor(
       {
@@ -158,7 +159,8 @@ describe("crumbsFor", () => {
       runs,
     );
     const taskCrumb = crumbs[crumbs.length - 1];
-    expect(taskCrumb.label).toBe(longText);
-    expect(taskCrumb.label.length).toBeGreaterThan(200);
+    expect(taskCrumb.label).toBe(taskSummary(longText));
+    expect(taskCrumb.label.length).toBeLessThan(100);
+    expect(taskCrumb.label.endsWith("…")).toBe(true);
   });
 });

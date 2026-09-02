@@ -55,9 +55,10 @@ export function AppShell({
   /// Opens the overview view. Backs the pinned Settings row.
   onOpenSettings: () => void;
   /// Whether the sidebar column is collapsed to zero width. App.tsx owns the
-  /// persisted state and the ⌘B shortcut; AppShell just renders the two
-  /// mirrored toggle buttons (one in the strip, one in the main pane) so the
-  /// sidebar is always recoverable.
+  /// persisted state and the ⌘B shortcut. While hidden, the shell insets the
+  /// main pane's toolbar past the traffic lights (see shell.css); the toggle
+  /// back on lives in that toolbar's trailing slot (App.tsx), so the sidebar
+  /// stays recoverable without a button floating over the native buttons.
   sidebarHidden: boolean;
   onToggleSidebar: () => void;
 }) {
@@ -114,21 +115,7 @@ export function AppShell({
           </button>
         </div>
       </aside>
-      <main className="main">
-        {sidebarHidden && (
-          <button
-            type="button"
-            className="main__restore-sidebar"
-            data-tauri-drag-region="false"
-            onClick={onToggleSidebar}
-            title="Show sidebar (⌘B)"
-            aria-label="Show sidebar"
-          >
-            <PanelLeftIcon size={15} />
-          </button>
-        )}
-        {children}
-      </main>
+      <main className="main">{children}</main>
       {dock}
     </div>
   );
