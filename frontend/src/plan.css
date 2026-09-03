@@ -99,7 +99,7 @@
    * the reference's row content plus the hairline below it, and never grows
    * (Story 15). Expanded rows opt out of the fixed band below. */
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   height: calc(var(--row-h) + 1px);
   box-sizing: border-box;
   /* Horizontal padding pulled back out with negative margins so the hover fill
@@ -215,7 +215,7 @@
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
-  padding: 2px var(--space-2);
+  padding: 2px var(--space-1);
   cursor: pointer;
 }
 
@@ -244,7 +244,7 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 /* Reserved for the compare button's full at-rest width ("N runs · compare" —
@@ -254,7 +254,7 @@
   flex: none;
   display: inline-flex;
   justify-content: flex-end;
-  min-width: 116px;
+  min-width: 100px;
 }
 
 /* --- status cell --- */
@@ -268,7 +268,7 @@
    * width is held even at rest, where only the glyph shows, so revealing the
    * label on hover doesn't shift the launch control. */
   box-sizing: border-box;
-  min-width: 104px;
+  min-width: 92px;
   /* Align within the shared control-height band so it lines up with the
    * launch controls beside it. */
   display: inline-flex;
@@ -345,7 +345,10 @@
 }
 
 .task-status__label {
-  font-size: var(--text-sm);
+  /* One step down from the row's text: the label only appears on hover, and
+   * at --text-xs it fits the narrowed status cell without the cell having to
+   * reserve a wider box on every row. */
+  font-size: var(--text-xs);
 }
 
 /* --- launch control (always present, per task) --- */
