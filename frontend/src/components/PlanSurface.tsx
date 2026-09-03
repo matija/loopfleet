@@ -20,6 +20,7 @@ export function PlanSurface({
   onCompare,
   onError,
   toolbarActions,
+  prdFocusNonce,
   pendingArchivePlanId,
   onPendingArchiveHandled,
 }: {
@@ -32,6 +33,10 @@ export function PlanSurface({
   /// The toolbar's action-slot DOM node. The Tasks/PRD toggle portals there
   /// instead of rendering inline.
   toolbarActions: HTMLElement | null;
+  /// Bumped by the sidebar's plan-title click to force the PRD view open for
+  /// the plan just clicked. A counter rather than a flag so clicking the same
+  /// title again after switching back to Tasks still opens the document.
+  prdFocusNonce?: number;
   /// A plan id to jump straight into the archive confirmation for, set by
   /// the command palette's "Archive plan" action. Forces the PRD view open
   /// so PrdView can consume it.
@@ -43,6 +48,10 @@ export function PlanSurface({
   useEffect(() => {
     if (pendingArchivePlanId) setMode("prd");
   }, [pendingArchivePlanId]);
+
+  useEffect(() => {
+    if (prdFocusNonce) setMode("prd");
+  }, [prdFocusNonce]);
 
   const toggle = (
     <div className="plan-toggle" role="tablist" aria-label="Plan views">

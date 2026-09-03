@@ -125,7 +125,7 @@
  * group header: a leading rotating chevron in front of the label text,
  * flipping from → to ↓ via aria-expanded rather than swapping icons. */
 .sidebar__section-label--disclosure,
-.plan-tree__group-label--disclosure {
+.plan-tree__disclosure {
   display: flex;
   align-items: center;
   gap: var(--space-1);
@@ -550,13 +550,51 @@
   color: var(--c-text-faint);
 }
 
-.plan-tree__group-label {
-  padding: var(--space-2) var(--space-3) var(--space-1);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-wide);
+/* Group header: a real row on the same --row-h rhythm as the task rows below
+ * it, not an uppercase caption. Uppercasing a document title ("PRD: Duplicate
+ * detection") mangles it, so the title keeps its own casing and reads as the
+ * object it is. Three slots: the chevron toggles the group, the title opens
+ * the plan as a document, and the trailing archive button appears on
+ * hover/focus — the same reveal as the connection row's trash icon. */
+.plan-tree__group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--row-h);
+  margin-top: var(--space-1);
+  padding-right: var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.plan-tree__group-head:hover {
+  background: var(--c-surface-hover);
+}
+
+.plan-tree__disclosure {
+  flex: none;
+  width: auto;
+  justify-content: center;
+  padding: var(--space-1);
   color: var(--c-text-faint);
+}
+
+.plan-tree__group-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--c-text-muted);
+}
+
+.plan-tree__group-head:hover .plan-tree__group-label {
+  color: var(--c-text);
 }
 
 .plan-tree__group-label-text {
@@ -564,6 +602,26 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Reserved slot: the button is always laid out, only its paint is toggled, so
+ * revealing it on hover can't reflow the title beside it. */
+.plan-tree__archive {
+  flex: none;
+  opacity: 0;
+  pointer-events: none;
+  color: var(--c-text-faint);
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.plan-tree__group-head:is(:hover, :focus-within) .plan-tree__archive,
+.plan-tree__archive:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.plan-tree__archive:hover {
+  color: var(--c-text);
 }
 
 .tree-item {

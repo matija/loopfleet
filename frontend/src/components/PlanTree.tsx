@@ -3,13 +3,20 @@
 // file, each row leading with the derived `TaskStatus` glyph (muted, amber only
 // for needs-review) and a right-aligned run-count badge from `plan_overview`.
 // Clicking a task opens or focuses its tab.
+//
+// A group header is a row like any other, not a caption: the chevron toggles
+// the group, the title itself opens that plan as a document (the pane's PRD
+// view), and a trailing archive button — hover/focus-revealed, the same
+// discipline as the connection row's trash icon — starts the existing archive
+// flow that moves the file into the project's prds/ directory.
 
 import { useEffect, useState } from "react";
 import { planOverview } from "../commands";
 import { taskSummary } from "../displayText";
 import { useSidebarCollapsed } from "../sidebarCollapse";
 import type { PlanView as Plan } from "../types";
-import { ChevronRightIcon } from "./Icon";
+import { IconButton } from "./Button";
+import { ArchiveIcon, ChevronRightIcon } from "./Icon";
 import { STATUS_ICON, STATUS_LABEL } from "./PlanView";
 
 /// What opening a task from the tree needs to push/focus its tab.
@@ -21,6 +28,8 @@ export function PlanTree({
   activeTaskId,
   nonce,
   onOpenTask,
+  onOpenPrd,
+  onArchivePlan,
 }: {
   projectId: string;
   /// The shared sidebar filter — narrows tasks by text, live.
@@ -30,6 +39,11 @@ export function PlanTree({
   /// Bumped to refetch after a launch or accept changes counts/status.
   nonce: number;
   onOpenTask: (task: OpenTask) => void;
+  /// Opens the plan as a document — the pane's PRD view for this project.
+  onOpenPrd: (planId: string) => void;
+  /// Starts the archive flow for a plan (the same one the ⌘K "Archive plan"
+  /// action and PrdView's own Archive button run).
+  onArchivePlan: (planId: string) => void;
 }) {
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +89,8 @@ export function PlanTree({
           tasks={tasks}
           activeTaskId={activeTaskId}
           onOpenTask={onOpenTask}
+          onOpenPrd={onOpenPrd}
+          onArchivePlan={onArchivePlan}
         />
       ))}
     </div>
@@ -86,27 +102,47 @@ function PlanTreeGroup({
   tasks,
   activeTaskId,
   onOpenTask,
+  onOpenPrd,
+  onArchivePlan,
 }: {
   plan: Plan;
   tasks: Plan["tasks"];
   activeTaskId: string | null;
   onOpenTask: (task: OpenTask) => void;
+  onOpenPrd: (planId: string) => void;
+  onArchivePlan: (planId: string) => void;
 }) {
   const [collapsed, toggle] = useSidebarCollapsed(`plan:${plan.plan_id}`);
+  const label = plan.title ?? plan.file_path;
 
   return (
     <div className="plan-tree__group">
-      <button
-        type="button"
-        className="plan-tree__group-label plan-tree__group-label--disclosure"
-        aria-expanded={!collapsed}
-        onClick={toggle}
-      >
-        <ChevronRightIcon size={12} className="disclosure__chevron" />
-        <span className="plan-tree__group-label-text">
-          {plan.title ?? plan.file_path}
-        </span>
-      </button>
+      <div className="plan-tree__group-head">
+        <button
+          type="button"
+          className="plan-tree__disclosure"
+          aria-expanded={!collapsed}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${label}`}
+          onClick={toggle}
+        >
+          <ChevronRightIcon size={12} className="disclosure__chevron" />
+        </button>
+        <button
+          type="button"
+          className="plan-tree__group-label"
+          title={`Open ${label} — ${plan.file_path}`}
+          onClick={() => onOpenPrd(plan.plan_id)}
+        >
+          <span className="plan-tree__group-label-text">{label}</span>
+        </button>
+        <IconButton
+          icon={ArchiveIcon}
+          aria-label={`Archive ${label}`}
+          title="Archive into prds/"
+          className="plan-tree__archive"
+          onClick={() => onArchivePlan(plan.plan_id)}
+        />
+      </div>
       {!collapsed &&
         tasks.map((task) => {
           const id = `task:${plan.plan_id}:${task.anchor}`;

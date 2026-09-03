@@ -167,6 +167,9 @@ export default function App() {
   const [pendingArchivePlanId, setPendingArchivePlanId] = useState<
     string | null
   >(null);
+  // Bumped by clicking a plan title in the sidebar tree: PlanSurface reads it
+  // as "open the PRD view", the document form of the plan just clicked.
+  const [prdFocusNonce, setPrdFocusNonce] = useState(0);
   // The picked palette. Seeded from localStorage rather than the default so a
   // reload doesn't briefly re-render in dark before the stored value lands —
   // the inline script in index.html has already set data-theme to this same
@@ -880,6 +883,13 @@ export default function App() {
   // Jumps to the project's plan, switches to its PRD view, and starts the
   // archive flow for `planId` — the palette's disabled/enabled check already
   // confirmed the plan exists and has no active run.
+  // Opens a plan as a document: selects its project's plan pane and forces the
+  // PRD view. Shared by the sidebar tree's plan-title click.
+  const openPlanPrd = useCallback((projectId: string) => {
+    setSelectedId(projectId);
+    setView({ kind: "plan", projectId });
+    setPrdFocusNonce((n) => n + 1);
+  }, []);
   const paletteArchivePlan = useCallback((projectId: string, planId: string) => {
     setSelectedId(projectId);
     setView({ kind: "plan", projectId });
@@ -1202,6 +1212,10 @@ export default function App() {
                           taskText: t.taskText,
                         })
                       }
+                      onOpenPrd={() => openPlanPrd(p.id)}
+                      onArchivePlan={(planId) =>
+                        paletteArchivePlan(p.id, planId)
+                      }
                     />
                   )}
                 </div>
@@ -1305,6 +1319,7 @@ export default function App() {
               })
             }
             toolbarActions={toolbarActionsEl}
+            prdFocusNonce={prdFocusNonce}
             pendingArchivePlanId={pendingArchivePlanId}
             onPendingArchiveHandled={() => setPendingArchivePlanId(null)}
           />

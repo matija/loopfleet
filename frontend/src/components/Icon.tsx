@@ -305,3 +305,15 @@ export function DocPlusIcon({ size = 26, className }: IconProps) {
     </svg>
   );
 }
+
+// An archive-box glyph: a lidded box, for moving a plan out of the live list
+// and into the project's prds/ directory.
+export function ArchiveIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...defaultProps}>
+      <rect x="3" y="4" width="18" height="4" rx="1" />
+      <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
+      <path d="M10 12h4" />
+    </svg>
+  );
+}
