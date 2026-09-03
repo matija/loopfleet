@@ -40,7 +40,7 @@ this directory are self-contained:
 | Script                   | What it does                                                                                    |
 | ------------------------ | ------------------------------------------------------------------------------------------------ |
 | `build/bump.sh`          | Set (or print) the version across every manifest, and refresh the README download links.         |
-| `build/release.sh`       | Build, notarize, and publish the `aarch64-apple-darwin` release to GitHub.                       |
+| `build/release.sh`       | Bump (optional), commit and push the bump, then build, notarize, and publish the `aarch64-apple-darwin` release to GitHub. |
 | `build/release-intel.sh` | Build and notarize the `x86_64-apple-darwin` bundle, and add it to an *existing* release.         |
 | `release-common.sh`      | Shared helpers (sourced by the release scripts, not run directly).                               |
 
@@ -80,7 +80,8 @@ warns and leaves the links alone. The URLs are built from `GH_REPO`
 Both scripts also require an authenticated `gh` CLI (`gh auth login`), and
 must run on an arm64 macOS host with the relevant Rust target installed.
 `release.sh` additionally refuses to run from a dirty or unpushed tree (a
-release must correspond to a real, pushed commit).
+release must correspond to a real, pushed commit) — which is why, when you
+pass it a version, it commits and pushes the bump for you before building.
 
 ### Generate and store the updater key
 
@@ -113,9 +114,13 @@ is set to `""` for you) — don't set one when generating it.
 A release is two commands, run in order on an arm64 macOS host:
 
 ```sh
-build/release.sh 0.2.0        # bump to 0.2.0, build, notarize, publish aarch64
+build/release.sh 0.2.0        # bump to 0.2.0, commit + push the bump, build, notarize, publish aarch64
 build/release-intel.sh        # build, notarize, add the Intel bundle to the same release
 ```
+
+There is no manual commit between them: `release.sh <version>` commits the
+bump as `chore(release): bump version to <version>` and pushes it, so
+`release-intel.sh` finds the clean, pushed tree it requires.
 
 If you're already on the right version, drop the version argument:
 `build/release.sh` alone builds and publishes the current version. Either
@@ -134,15 +139,21 @@ of the five variables above.
 
 `build/release.sh` then:
 
-1. Runs `tauri build --target aarch64-apple-darwin`, which also builds the
+1. If a version was given, runs `build/bump.sh <version>`, commits exactly the
+   files that script rewrites (`Cargo.toml`, `Cargo.lock`, both
+   `package.json`s, `src-tauri/tauri.conf.json`, `README.md`) as
+   `chore(release): bump version to <version>`, and pushes it. Already at that
+   version, it's a no-op. Use `build/bump.sh` directly to bump without
+   committing or releasing.
+2. Runs `tauri build --target aarch64-apple-darwin`, which also builds the
    frontend (`beforeBuildCommand`). Artifacts land under
    `target/aarch64-apple-darwin/release/bundle/` — the `.app` and updater
    tarball (`.app.tar.gz` + `.sig`) under `macos/`, the `.dmg` under `dmg/`.
-2. Notarizes and staples the `.dmg`.
-3. Writes `latest.json` (Tauri updater manifest) with a `darwin-aarch64`
+3. Notarizes and staples the `.dmg`.
+4. Writes `latest.json` (Tauri updater manifest) with a `darwin-aarch64`
    platform entry pointing at the updater tarball's GitHub release URL,
    signed with the tarball's `.sig`.
-4. Creates the GitHub release at `RELEASE_TAG` (defaulting to the version),
+5. Creates the GitHub release at `RELEASE_TAG` (defaulting to the version),
    replacing it if one already exists, uploading the `.dmg`, the updater
    tarball, and `latest.json`. Release notes are a compare link against the
    previous release on GitHub.
@@ -167,9 +178,10 @@ replace releases, only adds to one. It then:
 Both scripts are safe to just re-run — do that first.
 
 - **`release.sh` fails partway** (build error, failed notarization, network
-  blip during upload): nothing durable has happened until the GitHub release
-  is created near the end. Fix the underlying problem and re-run
-  `build/release.sh` with the same version; if a release at that tag already
+  blip during upload): the version-bump commit is already pushed, but nothing
+  else durable has happened until the GitHub release is created near the end. Fix the underlying problem and re-run
+  `build/release.sh` with the same version (the bump is then a no-op, so no
+  empty commit); if a release at that tag already
   exists (e.g. it got created but a later step failed), the script deletes
   and replaces it rather than erroring.
 - **`release.sh` succeeds but `release-intel.sh` fails or is never run**: the

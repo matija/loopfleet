@@ -101,4 +101,8 @@ echo "Bumped version to $NEW"
 echo
 git -C "$ROOT" --no-pager diff -- Cargo.toml Cargo.lock package.json frontend/package.json src-tauri/tauri.conf.json README.md
 echo
-echo "Next step: review the diff above, then commit the bump (e.g. \`git add -u && git commit -m \"Bump version to $NEW\"\`)."
+# build/release.sh commits and pushes the bump itself, so the manual hint would
+# only be misleading there.
+if [ -z "${BUMP_FROM_RELEASE:-}" ]; then
+  echo "Next step: review the diff above, then commit the bump (e.g. \`git add -u && git commit -m \"chore(release): bump version to $NEW\"\`)."
+fi

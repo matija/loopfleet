@@ -9,9 +9,15 @@
 # the .dmg, writes latest.json for the Tauri updater, and creates (or
 # replaces) the GitHub release at RELEASE_TAG with all three artifacts.
 #
+# When given a version, it bumps every manifest, commits that bump, and pushes
+# it before building, so the published release points at a commit that exists
+# on the remote and no manual `git commit` sits between this script and
+# build/release-intel.sh.
+#
 # Usage:
 #   build/release.sh               # build the current version
-#   build/release.sh <version>     # bump every manifest to <version>, then build
+#   build/release.sh <version>     # bump every manifest to <version>, commit, push, then build
+#   (to bump without releasing, run build/bump.sh <version> on its own)
 #   build/release.sh --preflight   # validate the environment and exit, without building
 #
 set -euo pipefail
@@ -41,11 +47,15 @@ if [ $# -gt 1 ]; then
   exit 1
 fi
 
-# Optional version bump before building, so every manifest stays in sync.
+# Optional version bump before building, so every manifest stays in sync. The
+# bump is committed and pushed straight away: the tree was clean when
+# release-common.sh checked it, so the commit contains the bump and nothing
+# else, and the release below can target the commit it was built from.
 if [ $# -eq 1 ]; then
-  "$ROOT/build/bump.sh" "$1"
+  BUMP_FROM_RELEASE=1 "$ROOT/build/bump.sh" "$1"
   RELEASE_VERSION="$(release_version)"
   RELEASE_TAG="${_release_tag_override:-$RELEASE_VERSION}"
+  commit_version_bump "$RELEASE_VERSION"
 fi
 
 require_macos_target "$TARGET_TRIPLE"

@@ -158,6 +158,46 @@ export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
 
 require_clean_pushed_tree
 
+# Every file build/bump.sh rewrites. The version bump is committed as exactly
+# this set, so a stray edit elsewhere can never ride along in a release commit.
+BUMP_FILES=(
+  Cargo.toml
+  Cargo.lock
+  package.json
+  frontend/package.json
+  src-tauri/tauri.conf.json
+  README.md
+)
+
+# Commits and pushes the version bump written by build/bump.sh. The tree was
+# verified clean and pushed above, so the only changes here are the bump's, and
+# the release can point `gh release create --target` at a commit that exists on
+# the remote. Skipped (as a no-op) when the manifests were already at the
+# requested version.
+commit_version_bump() {
+  local version="$1"
+
+  if git -C "$ROOT" diff --quiet -- "${BUMP_FILES[@]}"; then
+    info "Manifests already at $version; nothing to commit."
+    return 0
+  fi
+
+  step "Committing version bump to $version..."
+  git -C "$ROOT" add -- "${BUMP_FILES[@]}"
+  git -C "$ROOT" commit --quiet -m "chore(release): bump version to $version"
+  ok "Committed $(git -C "$ROOT" rev-parse --short HEAD)"
+
+  if ! git -C "$ROOT" diff --quiet --ignore-submodules HEAD; then
+    err "working tree still has uncommitted changes after the version bump."
+    git -C "$ROOT" status --short >&2
+    exit 1
+  fi
+
+  step "Pushing $(git -C "$ROOT" rev-parse --abbrev-ref HEAD)..."
+  git -C "$ROOT" push --quiet
+  ok "Pushed"
+}
+
 # Runs the full test suite before any build starts. A release built on top
 # of failing checks/tests is worse than no release, so this must pass
 # before we touch signing, notarization, or GitHub.
