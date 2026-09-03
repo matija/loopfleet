@@ -18,10 +18,22 @@
 // raw markdown editor) → Accept writes the file (`plan_edit_apply`) or Discard
 // drops the worktree untouched (`plan_edit_discard`). A failed pass or an edit
 // that changed nothing reads as an intentional state, not a dead end.
+//
+// A document can also be archived — moved into the project's `prds/` directory
+// and re-keyed, out of the live plan list. That flow is the edit flow's local
+// prior art, shrunk to two phases instead of three: `loading` fetches the
+// preview (`archive_plan_preview`), then `confirm` shows it — source path,
+// destination (noting when it will be created), task/run counts, and an
+// editable name field pre-filled from the preview — with Archive disabled
+// while the name fails `validArchiveName`. There is no "running" phase because
+// `archive_plan` itself is a single file move, not a pass to wait out.
 
 import { useEffect, useMemo, useState } from "react";
 import { agentCatalog, appSettings } from "../appData";
+import { validArchiveName } from "../archiveName";
 import {
+  archivePlan,
+  archivePlanPreview,
   exportPlanReport,
   planEdit,
   planEditApply,
@@ -33,11 +45,16 @@ import { diffLines } from "../textDiff";
 import { NoPlanEmptyState } from "./EmptyState";
 import { ExportButton } from "./ExportButton";
 import { Patch } from "./RunTimeline";
-import type { PlanEditProposal, PlanView as Plan } from "../types";
+import type { ArchivePreview, PlanEditProposal, PlanView as Plan } from "../types";
 
 // The edit flow for the one document being edited. `instruct` collects the
 // instruction; `running` is the agent pass; `review` shows the returned diff.
 type Phase = "instruct" | "running" | "review";
+
+// The archive flow for the one document being archived. `loading` fetches the
+// preview; `confirm` shows it alongside the editable name field. No "running"
+// phase — see the file header note.
+type ArchivePhase = "loading" | "confirm";
 
 export function PrdView({
   projectId,
@@ -59,6 +76,18 @@ export function PrdView({
   const [proposal, setProposal] = useState<PlanEditProposal | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // The one document currently in the archive flow (by plan id), its phase,
+  // the fetched preview, the editable name field (pre-filled from the
+  // preview's `proposed_file_name`), and any preview/archive error.
+  const [archivePlanId, setArchivePlanId] = useState<string | null>(null);
+  const [archivePhase, setArchivePhase] = useState<ArchivePhase>("loading");
+  const [archivePreview, setArchivePreview] = useState<ArchivePreview | null>(
+    null,
+  );
+  const [archiveNameField, setArchiveNameField] = useState("");
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [archiveBusy, setArchiveBusy] = useState(false);
 
   // The configured default agent and whether its CLI is installed, so the edit
   // affordance can name it ("Edit with claude") and disable itself when there is
@@ -91,10 +120,19 @@ export function PrdView({
     setEditError(null);
   }
 
+  function resetArchive() {
+    setArchivePlanId(null);
+    setArchivePhase("loading");
+    setArchivePreview(null);
+    setArchiveNameField("");
+    setArchiveError(null);
+  }
+
   function load() {
     setPlans(null);
     setError(null);
     resetEdit();
+    resetArchive();
     let cancelled = false;
     planOverview(projectId)
       .then((ps) => {
@@ -166,6 +204,43 @@ export function PrdView({
     }
   }
 
+  // Open the archive flow for `plan`: fetch the preview, then move to confirm.
+  // A failed fetch stays in `loading` with the error shown in place of the
+  // spinner, so Cancel is still reachable.
+  function startArchive(plan: Plan) {
+    setArchivePlanId(plan.plan_id);
+    setArchivePhase("loading");
+    setArchivePreview(null);
+    setArchiveNameField("");
+    setArchiveError(null);
+    archivePlanPreview(plan.plan_id)
+      .then((p) => {
+        setArchivePreview(p);
+        setArchiveNameField(p.proposed_file_name);
+        setArchivePhase("confirm");
+      })
+      .catch((e) => setArchiveError(String(e)));
+  }
+
+  // Archive: move the file and re-key the plan, then reload so it drops out
+  // of the live list.
+  async function confirmArchive() {
+    if (!archivePlanId) return;
+    setArchiveBusy(true);
+    setArchiveError(null);
+    try {
+      await archivePlan(archivePlanId, archiveNameField.trim());
+      load();
+    } catch (e) {
+      setArchiveError(String(e));
+    } finally {
+      setArchiveBusy(false);
+    }
+  }
+
+  const archiveNameError =
+    archivePhase === "confirm" ? validArchiveName(archiveNameField.trim()) : null;
+
   // The returned edit as a diff, computed only in review.
   const review = useMemo(
     () =>
@@ -178,28 +253,55 @@ export function PrdView({
   if (plans.length === 0) return <NoPlanEmptyState />;
 
   const editLabel = agent ? `Edit with ${agent.label}` : "Edit";
-  // The affordance is enabled only when nothing else is being edited and the
-  // default agent is installed.
-  const canStart = agent?.ready === true && editPlanId === null && !busy;
+  // The affordances are enabled only when nothing else is being edited or
+  // archived (in this doc or another) — one flow at a time — and, for Edit,
+  // the default agent is installed.
+  const anyFlowOpen = editPlanId !== null || archivePlanId !== null;
+  const canStart = agent?.ready === true && !anyFlowOpen && !busy;
   const editDisabledTitle = !agent
     ? undefined
     : !agent.ready
       ? `No installed default agent to edit with — set one in Settings`
-      : editPlanId !== null
+      : anyFlowOpen
         ? "Finish the current edit first"
         : undefined;
+  const canStartArchive = !anyFlowOpen && !archiveBusy;
+  const archiveDisabledTitle = anyFlowOpen
+    ? "Finish the current edit first"
+    : undefined;
 
   return (
     <div className="prd">
       {plans.map((plan) => {
         const editing = editPlanId === plan.plan_id;
+        const archiving = archivePlanId === plan.plan_id;
         const noChange =
           proposal !== null && proposal.original === proposal.proposed;
         return (
           <article className="prd-doc" key={plan.plan_id}>
             <header className="prd-doc__head">
               <span className="prd-doc__path">{plan.file_path}</span>
-              {editing ? (
+              {archiving ? (
+                <div className="prd-doc__actions">
+                  <button
+                    className="btn btn--secondary"
+                    onClick={resetArchive}
+                    disabled={archiveBusy}
+                  >
+                    Cancel
+                  </button>
+                  {archivePhase === "confirm" && (
+                    <button
+                      className="btn btn--primary"
+                      onClick={confirmArchive}
+                      disabled={archiveBusy || archiveNameError !== null}
+                      title={archiveNameError ?? undefined}
+                    >
+                      {archiveBusy ? "Archiving…" : "Archive"}
+                    </button>
+                  )}
+                </div>
+              ) : editing ? (
                 <div className="prd-doc__actions">
                   {phase === "instruct" && (
                     <>
@@ -270,11 +372,64 @@ export function PrdView({
                   >
                     {editLabel}
                   </button>
+                  <button
+                    className="btn btn--secondary prd-doc__archive"
+                    onClick={() => startArchive(plan)}
+                    disabled={!canStartArchive}
+                    title={archiveDisabledTitle}
+                  >
+                    Archive
+                  </button>
                 </div>
               )}
             </header>
 
-            {editing && phase === "instruct" ? (
+            {archiving && archivePhase === "loading" ? (
+              <div className="prd-doc__archive-body">
+                {archiveError ? (
+                  <p className="panel__error">{archiveError}</p>
+                ) : (
+                  <p className="prd-doc__archive-loading">
+                    Loading archive details…
+                  </p>
+                )}
+              </div>
+            ) : archiving && archivePhase === "confirm" && archivePreview ? (
+              <div className="prd-doc__archive-body">
+                <dl className="prd-doc__archive-facts">
+                  <dt>Source</dt>
+                  <dd>{archivePreview.file_path}</dd>
+                  <dt>Destination</dt>
+                  <dd>
+                    {archivePreview.destination_dir}
+                    {!archivePreview.destination_exists &&
+                      " (will be created)"}
+                  </dd>
+                  <dt>Carries along</dt>
+                  <dd>
+                    {archivePreview.task_count}{" "}
+                    {archivePreview.task_count === 1 ? "task" : "tasks"},{" "}
+                    {archivePreview.run_count}{" "}
+                    {archivePreview.run_count === 1 ? "run" : "runs"}
+                  </dd>
+                </dl>
+                <label className="prd-doc__archive-name">
+                  <span>File name</span>
+                  <input
+                    type="text"
+                    value={archiveNameField}
+                    onChange={(e) => setArchiveNameField(e.target.value)}
+                    disabled={archiveBusy}
+                    spellCheck={false}
+                    aria-label="Archive file name"
+                  />
+                </label>
+                {archiveNameError && (
+                  <p className="panel__error">{archiveNameError}</p>
+                )}
+                {archiveError && <p className="panel__error">{archiveError}</p>}
+              </div>
+            ) : editing && phase === "instruct" ? (
               <div className="prd-doc__instruct">
                 <textarea
                   className="prd-doc__instruction"

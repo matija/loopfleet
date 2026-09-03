@@ -169,6 +169,66 @@
   color: var(--c-text-muted);
 }
 
+/* Archive step: a read-only summary of what will move, plus the editable
+ * destination name. No "running" state — see the file header note in
+ * PrdView.tsx — so this is the confirmation's only body. */
+.prd-doc__archive-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.prd-doc__archive-loading {
+  margin: 0;
+  color: var(--c-text-muted);
+  font-size: var(--text-sm);
+}
+
+.prd-doc__archive-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.prd-doc__archive-facts dt {
+  color: var(--c-text-muted);
+}
+
+.prd-doc__archive-facts dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  color: var(--c-text);
+  overflow-wrap: anywhere;
+}
+
+.prd-doc__archive-name {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: flex-start;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
+}
+
+.prd-doc__archive-name input {
+  width: 24em;
+  box-sizing: border-box;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-2);
+  color: var(--c-text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.prd-doc__archive-name input:focus {
+  outline: none;
+  border-color: var(--c-accent);
+}
+
 /* A measured column so long PRD prose stays readable — capped well under the
  * panel width so lines don't run past a comfortable reading length. */
 .prd-doc__body {
