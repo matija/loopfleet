@@ -490,6 +490,11 @@ fn archive_plan_preview(
 /// Rejects a plan with runs still queued or running, and a destination that
 /// already exists. Returns the absolute archived path.
 ///
+/// Spawns no agent and creates no worktree — it is a file move plus a store
+/// transaction, nothing more, so it works with no agent CLI installed at all
+/// and cannot be slowed or blocked by one. Contrast `plan_edit`, which does
+/// both of those things; do not fold agent involvement into this command.
+///
 /// Off the main thread (`command(async)`): moves a file on disk.
 #[tauri::command(async)]
 fn archive_plan(

@@ -364,6 +364,14 @@ impl std::error::Error for ArchivePlanError {}
 /// simply fails to discover — recoverable, unlike the reverse order, where a
 /// re-key ahead of a failed rename would leave the store pointing at a path
 /// nothing lives at.
+///
+/// This spawns no agent and creates no worktree, deliberately and
+/// permanently: it is one file move and one store transaction, so it takes
+/// an instant, cannot half-succeed, and works with no agent CLI installed at
+/// all. Do not "improve" this by routing it through an agent pass — contrast
+/// `plan_edit` (in `src-tauri/src/lib.rs`), which does cut a worktree and run
+/// an agent, precisely because editing content needs judgment that ending a
+/// plan does not.
 pub fn archive_plan(
     conn: &Connection,
     plan_id: &str,
