@@ -298,6 +298,103 @@ pub fn archive_plan_preview(
     })
 }
 
+/// Why an archive write was rejected.
+#[derive(Debug)]
+pub enum ArchivePlanError {
+    /// The proposed file name failed [`valid_archive_name`].
+    InvalidName(String),
+    /// No plan is synced under this id.
+    UnknownPlan(String),
+    /// The plan still has a run `queued` or `running` — archiving would move
+    /// the file out from under it.
+    ActiveRuns(String),
+    /// A file already sits at the destination path; archiving never
+    /// overwrites.
+    DestinationExists(String),
+    /// Creating `prds/`, moving the file, or re-reading its parent failed.
+    Io(std::io::Error),
+    /// Reading or writing the plan's stored state failed.
+    Store(rusqlite::Error),
+}
+
+impl std::fmt::Display for ArchivePlanError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ArchivePlanError::InvalidName(msg) => write!(f, "invalid archive name: {msg}"),
+            ArchivePlanError::UnknownPlan(id) => write!(f, "unknown plan: {id}"),
+            ArchivePlanError::ActiveRuns(id) => {
+                write!(f, "plan {id} has runs still queued or running")
+            }
+            ArchivePlanError::DestinationExists(path) => {
+                write!(f, "archive destination already exists: {path}")
+            }
+            ArchivePlanError::Io(e) => write!(f, "moving plan file: {e}"),
+            ArchivePlanError::Store(e) => write!(f, "updating plan store state: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for ArchivePlanError {}
+
+/// Move `plan_id`'s file into `<repo>/prds/<file_name>` and re-key the plan's
+/// store row to the new path, returning the absolute archived path.
+///
+/// `file_name` is validated with [`valid_archive_name`] before anything else
+/// runs, since it is untrusted input that ends up in a filesystem path. A
+/// plan with a run still `queued` or `running` is rejected outright — the
+/// file must not move out from under an in-flight run — and so is a
+/// destination that already exists, since archiving never overwrites.
+///
+/// The file is renamed *before* the store is re-keyed: a failed rename
+/// leaves the store pointing at a file that is still exactly where it was,
+/// consistent with disk. A failed re-key after a successful rename leaves a
+/// moved file the store doesn't know about yet, which the next overview sync
+/// simply fails to discover — recoverable, unlike the reverse order, where a
+/// re-key ahead of a failed rename would leave the store pointing at a path
+/// nothing lives at.
+pub fn archive_plan(
+    conn: &Connection,
+    plan_id: &str,
+    file_name: &str,
+) -> Result<String, ArchivePlanError> {
+    valid_archive_name(file_name).map_err(ArchivePlanError::InvalidName)?;
+
+    let file_path = loopfleet_store::plan_file_path(conn, plan_id)
+        .map_err(ArchivePlanError::Store)?
+        .ok_or_else(|| ArchivePlanError::UnknownPlan(plan_id.to_string()))?;
+
+    if loopfleet_store::has_active_runs_for_plan(conn, plan_id).map_err(ArchivePlanError::Store)? {
+        return Err(ArchivePlanError::ActiveRuns(plan_id.to_string()));
+    }
+
+    let project_id = loopfleet_store::project_id_for_plan(conn, plan_id)
+        .map_err(ArchivePlanError::Store)?
+        .ok_or_else(|| ArchivePlanError::UnknownPlan(plan_id.to_string()))?;
+
+    let source = Path::new(&file_path);
+    let destination_dir = source
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("prds");
+    let destination = destination_dir.join(file_name);
+
+    if destination.exists() {
+        return Err(ArchivePlanError::DestinationExists(
+            destination.to_string_lossy().into_owned(),
+        ));
+    }
+
+    fs::create_dir_all(&destination_dir).map_err(ArchivePlanError::Io)?;
+    fs::rename(source, &destination).map_err(ArchivePlanError::Io)?;
+
+    let new_path = destination.to_string_lossy().into_owned();
+    let new_id = loopfleet_store::plan_id(&project_id, &new_path);
+    loopfleet_store::rekey_plan(conn, plan_id, &new_id, &new_path)
+        .map_err(ArchivePlanError::Store)?;
+
+    Ok(new_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -648,5 +745,107 @@ mod tests {
             archive_plan_preview(&conn, "nope"),
             Err(ArchivePreviewError::UnknownPlan(_))
         ));
+    }
+
+    #[test]
+    fn archive_plan_moves_the_file_and_rekeys_the_store() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let (pid, dir) = synced_plan(&conn, "# Quiet Cockpit\n\n- [ ] do the thing\n");
+        loopfleet_store::upsert_task(&conn, &pid, "do the thing", 3, "Do the thing", false)
+            .unwrap();
+
+        let archived_path = archive_plan(&conn, &pid, "quiet-cockpit.md").unwrap();
+
+        let expected = dir.path().join("prds/quiet-cockpit.md");
+        assert_eq!(archived_path, expected.to_string_lossy());
+        assert!(expected.is_file());
+        assert!(!dir.path().join("PRD.md").exists());
+
+        let new_id = loopfleet_store::plan_id("proj", &archived_path);
+        assert_eq!(
+            loopfleet_store::plan_file_path(&conn, &new_id).unwrap(),
+            Some(archived_path)
+        );
+        assert_eq!(loopfleet_store::plan_file_path(&conn, &pid).unwrap(), None);
+        assert_eq!(
+            loopfleet_store::task_count_for_plan(&conn, &new_id).unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn archive_plan_creates_the_prds_dir_when_absent() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let (pid, dir) = synced_plan(&conn, "# Quiet Cockpit\n");
+        assert!(!dir.path().join("prds").exists());
+
+        archive_plan(&conn, &pid, "quiet-cockpit.md").unwrap();
+
+        assert!(dir.path().join("prds").is_dir());
+    }
+
+    #[test]
+    fn archive_plan_rejects_an_invalid_name() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let (pid, _dir) = synced_plan(&conn, "# Quiet Cockpit\n");
+
+        let err = archive_plan(&conn, &pid, "Quiet Cockpit.md").unwrap_err();
+        assert!(matches!(err, ArchivePlanError::InvalidName(_)));
+    }
+
+    #[test]
+    fn archive_plan_rejects_an_unknown_plan() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let err = archive_plan(&conn, "nope", "quiet-cockpit.md").unwrap_err();
+        assert!(matches!(err, ArchivePlanError::UnknownPlan(_)));
+    }
+
+    #[test]
+    fn archive_plan_rejects_a_plan_with_active_runs() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let (pid, _dir) = synced_plan(&conn, "# Quiet Cockpit\n\n- [ ] do the thing\n");
+        loopfleet_store::upsert_task(&conn, &pid, "do the thing", 3, "Do the thing", false)
+            .unwrap();
+        loopfleet_store::insert_run(
+            &conn,
+            &loopfleet_store::NewRun {
+                id: "run-1".into(),
+                plan_id: pid.clone(),
+                task_anchor: "do the thing".into(),
+                agent: "claude".into(),
+                model: None,
+                worktree_path: "/wt".into(),
+                branch: "agent/x".into(),
+                sb_profile: "/p.sb".into(),
+                progress_path: "/prog.md".into(),
+                max_iterations: 1,
+                status: "running".into(),
+            },
+        )
+        .unwrap();
+
+        let err = archive_plan(&conn, &pid, "quiet-cockpit.md").unwrap_err();
+        assert!(matches!(err, ArchivePlanError::ActiveRuns(_)));
+        // Nothing moved.
+        assert!(loopfleet_store::plan_file_path(&conn, &pid)
+            .unwrap()
+            .is_some());
+    }
+
+    #[test]
+    fn archive_plan_rejects_an_existing_destination() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let (pid, dir) = synced_plan(&conn, "# Quiet Cockpit\n");
+        std::fs::create_dir(dir.path().join("prds")).unwrap();
+        std::fs::write(dir.path().join("prds/quiet-cockpit.md"), "existing").unwrap();
+
+        let err = archive_plan(&conn, &pid, "quiet-cockpit.md").unwrap_err();
+        assert!(matches!(err, ArchivePlanError::DestinationExists(_)));
+        // Source untouched, destination untouched.
+        assert!(dir.path().join("PRD.md").exists());
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("prds/quiet-cockpit.md")).unwrap(),
+            "existing"
+        );
     }
 }

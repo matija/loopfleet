@@ -485,6 +485,22 @@ fn archive_plan_preview(
     loopfleet_core::archive_plan_preview(&conn, &plan_id).map_err(|e| e.to_string())
 }
 
+/// Archives a plan: validates `file_name`, moves the plan file into
+/// `<repo>/prds/`, and re-keys the plan's store row to the new path.
+/// Rejects a plan with runs still queued or running, and a destination that
+/// already exists. Returns the absolute archived path.
+///
+/// Off the main thread (`command(async)`): moves a file on disk.
+#[tauri::command(async)]
+fn archive_plan(
+    plan_id: String,
+    file_name: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let conn = state.db.lock().unwrap();
+    loopfleet_core::archive_plan(&conn, &plan_id, &file_name).map_err(|e| e.to_string())
+}
+
 /// The global app settings (default agent, default iteration count, concurrency
 /// cap, worktree retention). Unset fields fall back to code defaults.
 #[tauri::command]
@@ -3253,6 +3269,7 @@ pub fn run() {
             remove_project,
             project_removal_preview,
             archive_plan_preview,
+            archive_plan,
             agent_status,
             agent_usage,
             check_agent_usage,

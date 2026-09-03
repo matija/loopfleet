@@ -31,8 +31,8 @@ pub mod timeline;
 pub mod usage;
 pub use adapter::{AdapterError, AgentAdapter, RunHandle, RunSpec, SessionHandle, SessionSeed};
 pub use archive::{
-    archive_plan_preview, proposed_archive_name, valid_archive_name, ArchivePlanPreview,
-    ArchivePreviewError,
+    archive_plan, archive_plan_preview, proposed_archive_name, valid_archive_name,
+    ArchivePlanError, ArchivePlanPreview, ArchivePreviewError,
 };
 pub use autopilot::{should_auto_merge, AutoMergeBlockedReason, AutoMergeDecision};
 pub use commit_message::compose_commit_message;
