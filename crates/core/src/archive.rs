@@ -148,6 +148,48 @@ fn is_taken(candidate: &str, taken: &[String]) -> bool {
     taken.iter().any(|name| name.to_lowercase() == candidate)
 }
 
+/// Validates `name` as an archive file name: a `.md` file made of lowercase
+/// alphanumerics and single interior hyphens, nothing else.
+///
+/// The name is user-editable and ends up in a filesystem path, so it is
+/// untrusted input — this is the check both the archive write path and the
+/// frontend's name field run before letting the name through. Each rejection
+/// names the specific thing wrong with the input, since a generic "invalid
+/// name" leaves the user guessing which character to fix.
+pub fn valid_archive_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("name is empty".to_string());
+    }
+    if name.contains('/') || name.contains('\\') {
+        return Err("name contains a path separator".to_string());
+    }
+    if name.contains("..") {
+        return Err("name contains \"..\"".to_string());
+    }
+    let Some(stem) = name.strip_suffix(".md") else {
+        return Err("name must end in \".md\"".to_string());
+    };
+    if stem.is_empty() {
+        return Err("name is empty".to_string());
+    }
+    if stem.starts_with('-') {
+        return Err("name starts with a hyphen".to_string());
+    }
+    if stem.ends_with('-') {
+        return Err("name ends with a hyphen".to_string());
+    }
+    if stem.contains("--") {
+        return Err("name contains consecutive hyphens".to_string());
+    }
+    if let Some(c) = stem
+        .chars()
+        .find(|c| !(c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '-'))
+    {
+        return Err(format!("name contains an invalid character: {c:?}"));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,6 +367,96 @@ mod tests {
         assert_eq!(
             proposed_archive_name(Some("Quiet Cockpit"), &taken),
             "quiet-cockpit.md"
+        );
+    }
+
+    #[test]
+    fn accepts_names_produced_by_proposed_archive_name() {
+        assert!(valid_archive_name("quiet-cockpit.md").is_ok());
+        assert!(valid_archive_name("plan.md").is_ok());
+        assert!(valid_archive_name("plan-2.md").is_ok());
+        assert!(valid_archive_name("a.md").is_ok());
+        assert!(valid_archive_name("a1-b2.md").is_ok());
+    }
+
+    #[test]
+    fn rejects_the_empty_string() {
+        assert_eq!(valid_archive_name(""), Err("name is empty".to_string()));
+    }
+
+    #[test]
+    fn rejects_a_path_separator() {
+        assert_eq!(
+            valid_archive_name("sub/dir.md"),
+            Err("name contains a path separator".to_string())
+        );
+        assert_eq!(
+            valid_archive_name("sub\\dir.md"),
+            Err("name contains a path separator".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_dot_dot() {
+        assert_eq!(
+            valid_archive_name("../etc.md"),
+            Err("name contains a path separator".to_string())
+        );
+        assert_eq!(
+            valid_archive_name("..md"),
+            Err("name contains \"..\"".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_a_missing_or_wrong_extension() {
+        assert_eq!(
+            valid_archive_name("plan"),
+            Err("name must end in \".md\"".to_string())
+        );
+        assert_eq!(
+            valid_archive_name("plan.txt"),
+            Err("name must end in \".md\"".to_string())
+        );
+        assert_eq!(
+            valid_archive_name(".md"),
+            Err("name is empty".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_a_leading_or_trailing_hyphen() {
+        assert_eq!(
+            valid_archive_name("-plan.md"),
+            Err("name starts with a hyphen".to_string())
+        );
+        assert_eq!(
+            valid_archive_name("plan-.md"),
+            Err("name ends with a hyphen".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_consecutive_hyphens() {
+        assert_eq!(
+            valid_archive_name("quiet--cockpit.md"),
+            Err("name contains consecutive hyphens".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_uppercase_and_other_invalid_characters() {
+        assert_eq!(
+            valid_archive_name("Quiet-Cockpit.md"),
+            Err("name contains an invalid character: 'Q'".to_string())
+        );
+        assert_eq!(
+            valid_archive_name("quiet_cockpit.md"),
+            Err("name contains an invalid character: '_'".to_string())
+        );
+        assert_eq!(
+            valid_archive_name("quiet cockpit.md"),
+            Err("name contains an invalid character: ' '".to_string())
         );
     }
 }
