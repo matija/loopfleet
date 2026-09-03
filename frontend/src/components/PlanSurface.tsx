@@ -1,7 +1,8 @@
 // The selected project's plan pane. It hosts two views of the same plan behind a
 // segmented toggle: "Tasks" — the parsed checklist with per-task launch controls
-// (PlanView) plus the sandbox overrides — and "PRD" — the plan file rendered as a
-// document (PrdView). The toggle is local to the pane; switching views never
+// (PlanView) plus the sandbox overrides, which sit below it as a disclosure
+// that opens closed (SandboxOverrides) — and "PRD" — the plan file rendered as
+// a document (PrdView). The toggle is local to the pane; switching views never
 // refetches projects or changes the app-level route.
 
 import { useState } from "react";
