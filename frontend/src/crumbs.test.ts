@@ -11,6 +11,12 @@ const project: Project = {
   plan_convention: "prd",
 };
 
+const otherProject: Project = {
+  id: "proj-2",
+  repo_path: "/home/dev/repos/atlas",
+  plan_convention: "prd",
+};
+
 const projects: Project[] = [project];
 
 const run: ActiveRun = {
@@ -143,6 +149,56 @@ describe("crumbsFor", () => {
       runs,
     );
     expect(crumbs).toEqual([{ label: "Compare iterations", icon: DiffIcon }]);
+  });
+
+  it("project crumb: no switcher menu when there is nothing to switch to", () => {
+    const crumbs = crumbsFor(
+      { kind: "plan", projectId: "proj-1" },
+      projects,
+      runs,
+      () => {},
+    );
+    expect(crumbs[0].menu).toBeUndefined();
+  });
+
+  it("project crumb: the switcher lists every project, marking the open one", () => {
+    let selected: string | undefined;
+    const crumbs = crumbsFor(
+      { kind: "plan", projectId: "proj-1" },
+      [project, otherProject],
+      runs,
+      (id) => {
+        selected = id;
+      },
+    );
+    const menu = crumbs[0].menu;
+    expect(menu?.currentId).toBe("proj-1");
+    expect(menu?.options).toEqual([
+      { id: "proj-1", label: "loopfleet", hint: "/home/dev/repos" },
+      { id: "proj-2", label: "atlas", hint: "/home/dev/repos" },
+    ]);
+    menu?.onSelect("proj-2");
+    expect(selected).toBe("proj-2");
+  });
+
+  it("project crumb: a run's crumb carries the switcher too", () => {
+    const crumbs = crumbsFor(
+      { kind: "run", runId: "run-1" },
+      [project, otherProject],
+      runs,
+      () => {},
+    );
+    expect(crumbs[0].menu?.options).toHaveLength(2);
+    expect(crumbs[0].menu?.currentId).toBe("proj-1");
+  });
+
+  it("project crumb: no switcher without an onSelectProject handler", () => {
+    const crumbs = crumbsFor(
+      { kind: "plan", projectId: "proj-1" },
+      [project, otherProject],
+      runs,
+    );
+    expect(crumbs[0].menu).toBeUndefined();
   });
 
   it("a long task label is shortened to the compact summary", () => {

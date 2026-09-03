@@ -60,6 +60,7 @@ import { CompareView } from "./components/CompareView";
 import { Toasts, useToasts } from "./components/Toasts";
 import { UpdateNotice, useAppUpdater } from "./components/UpdateNotice";
 import { Toolbar } from "./components/Toolbar";
+import { CrumbMenu, type CrumbMenuOption } from "./components/CrumbMenu";
 import { Button, IconButton } from "./components/Button";
 import { Popover } from "./components/Popover";
 import {
@@ -1423,6 +1424,15 @@ export type Crumb = {
   label: string;
   icon?: ComponentType<IconProps>;
   onClick?: () => void;
+  /// Set on the project crumb: renders it as a menu listing every registered
+  /// project instead of a plain link back to this one, so another project is
+  /// reachable with the sidebar hidden (see CrumbMenu.tsx). `onClick` still
+  /// applies when there's nothing to switch to (a single project registered).
+  menu?: {
+    options: CrumbMenuOption[];
+    currentId?: string;
+    onSelect: (id: string) => void;
+  };
 };
 
 // Pure breadcrumb model for the active view. Runs carry their own project
@@ -1443,14 +1453,25 @@ export function crumbsFor(
   onSelectProject?: (projectId: string) => void,
 ): Crumb[] {
   function projectCrumb(projectId: string | undefined, label: string): Crumb {
-    return {
-      label,
-      icon: FolderIcon,
-      onClick:
-        projectId && onSelectProject
-          ? () => onSelectProject(projectId)
-          : undefined,
-    };
+    const onClick =
+      projectId && onSelectProject
+        ? () => onSelectProject(projectId)
+        : undefined;
+    // The switcher needs somewhere to switch to: with one project registered
+    // (or no handler to switch with) the crumb stays the plain link it was.
+    const menu =
+      onSelectProject && projects.length > 1
+        ? {
+            options: projects.map((p) => ({
+              id: p.id,
+              label: repoName(p.repo_path),
+              hint: parentPath(p.repo_path),
+            })),
+            currentId: projectId,
+            onSelect: onSelectProject,
+          }
+        : undefined;
+    return { label, icon: FolderIcon, onClick, menu };
   }
 
   function planCrumb(projectId: string | undefined): Crumb {
@@ -1507,8 +1528,9 @@ export function crumbsFor(
 }
 
 // Renders a Crumb[] as `--text-base` muted segments joined by dim "/"
-// separators, with the final (current) segment in `--c-text`. Non-final
-// segments with an `onClick` are buttons; everything else is inert text.
+// separators, with the final (current) segment in `--c-text`. A segment with
+// a `menu` (the project crumb) becomes a switcher; other non-final segments
+// with an `onClick` are buttons; everything else is inert text.
 function Breadcrumb({ crumbs }: { crumbs: Crumb[] }) {
   return (
     <>
@@ -1524,7 +1546,16 @@ function Breadcrumb({ crumbs }: { crumbs: Crumb[] }) {
         return (
           <span className="toolbar__crumb-group" key={i}>
             {i > 0 && <span className="toolbar__crumb-sep">/</span>}
-            {!isLast && c.onClick ? (
+            {c.menu ? (
+              <CrumbMenu
+                label={c.label}
+                icon={c.icon}
+                options={c.menu.options}
+                currentId={c.menu.currentId}
+                onSelect={c.menu.onSelect}
+                aria-label={`${c.label} — switch project`}
+              />
+            ) : !isLast && c.onClick ? (
               <button type="button" className="toolbar__crumb" onClick={c.onClick}>
                 {content}
               </button>

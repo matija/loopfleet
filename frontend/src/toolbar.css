@@ -144,6 +144,90 @@ button.toolbar__crumb:hover {
   flex: none;
 }
 
+/* The project crumb's switcher (CrumbMenu.tsx). Reads as the same quiet crumb
+ * text at rest — only the chevron marks it as openable — and picks up a
+ * hairline fill while open so the menu's anchor stays obvious. */
+.toolbar__crumb--menu {
+  padding: 0 var(--space-1);
+  margin-left: calc(-1 * var(--space-1));
+  border-radius: var(--radius-sm);
+}
+
+.toolbar__crumb--menu:hover,
+.toolbar__crumb--menu[aria-expanded="true"] {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.toolbar__crumb-chevron {
+  flex: none;
+  color: var(--c-text-faint);
+}
+
+/* The menu panel: rows span the panel edge-to-edge like the palette's, so the
+ * floating shell keeps only the hairline padding around them. */
+.crumb-menu {
+  padding: var(--space-1);
+  max-width: 380px; /* tokens-allow: menu measure, keeps long parent paths from stretching the panel */
+}
+
+.crumb-menu__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 280px; /* tokens-allow: menu scroll cap, matches the select listbox */
+  overflow-y: auto;
+}
+
+.crumb-menu__option {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--row-h);
+  padding: 0 var(--space-2);
+  font: inherit;
+  font-size: var(--text-base);
+  text-align: left;
+  color: var(--c-text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.crumb-menu__option:hover,
+.crumb-menu__option:focus-visible {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+  outline: none;
+}
+
+/* The project already open. Marked by weight rather than a fill, so the
+ * hover/focus fill above still reads on top of it. */
+.crumb-menu__option[aria-current="true"] {
+  color: var(--c-text);
+  font-weight: 600;
+}
+
+.crumb-menu__label {
+  flex: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crumb-menu__hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--c-text-faint);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* --- toolbar buttons ---
  * Shared vocabulary for toolbar-class actions (Button.tsx): a hairline pill
  * at --control-h-lg, transparent until hovered so the strip stays quiet at
