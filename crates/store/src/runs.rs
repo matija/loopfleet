@@ -415,6 +415,17 @@ pub fn has_active_runs_for_plan(conn: &Connection, plan_id: &str) -> rusqlite::R
     )
 }
 
+/// How many runs, of any status, are bound to `plan_id` — the run count an
+/// archive confirmation shows.
+pub fn run_count_for_plan(conn: &Connection, plan_id: &str) -> rusqlite::Result<usize> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM runs WHERE plan_id = ?1",
+        [plan_id],
+        |r| r.get::<_, i64>(0),
+    )
+    .map(|n| n as usize)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -669,6 +680,24 @@ mod tests {
         insert_run(&conn, &new_run("r2", &pid2, "task b", "queued")).unwrap();
         assert!(!has_active_runs_for_plan(&conn, &pid).unwrap());
         assert!(has_active_runs_for_plan(&conn, &pid2).unwrap());
+    }
+
+    #[test]
+    fn run_count_for_plan_counts_regardless_of_status_and_is_scoped() {
+        let conn = crate::open(":memory:").unwrap();
+        let pid = seed(&conn);
+        let pid2 = crate::plan_id("p", "OTHER.md");
+        crate::upsert_plan(&conn, &pid2, "p", "OTHER.md").unwrap();
+        crate::upsert_task(&conn, &pid2, "task b", 1, "Task B", false).unwrap();
+
+        assert_eq!(run_count_for_plan(&conn, &pid).unwrap(), 0);
+
+        insert_run(&conn, &new_run("r1", &pid, "task a", "completed")).unwrap();
+        insert_run(&conn, &new_run("r2", &pid, "task a", "queued")).unwrap();
+        insert_run(&conn, &new_run("r3", &pid2, "task b", "running")).unwrap();
+
+        assert_eq!(run_count_for_plan(&conn, &pid).unwrap(), 2);
+        assert_eq!(run_count_for_plan(&conn, &pid2).unwrap(), 1);
     }
 
     #[test]

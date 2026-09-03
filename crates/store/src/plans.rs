@@ -248,6 +248,19 @@ pub fn rekey_plan(
     }
 }
 
+/// How many tasks are currently present in `plan_id` — the task count an
+/// archive confirmation shows. Rows a prior sync marked absent (see
+/// [`mark_tasks_absent`]) don't count: they belonged to the file's past
+/// contents, not what a reader archiving it today would see.
+pub fn task_count_for_plan(conn: &Connection, plan_id: &str) -> rusqlite::Result<usize> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM tasks WHERE plan_id = ?1 AND present = 1",
+        params![plan_id],
+        |r| r.get::<_, i64>(0),
+    )
+    .map(|n| n as usize)
+}
+
 /// One task row, read back by its `(plan_id, task_anchor)` key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskRow {
@@ -323,6 +336,20 @@ mod tests {
             Some("/repos/proj/PRD.md")
         );
         assert_eq!(plan_file_path(&conn, "proj::missing.md").unwrap(), None);
+    }
+
+    #[test]
+    fn task_count_for_plan_counts_only_present_tasks() {
+        let conn = crate::open(":memory:").unwrap();
+        project(&conn, "proj");
+        let pid = plan_id("proj", "PRD.md");
+        upsert_plan(&conn, &pid, "proj", "PRD.md").unwrap();
+        upsert_task(&conn, &pid, "one", 1, "One", false).unwrap();
+        upsert_task(&conn, &pid, "two", 2, "Two", false).unwrap();
+        assert_eq!(task_count_for_plan(&conn, &pid).unwrap(), 2);
+
+        mark_tasks_absent(&conn, &pid).unwrap();
+        assert_eq!(task_count_for_plan(&conn, &pid).unwrap(), 0);
     }
 
     #[test]

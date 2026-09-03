@@ -23,8 +23,8 @@ pub use settings::{
 mod plans;
 pub use plans::{
     load_task, mark_tasks_absent, plan_file_path, plan_id, present_task_anchors,
-    project_id_for_plan, rekey_plan, revoke_positional_recovery, task_line_hints, upsert_plan,
-    upsert_task, TaskRow,
+    project_id_for_plan, rekey_plan, revoke_positional_recovery, task_count_for_plan,
+    task_line_hints, upsert_plan, upsert_task, TaskRow,
 };
 
 mod runs;
@@ -32,8 +32,8 @@ pub use runs::{
     all_run_ids, count_active_runs, fail_interrupted_runs, has_active_runs_for_plan,
     has_active_runs_for_project, insert_iteration, insert_run, latest_launch_prefs_for_plan,
     list_runs_for_plan, list_runs_for_project, list_sweep_candidates, load_iterations, load_run,
-    mark_run_reaped, project_id_for_run, set_run_accepted, update_run_status, IterationRow,
-    LastLaunchPrefs, NewRun, ProjectRun, RunDetail, RunSummary, SweepCandidate,
+    mark_run_reaped, project_id_for_run, run_count_for_plan, set_run_accepted, update_run_status,
+    IterationRow, LastLaunchPrefs, NewRun, ProjectRun, RunDetail, RunSummary, SweepCandidate,
 };
 
 mod agent_usage;

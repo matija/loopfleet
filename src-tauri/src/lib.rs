@@ -470,6 +470,21 @@ fn project_removal_preview(
     loopfleet_store::project_removal_preview(&conn, &project_id).map_err(|e| e.to_string())
 }
 
+/// What an archive confirmation dialog shows for a plan — its title, current
+/// path, the proposed archive file name, the destination directory and
+/// whether it exists yet, and its task/run counts — gathered without moving
+/// anything.
+/// Off the main thread (`command(async)`): reads the plan file and lists the
+/// destination directory.
+#[tauri::command(async)]
+fn archive_plan_preview(
+    plan_id: String,
+    state: State<'_, AppState>,
+) -> Result<loopfleet_core::ArchivePlanPreview, String> {
+    let conn = state.db.lock().unwrap();
+    loopfleet_core::archive_plan_preview(&conn, &plan_id).map_err(|e| e.to_string())
+}
+
 /// The global app settings (default agent, default iteration count, concurrency
 /// cap, worktree retention). Unset fields fall back to code defaults.
 #[tauri::command]
@@ -3237,6 +3252,7 @@ pub fn run() {
             list_projects,
             remove_project,
             project_removal_preview,
+            archive_plan_preview,
             agent_status,
             agent_usage,
             check_agent_usage,

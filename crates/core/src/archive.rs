@@ -11,6 +11,18 @@
 //! [`proposed_archive_name`] is pure: it proposes, and the caller decides
 //! whether to write. The `taken` list is what keeps two plans with the same
 //! title from colliding.
+//!
+//! [`archive_plan_preview`] is the read-only counterpart a confirmation dialog
+//! calls before any of that happens: it gathers the proposal plus the counts
+//! the dialog states as consequences, mirroring `project_removal_preview`.
+
+use std::fs;
+use std::path::Path;
+
+use loopfleet_store::Connection;
+use serde::Serialize;
+
+use crate::plan::parse_plan;
 
 /// Words that carry no meaning in a two-to-five-word slug, dropped so the
 /// budget is spent on the words that identify the plan.
@@ -188,6 +200,102 @@ pub fn valid_archive_name(name: &str) -> Result<(), String> {
         return Err(format!("name contains an invalid character: {c:?}"));
     }
     Ok(())
+}
+
+/// What an archive confirmation dialog needs to state the consequences of
+/// archiving a plan: its title, current path, the name it would be given, the
+/// directory it would land in, and how much it would carry along.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ArchivePlanPreview {
+    pub title: Option<String>,
+    pub file_path: String,
+    /// What [`proposed_archive_name`] gives back for this title, checked
+    /// against `destination_dir`'s current `.md` entries.
+    pub proposed_file_name: String,
+    pub destination_dir: String,
+    pub destination_exists: bool,
+    pub task_count: usize,
+    pub run_count: usize,
+}
+
+/// Why an archive preview could not be built.
+#[derive(Debug)]
+pub enum ArchivePreviewError {
+    /// No plan is synced under this id.
+    UnknownPlan(String),
+    /// Reading the plan file, or listing the destination directory, failed.
+    Io(std::io::Error),
+    /// Reading the plan's stored state failed.
+    Store(rusqlite::Error),
+}
+
+impl std::fmt::Display for ArchivePreviewError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ArchivePreviewError::UnknownPlan(id) => write!(f, "unknown plan: {id}"),
+            ArchivePreviewError::Io(e) => write!(f, "reading plan: {e}"),
+            ArchivePreviewError::Store(e) => write!(f, "reading plan store state: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for ArchivePreviewError {}
+
+/// Gather what an archive confirmation dialog shows for `plan_id`, read-only:
+/// the plan's title (re-parsed from its current file, not the last sync) and
+/// current path, the name [`proposed_archive_name`] would give it — checked
+/// against the `.md` files already sitting in the destination directory — that
+/// directory's path and whether it exists yet, and the plan's task and run
+/// counts.
+///
+/// The destination directory is `prds/` alongside the plan file, the
+/// convention [`proposed_archive_name`]'s doc names. A directory that doesn't
+/// exist yet has no entries to collide with, so `taken` is empty rather than
+/// an error — the write path this previews is what creates it.
+pub fn archive_plan_preview(
+    conn: &Connection,
+    plan_id: &str,
+) -> Result<ArchivePlanPreview, ArchivePreviewError> {
+    let file_path = loopfleet_store::plan_file_path(conn, plan_id)
+        .map_err(ArchivePreviewError::Store)?
+        .ok_or_else(|| ArchivePreviewError::UnknownPlan(plan_id.to_string()))?;
+
+    let markdown = fs::read_to_string(&file_path).map_err(ArchivePreviewError::Io)?;
+    let title = parse_plan(&markdown).title;
+
+    let destination_dir = Path::new(&file_path)
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("prds");
+    let destination_exists = destination_dir.is_dir();
+
+    let taken: Vec<String> = if destination_exists {
+        fs::read_dir(&destination_dir)
+            .map_err(ArchivePreviewError::Io)?
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".md"))
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let proposed_file_name = proposed_archive_name(title.as_deref(), &taken);
+
+    let task_count = loopfleet_store::task_count_for_plan(conn, plan_id)
+        .map_err(ArchivePreviewError::Store)?;
+    let run_count = loopfleet_store::run_count_for_plan(conn, plan_id)
+        .map_err(ArchivePreviewError::Store)?;
+
+    Ok(ArchivePlanPreview {
+        title,
+        file_path,
+        proposed_file_name,
+        destination_dir: destination_dir.to_string_lossy().into_owned(),
+        destination_exists,
+        task_count,
+        run_count,
+    })
 }
 
 #[cfg(test)]
@@ -458,5 +566,87 @@ mod tests {
             valid_archive_name("quiet cockpit.md"),
             Err("name contains an invalid character: ' '".to_string())
         );
+    }
+
+    /// A project whose repo dir holds a PRD.md, registered in the store and
+    /// synced so `archive_plan_preview` has a plan id to look up.
+    fn synced_plan(conn: &Connection, prd: &str) -> (String, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("PRD.md"), prd).unwrap();
+        conn.execute(
+            "INSERT INTO projects (id, repo_path, plan_convention) VALUES ('proj', ?1, 'prd')",
+            [dir.path().to_string_lossy().into_owned()],
+        )
+        .unwrap();
+
+        let file_path = dir.path().join("PRD.md").to_string_lossy().into_owned();
+        let pid = loopfleet_store::plan_id("proj", &file_path);
+        loopfleet_store::upsert_plan(conn, &pid, "proj", &file_path).unwrap();
+        (pid, dir)
+    }
+
+    #[test]
+    fn preview_reports_title_path_and_counts() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let (pid, _dir) = synced_plan(&conn, "# Quiet Cockpit\n\n- [ ] do the thing\n");
+        loopfleet_store::upsert_task(&conn, &pid, "do the thing", 3, "Do the thing", false)
+            .unwrap();
+
+        let preview = archive_plan_preview(&conn, &pid).unwrap();
+        assert_eq!(preview.title.as_deref(), Some("Quiet Cockpit"));
+        assert_eq!(preview.proposed_file_name, "quiet-cockpit.md");
+        assert!(!preview.destination_exists);
+        assert_eq!(preview.task_count, 1);
+        assert_eq!(preview.run_count, 0);
+        assert!(preview.destination_dir.ends_with("prds"));
+    }
+
+    #[test]
+    fn preview_disambiguates_against_existing_archive_entries() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let (pid, dir) = synced_plan(&conn, "# Quiet Cockpit\n");
+        std::fs::create_dir(dir.path().join("prds")).unwrap();
+        std::fs::write(dir.path().join("prds/quiet-cockpit.md"), "").unwrap();
+
+        let preview = archive_plan_preview(&conn, &pid).unwrap();
+        assert!(preview.destination_exists);
+        assert_eq!(preview.proposed_file_name, "quiet-cockpit-2.md");
+    }
+
+    #[test]
+    fn preview_counts_runs_bound_to_the_plan() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let (pid, _dir) = synced_plan(&conn, "# Quiet Cockpit\n\n- [ ] do the thing\n");
+        loopfleet_store::upsert_task(&conn, &pid, "do the thing", 3, "Do the thing", false)
+            .unwrap();
+        loopfleet_store::insert_run(
+            &conn,
+            &loopfleet_store::NewRun {
+                id: "run-1".into(),
+                plan_id: pid.clone(),
+                task_anchor: "do the thing".into(),
+                agent: "claude".into(),
+                model: None,
+                worktree_path: "/wt".into(),
+                branch: "agent/x".into(),
+                sb_profile: "/p.sb".into(),
+                progress_path: "/prog.md".into(),
+                max_iterations: 1,
+                status: "completed".into(),
+            },
+        )
+        .unwrap();
+
+        let preview = archive_plan_preview(&conn, &pid).unwrap();
+        assert_eq!(preview.run_count, 1);
+    }
+
+    #[test]
+    fn preview_rejects_an_unknown_plan() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        assert!(matches!(
+            archive_plan_preview(&conn, "nope"),
+            Err(ArchivePreviewError::UnknownPlan(_))
+        ));
     }
 }
