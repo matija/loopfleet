@@ -164,7 +164,10 @@ BUMP_FILES=(
   Cargo.toml
   Cargo.lock
   package.json
+  package-lock.json
   frontend/package.json
+  frontend/package-lock.json
+  node_modules/.package-lock.json
   src-tauri/tauri.conf.json
   README.md
 )
@@ -177,13 +180,23 @@ BUMP_FILES=(
 commit_version_bump() {
   local version="$1"
 
-  if git -C "$ROOT" diff --quiet -- "${BUMP_FILES[@]}"; then
+  # Only the tracked ones: node_modules/.package-lock.json exists in this repo
+  # because the root node_modules is checked in, and `git add` on an ignored
+  # path is an error rather than a no-op.
+  local files=() f
+  for f in "${BUMP_FILES[@]}"; do
+    if git -C "$ROOT" ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
+      files+=("$f")
+    fi
+  done
+
+  if git -C "$ROOT" diff --quiet -- "${files[@]}"; then
     info "Manifests already at $version; nothing to commit."
     return 0
   fi
 
   step "Committing version bump to $version..."
-  git -C "$ROOT" add -- "${BUMP_FILES[@]}"
+  git -C "$ROOT" add -- "${files[@]}"
   git -C "$ROOT" commit --quiet -m "chore(release): bump version to $version"
   ok "Committed $(git -C "$ROOT" rev-parse --short HEAD)"
 
