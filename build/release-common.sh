@@ -6,6 +6,11 @@
 #
 # If RELEASE_PREFLIGHT_ONLY=1 (set by --preflight in the release scripts),
 # this file exits 0 right after validation instead of continuing on to a build.
+#
+# Order is deliberate: the environment (tools, Apple credentials, updater key)
+# is checked first because it is instant and a release can't be published
+# without it; the git-state and test gates, which cost seconds to minutes,
+# only run once the credentials are known to be there.
 
 for _release_arg in "$@"; do
   [[ "$_release_arg" == "--preflight" ]] && RELEASE_PREFLIGHT_ONLY=1
@@ -93,26 +98,13 @@ require_clean_pushed_tree() {
   fi
 }
 
-require_clean_pushed_tree
-
-# Runs the full test suite before any build starts. A release built on top
-# of failing checks/tests is worse than no release, so this must pass
-# before we touch signing, notarization, or GitHub.
-run_release_tests() {
-  step "Running frontend checks (npm run check)..."
-  (cd "$ROOT/frontend" && npm run check)
-  ok "Frontend checks passed"
-
-  step "Running frontend tests (npm test)..."
-  (cd "$ROOT/frontend" && npm test)
-  ok "Frontend tests passed"
-
-  step "Running Rust workspace tests (cargo test --workspace)..."
-  (cd "$ROOT" && cargo test --workspace)
-  ok "Rust tests passed"
-}
-
-run_release_tests
+# --- credentials and tools, checked first ------------------------------------
+# Everything a release needs from the environment is validated before anything
+# slow or stateful runs: a release without the signing identity, the notary
+# credentials, or the updater key is not a release we ever want to make, and
+# finding that out should cost a second, not a full `cargo test --workspace`.
+# None of these checks read the git state or the build, so they are free to go
+# first.
 
 command -v gh >/dev/null 2>&1 || { err "gh (GitHub CLI) is required to publish releases"; exit 1; }
 gh auth status >/dev/null 2>&1 || { err "gh is not authenticated. Run 'gh auth login' first."; exit 1; }
@@ -163,6 +155,27 @@ fi
 export APPLE_SIGNING_IDENTITY APPLE_API_KEY APPLE_API_KEY_PATH APPLE_API_ISSUER
 export TAURI_SIGNING_PRIVATE_KEY
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+
+require_clean_pushed_tree
+
+# Runs the full test suite before any build starts. A release built on top
+# of failing checks/tests is worse than no release, so this must pass
+# before we touch signing, notarization, or GitHub.
+run_release_tests() {
+  step "Running frontend checks (npm run check)..."
+  (cd "$ROOT/frontend" && npm run check)
+  ok "Frontend checks passed"
+
+  step "Running frontend tests (npm test)..."
+  (cd "$ROOT/frontend" && npm test)
+  ok "Frontend tests passed"
+
+  step "Running Rust workspace tests (cargo test --workspace)..."
+  (cd "$ROOT" && cargo test --workspace)
+  ok "Rust tests passed"
+}
+
+run_release_tests
 
 RELEASE_VERSION="$(release_version)"
 RELEASE_TAG="${RELEASE_TAG:-$RELEASE_VERSION}"
