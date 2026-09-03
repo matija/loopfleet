@@ -311,6 +311,8 @@ pub enum ArchivePlanError {
     /// A file already sits at the destination path; archiving never
     /// overwrites.
     DestinationExists(String),
+    /// The plan's file does not resolve to a path inside its project's repo.
+    OutsideRepo(String),
     /// Creating `prds/`, moving the file, or re-reading its parent failed.
     Io(std::io::Error),
     /// Reading or writing the plan's stored state failed.
@@ -328,6 +330,9 @@ impl std::fmt::Display for ArchivePlanError {
             ArchivePlanError::DestinationExists(path) => {
                 write!(f, "archive destination already exists: {path}")
             }
+            ArchivePlanError::OutsideRepo(path) => {
+                write!(f, "plan file is outside its project's repo: {path}")
+            }
             ArchivePlanError::Io(e) => write!(f, "moving plan file: {e}"),
             ArchivePlanError::Store(e) => write!(f, "updating plan store state: {e}"),
         }
@@ -340,10 +345,17 @@ impl std::error::Error for ArchivePlanError {}
 /// store row to the new path, returning the absolute archived path.
 ///
 /// `file_name` is validated with [`valid_archive_name`] before anything else
-/// runs, since it is untrusted input that ends up in a filesystem path. A
-/// plan with a run still `queued` or `running` is rejected outright — the
-/// file must not move out from under an in-flight run — and so is a
-/// destination that already exists, since archiving never overwrites.
+/// runs, since it is untrusted input that ends up in a filesystem path — it
+/// crosses the IPC boundary from an editable field, so a validated name is
+/// not enough on its own: the destination is always built by joining that
+/// name onto `<repo_path>/prds`, taken from the project's own row, never from
+/// a directory the caller supplies. The plan's current file path is checked
+/// against that same `repo_path` before anything moves, so a plan whose
+/// stored path has drifted outside its project's repo is refused rather than
+/// moved further astray. A plan with a run still `queued` or `running` is
+/// rejected outright — the file must not move out from under an in-flight
+/// run — and so is a destination that already exists, since archiving never
+/// overwrites.
 ///
 /// The file is renamed *before* the store is re-keyed: a failed rename
 /// leaves the store pointing at a file that is still exactly where it was,
@@ -371,11 +383,17 @@ pub fn archive_plan(
         .map_err(ArchivePlanError::Store)?
         .ok_or_else(|| ArchivePlanError::UnknownPlan(plan_id.to_string()))?;
 
+    let repo_path = loopfleet_store::repo_path_for_project(conn, &project_id)
+        .map_err(ArchivePlanError::Store)?
+        .ok_or_else(|| ArchivePlanError::UnknownPlan(plan_id.to_string()))?;
+
     let source = Path::new(&file_path);
-    let destination_dir = source
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join("prds");
+    let repo = Path::new(&repo_path);
+    if !source.starts_with(repo) {
+        return Err(ArchivePlanError::OutsideRepo(file_path));
+    }
+
+    let destination_dir = repo.join("prds");
     let destination = destination_dir.join(file_name);
 
     if destination.exists() {
@@ -847,5 +865,60 @@ mod tests {
             std::fs::read_to_string(dir.path().join("prds/quiet-cockpit.md")).unwrap(),
             "existing"
         );
+    }
+
+    #[test]
+    fn archive_plan_rejects_a_plan_file_outside_its_project_repo() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let repo_dir = tempfile::tempdir().unwrap();
+        let outside_dir = tempfile::tempdir().unwrap();
+
+        conn.execute(
+            "INSERT INTO projects (id, repo_path, plan_convention) VALUES ('proj', ?1, 'prd')",
+            [repo_dir.path().to_string_lossy().into_owned()],
+        )
+        .unwrap();
+
+        // A plan whose stored file path lives outside the project's repo_path
+        // — e.g. drifted after the project was re-pointed elsewhere.
+        let outside_file = outside_dir.path().join("PRD.md");
+        std::fs::write(&outside_file, "# Quiet Cockpit\n").unwrap();
+        let file_path = outside_file.to_string_lossy().into_owned();
+        let pid = loopfleet_store::plan_id("proj", &file_path);
+        loopfleet_store::upsert_plan(&conn, &pid, "proj", &file_path).unwrap();
+
+        let err = archive_plan(&conn, &pid, "quiet-cockpit.md").unwrap_err();
+        assert!(matches!(err, ArchivePlanError::OutsideRepo(_)));
+        // Nothing moved.
+        assert!(outside_file.exists());
+        assert!(!repo_dir.path().join("prds").exists());
+    }
+
+    #[test]
+    fn archive_plan_destination_is_built_from_repo_path_not_the_file_path() {
+        let conn = loopfleet_store::open(":memory:").unwrap();
+        let repo_dir = tempfile::tempdir().unwrap();
+
+        conn.execute(
+            "INSERT INTO projects (id, repo_path, plan_convention) VALUES ('proj', ?1, 'prd')",
+            [repo_dir.path().to_string_lossy().into_owned()],
+        )
+        .unwrap();
+
+        // The plan file lives in a subdirectory of the repo, not the repo
+        // root — the destination must still be <repo_path>/prds/<name>, not
+        // <plan's own parent dir>/prds/<name>.
+        let sub_dir = repo_dir.path().join("nested");
+        std::fs::create_dir(&sub_dir).unwrap();
+        let file_path = sub_dir.join("PRD.md").to_string_lossy().into_owned();
+        std::fs::write(&file_path, "# Quiet Cockpit\n").unwrap();
+        let pid = loopfleet_store::plan_id("proj", &file_path);
+        loopfleet_store::upsert_plan(&conn, &pid, "proj", &file_path).unwrap();
+
+        let archived_path = archive_plan(&conn, &pid, "quiet-cockpit.md").unwrap();
+
+        let expected = repo_dir.path().join("prds/quiet-cockpit.md");
+        assert_eq!(archived_path, expected.to_string_lossy());
+        assert!(expected.is_file());
     }
 }

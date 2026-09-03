@@ -11,8 +11,8 @@ pub use event_log::{
 
 mod projects;
 pub use projects::{
-    delete_project, insert_project, list_projects, project_removal_preview, DeleteProjectSummary,
-    Project, ProjectRemovalPreview,
+    delete_project, insert_project, list_projects, project_removal_preview, repo_path_for_project,
+    DeleteProjectSummary, Project, ProjectRemovalPreview,
 };
 
 mod settings;

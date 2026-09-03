@@ -1,6 +1,6 @@
 //! Project persistence (PRD data model: `Project { id, repo_path, plan_convention }`).
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -122,6 +122,20 @@ pub fn delete_project(
             Err(e)
         }
     }
+}
+
+/// The repo path a project was registered with, or `None` if `project_id`
+/// doesn't name a project.
+pub fn repo_path_for_project(
+    conn: &Connection,
+    project_id: &str,
+) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT repo_path FROM projects WHERE id = ?1",
+        params![project_id],
+        |r| r.get(0),
+    )
+    .optional()
 }
 
 /// Counts a delete confirmation dialog needs, gathered without deleting
