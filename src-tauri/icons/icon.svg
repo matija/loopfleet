@@ -1,7 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <!-- Loopfleet app icon.
        Glyph: Phosphor "infinity" (regular) — the loop that names the app.
-       Palette: neutral ink (#f2f2f4 -> #9a9aa2) on Cockpit Canvas (#0d0d10). -->
+       Deliberately accent-free: the app ships ten themes and none of them
+       is built on indigo, so the mark uses neutral ink (#f2f2f4 -> #9a9aa2)
+       on Cockpit Canvas (#0d0d10) instead. That neutral ramp is also the
+       higher-contrast choice at the 32px and 16px sizes this icon renders at. -->
   <defs>
     <linearGradient id="canvas" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#202024"/>
