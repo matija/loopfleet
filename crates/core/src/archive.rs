@@ -26,9 +26,11 @@ const MAX_WORDS: usize = 5;
 /// boundary so the tail is a whole word rather than a fragment.
 const MAX_CHARS: usize = 48;
 
-/// The slug for a plan whose title is missing, blank, or made entirely of
-/// characters that survive nothing.
-const FALLBACK: &str = "untitled";
+/// The slug for a plan whose title gives back no usable name: missing (no
+/// H1 — legal input, since the parser allows it), blank, made entirely of
+/// punctuation, made entirely of [`STOPWORDS`], or a single word too long to
+/// slug into anything but a truncated fragment.
+const FALLBACK: &str = "plan";
 
 /// The file name (with `.md`) an archived plan titled `title` should take,
 /// given the names already `taken` in the archive.
@@ -36,9 +38,12 @@ const FALLBACK: &str = "untitled";
 /// The title is lowercased, stripped of a leading `PRD:` / `PRD -` prefix (the
 /// plan file announces itself as a PRD; the archive folder already says that),
 /// split on runs of non-alphanumerics, filtered of [`STOPWORDS`], and cut to
-/// [`MAX_WORDS`] words and [`MAX_CHARS`] characters. A title that is all
-/// stopwords keeps them rather than archiving as [`FALLBACK`], since "the end"
-/// is still a better name than "untitled".
+/// [`MAX_WORDS`] words and [`MAX_CHARS`] characters. A title with no title at
+/// all (no H1, which the plan parser allows), or nothing left once
+/// punctuation and stopwords are stripped, or nothing but a single word too
+/// long to cut at a word boundary, has no name to give — it archives as
+/// [`FALLBACK`] rather than as an empty, hyphen-only, or unreadably truncated
+/// name.
 ///
 /// When the result is already `taken`, a `-2`, `-3`, … discriminator is
 /// appended until the name is free — matched case-insensitively, since the
@@ -78,16 +83,20 @@ fn slugify(title: &str) -> String {
         .filter(|w| !w.is_empty())
         .collect();
 
-    // Dropping the stopwords from a title that is nothing but stopwords would
-    // leave no name at all, so in that case they are the name.
     let kept: Vec<&str> = words
         .iter()
         .copied()
         .filter(|w| !STOPWORDS.contains(w))
         .collect();
-    let kept = if kept.is_empty() { words } else { kept };
 
+    // No title, all punctuation, or all stopwords: nothing survives to name
+    // the plan with.
     if kept.is_empty() {
+        return FALLBACK.to_string();
+    }
+    // A single word too long to cut at a word boundary would truncate to an
+    // arbitrary, unreadable fragment — fall back instead of publishing that.
+    if kept.len() == 1 && kept[0].chars().count() > MAX_CHARS {
         return FALLBACK.to_string();
     }
 
@@ -183,8 +192,8 @@ mod tests {
     }
 
     #[test]
-    fn keeps_stopwords_when_they_are_the_whole_title() {
-        assert_eq!(name("The and of"), "the-and-of.md");
+    fn falls_back_when_the_title_is_entirely_stopwords() {
+        assert_eq!(name("The and of"), "plan.md");
     }
 
     #[test]
@@ -210,17 +219,25 @@ mod tests {
     }
 
     #[test]
-    fn cuts_a_single_overlong_word_hard() {
+    fn falls_back_when_the_title_is_one_word_too_long_to_cut_at_a_boundary() {
         let title = "a".repeat(60);
-        let out = name(&title);
-        assert_eq!(out, format!("{}.md", "a".repeat(MAX_CHARS)));
+        assert_eq!(name(&title), "plan.md");
     }
 
     #[test]
     fn falls_back_when_there_is_no_title() {
-        assert_eq!(proposed_archive_name(None, &[]), "untitled.md");
-        assert_eq!(name("   "), "untitled.md");
-        assert_eq!(name("!!! ???"), "untitled.md");
+        assert_eq!(proposed_archive_name(None, &[]), "plan.md");
+        assert_eq!(name("   "), "plan.md");
+        assert_eq!(name("!!! ???"), "plan.md");
+    }
+
+    #[test]
+    fn a_titleless_plan_disambiguates_like_any_other_fallback() {
+        let taken = vec!["plan.md".to_string()];
+        assert_eq!(proposed_archive_name(None, &taken), "plan-2.md");
+
+        let taken = vec!["plan.md".to_string(), "plan-2.md".to_string()];
+        assert_eq!(proposed_archive_name(None, &taken), "plan-3.md");
     }
 
     #[test]
@@ -280,12 +297,13 @@ mod tests {
     }
 
     #[test]
-    fn a_discriminated_overlong_word_is_cut_hard_to_fit() {
+    fn an_overlong_word_falls_back_and_still_disambiguates() {
         let title = "a".repeat(60);
         let taken = vec![name(&title)];
-        let out = proposed_archive_name(Some(&title), &taken);
-        assert_eq!(out, format!("{}-2.md", "a".repeat(MAX_CHARS - 2)));
-        assert_eq!(out.strip_suffix(".md").unwrap().chars().count(), MAX_CHARS);
+        assert_eq!(
+            proposed_archive_name(Some(&title), &taken),
+            "plan-2.md"
+        );
     }
 
     #[test]
