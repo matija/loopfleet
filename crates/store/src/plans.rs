@@ -164,6 +164,33 @@ pub fn task_line_hints(conn: &Connection, plan_id: &str) -> rusqlite::Result<Has
 /// children still pointing at `old_id`. `PRAGMA defer_foreign_keys = ON` defers
 /// FK enforcement to commit time (SQLite resets it automatically once the
 /// transaction ends), letting the parent move before its children catch up.
+/// Error carried by [`rekey_plan`] when the requested move is rejected.
+///
+/// Boxed into `rusqlite::Error::ToSqlConversionFailure` so the function can
+/// stay on `rusqlite::Result` without a crate-wide custom error type.
+#[derive(Debug)]
+struct RekeyRejected(String);
+
+impl std::fmt::Display for RekeyRejected {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for RekeyRejected {}
+
+fn rekey_rejected(msg: impl Into<String>) -> rusqlite::Error {
+    rusqlite::Error::ToSqlConversionFailure(Box::new(RekeyRejected(msg.into())))
+}
+
+fn plan_exists(conn: &Connection, id: &str) -> rusqlite::Result<bool> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM plans WHERE id = ?1)",
+        params![id],
+        |r| r.get(0),
+    )
+}
+
 pub fn rekey_plan(
     conn: &Connection,
     old_id: &str,
@@ -172,6 +199,19 @@ pub fn rekey_plan(
 ) -> rusqlite::Result<()> {
     conn.execute_batch("BEGIN")?;
     let result = (|| {
+        // Validate before mutating anything: an unknown `old_id` or an
+        // already-occupied `new_id` must reject cleanly rather than silently
+        // no-op (unknown old_id) or merge two plans' tasks onto the same
+        // `(plan_id, normalized_text)` primary key (occupied new_id).
+        if !plan_exists(conn, old_id)? {
+            return Err(rekey_rejected(format!("rekey_plan: no plan with id {old_id:?}")));
+        }
+        if old_id != new_id && plan_exists(conn, new_id)? {
+            return Err(rekey_rejected(format!(
+                "rekey_plan: a plan with id {new_id:?} already exists"
+            )));
+        }
+
         conn.execute_batch("PRAGMA defer_foreign_keys = ON")?;
 
         conn.execute(
@@ -373,5 +413,52 @@ mod tests {
             .query_row("SELECT plan_id FROM scheduled_launches", [], |r| r.get(0))
             .unwrap();
         assert_eq!(sl_plan_id, new_id);
+    }
+
+    #[test]
+    fn rekey_plan_rejects_unknown_old_id() {
+        let conn = crate::open(":memory:").unwrap();
+        project(&conn, "proj");
+        let new_id = plan_id("proj", "PLAN.md");
+
+        let err = rekey_plan(&conn, "proj::missing.md", &new_id, "PLAN.md");
+        assert!(err.is_err());
+
+        assert_eq!(plan_file_path(&conn, &new_id).unwrap(), None);
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM plans", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn rekey_plan_rejects_occupied_new_id() {
+        let conn = crate::open(":memory:").unwrap();
+        project(&conn, "proj");
+        let old_id = plan_id("proj", "PRD.md");
+        let new_id = plan_id("proj", "PLAN.md");
+        upsert_plan(&conn, &old_id, "proj", "PRD.md").unwrap();
+        upsert_task(&conn, &old_id, "old task", 1, "Old task", false).unwrap();
+        upsert_plan(&conn, &new_id, "proj", "PLAN.md").unwrap();
+        upsert_task(&conn, &new_id, "new task", 1, "New task", false).unwrap();
+
+        let err = rekey_plan(&conn, &old_id, &new_id, "PLAN.md");
+        assert!(err.is_err());
+
+        // Both plans and both tasks must be untouched, not merged.
+        assert_eq!(plan_file_path(&conn, &old_id).unwrap().as_deref(), Some("PRD.md"));
+        assert_eq!(plan_file_path(&conn, &new_id).unwrap().as_deref(), Some("PLAN.md"));
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM tasks", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 2, "tasks from the two plans must not merge");
+        let old_task_plan_id: String = conn
+            .query_row(
+                "SELECT plan_id FROM tasks WHERE normalized_text = 'old task'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(old_task_plan_id, old_id);
     }
 }
