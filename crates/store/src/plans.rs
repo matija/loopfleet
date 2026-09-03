@@ -156,6 +156,56 @@ pub fn task_line_hints(conn: &Connection, plan_id: &str) -> rusqlite::Result<Has
     rows.collect()
 }
 
+/// Move a plan to a new id and file path, carrying its tasks, runs, and
+/// scheduled launches along with it, in one transaction.
+///
+/// `plans.id` has no `ON UPDATE CASCADE` and `store::open` turns `foreign_keys`
+/// on, so updating the parent row first would fail FK checks against the
+/// children still pointing at `old_id`. `PRAGMA defer_foreign_keys = ON` defers
+/// FK enforcement to commit time (SQLite resets it automatically once the
+/// transaction ends), letting the parent move before its children catch up.
+pub fn rekey_plan(
+    conn: &Connection,
+    old_id: &str,
+    new_id: &str,
+    new_file_path: &str,
+) -> rusqlite::Result<()> {
+    conn.execute_batch("BEGIN")?;
+    let result = (|| {
+        conn.execute_batch("PRAGMA defer_foreign_keys = ON")?;
+
+        conn.execute(
+            "UPDATE plans SET id = ?1, file_path = ?2 WHERE id = ?3",
+            params![new_id, new_file_path, old_id],
+        )?;
+        conn.execute(
+            "UPDATE tasks SET plan_id = ?1 WHERE plan_id = ?2",
+            params![new_id, old_id],
+        )?;
+        conn.execute(
+            "UPDATE runs SET plan_id = ?1 WHERE plan_id = ?2",
+            params![new_id, old_id],
+        )?;
+        conn.execute(
+            "UPDATE scheduled_launches SET plan_id = ?1 WHERE plan_id = ?2",
+            params![new_id, old_id],
+        )?;
+
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => {
+            conn.execute_batch("COMMIT")?;
+            Ok(())
+        }
+        Err(e) => {
+            conn.execute_batch("ROLLBACK")?;
+            Err(e)
+        }
+    }
+}
+
 /// One task row, read back by its `(plan_id, task_anchor)` key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskRow {
@@ -257,5 +307,71 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM tasks", [], |r| r.get(0))
             .unwrap();
         assert_eq!(n, 1, "upsert must not duplicate the anchor");
+    }
+
+    #[test]
+    fn rekey_plan_moves_id_and_carries_children() {
+        let conn = crate::open(":memory:").unwrap();
+        project(&conn, "proj");
+        let old_id = plan_id("proj", "PRD.md");
+        upsert_plan(&conn, &old_id, "proj", "PRD.md").unwrap();
+        upsert_task(&conn, &old_id, "do the thing", 5, "Do the thing", false).unwrap();
+
+        crate::insert_run(
+            &conn,
+            &crate::NewRun {
+                id: "run-1".into(),
+                plan_id: old_id.clone(),
+                task_anchor: "do the thing".into(),
+                agent: "claude".into(),
+                model: None,
+                worktree_path: "/wt".into(),
+                branch: "b".into(),
+                sb_profile: "p".into(),
+                progress_path: "/progress".into(),
+                max_iterations: 1,
+                status: "queued".into(),
+            },
+        )
+        .unwrap();
+
+        crate::insert_scheduled_launch(
+            &conn,
+            &crate::NewScheduledLaunch {
+                plan_id: old_id.clone(),
+                task_anchor: "do the thing".into(),
+                agent: "claude".into(),
+                model: None,
+                pass_count: 1,
+                launch_at: 0,
+                origin: "manual".into(),
+            },
+        )
+        .unwrap();
+
+        let new_id = plan_id("proj", "PLAN.md");
+        rekey_plan(&conn, &old_id, &new_id, "PLAN.md").unwrap();
+
+        assert_eq!(plan_file_path(&conn, &new_id).unwrap().as_deref(), Some("PLAN.md"));
+        assert_eq!(plan_file_path(&conn, &old_id).unwrap(), None);
+
+        let task_plan_id: String = conn
+            .query_row(
+                "SELECT plan_id FROM tasks WHERE normalized_text = 'do the thing'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(task_plan_id, new_id);
+
+        let run_plan_id: String = conn
+            .query_row("SELECT plan_id FROM runs WHERE id = 'run-1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(run_plan_id, new_id);
+
+        let sl_plan_id: String = conn
+            .query_row("SELECT plan_id FROM scheduled_launches", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(sl_plan_id, new_id);
     }
 }

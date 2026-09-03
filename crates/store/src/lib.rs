@@ -23,8 +23,8 @@ pub use settings::{
 mod plans;
 pub use plans::{
     load_task, mark_tasks_absent, plan_file_path, plan_id, present_task_anchors,
-    project_id_for_plan, revoke_positional_recovery, task_line_hints, upsert_plan, upsert_task,
-    TaskRow,
+    project_id_for_plan, rekey_plan, revoke_positional_recovery, task_line_hints, upsert_plan,
+    upsert_task, TaskRow,
 };
 
 mod runs;
