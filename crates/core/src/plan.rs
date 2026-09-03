@@ -457,13 +457,31 @@ mod tests {
     }
 
     #[test]
-    fn parses_the_repo_prd() {
-        // Real-world round-trip against this repo's own PRD.md: the parser must
-        // survive contact with the actual authored plan. Asserts structure that
-        // holds across PRD edits, not specific task text.
-        let prd = concat!(env!("CARGO_MANIFEST_DIR"), "/../../PRD.md");
+    fn parses_an_authored_prd() {
+        // Real-world round-trip against a checked-in copy of an authored PRD:
+        // the parser must survive contact with a real plan, not just snippets.
+        let prd = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/sample-prd.md");
         let plan = parse_plan_file(Path::new(prd)).unwrap();
-        assert!(!plan.title.as_deref().unwrap().is_empty());
-        assert!(!plan.tasks.is_empty());
+        assert_eq!(
+            plan.title.as_deref(),
+            Some("PRD: Workbench UI — a panel-style workbench surface for loopfleet")
+        );
+        // Only the four items under "Tasks" — the bulleted non-goals carry no
+        // checkbox and the fenced example checkbox is not a task.
+        assert_eq!(plan.tasks.len(), 4);
+        assert!(plan
+            .tasks
+            .iter()
+            .all(|t| !t.anchor.normalized_text.is_empty()));
+        assert_eq!(
+            plan.tasks.iter().filter(|t| t.checked).count(),
+            2,
+            "the authored checked baseline is preserved"
+        );
+        // Wrapped list items are joined into one line of display text.
+        assert!(plan.tasks[0].text.starts_with(
+            "**View model.** A single `View` union (`overview | plan | task | run | compare`)"
+        ));
+        assert_eq!(plan.tasks[0].anchor.normalized_text, "view model.");
     }
 }
