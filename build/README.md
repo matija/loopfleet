@@ -46,10 +46,16 @@ this directory are self-contained:
 
 ### Bump the version
 
-The version lives in four manifests that must stay in sync — the root
+The version lives in several files that must stay in sync — the root
 `Cargo.toml` (workspace, inherited by all crates), root `package.json`,
-`frontend/package.json`, and `src-tauri/tauri.conf.json`. `bump.sh` writes all
-of them at once:
+`frontend/package.json`, and `src-tauri/tauri.conf.json`, plus the lockfiles
+that mirror them: `Cargo.lock` (every workspace member, not just `loopfleet`,
+since the rest inherit `version.workspace = true`), `package-lock.json`,
+`frontend/package-lock.json`, and `node_modules/.package-lock.json` (the root
+`node_modules`, holding the vendored Tauri CLI, is checked in). The lockfiles
+matter as much as the manifests: leave one stale and the next `cargo` or `npm`
+run rewrites it, dirtying the tree after the release commit. `bump.sh` writes
+all of them at once:
 
 ```sh
 build/bump.sh            # print the current version
@@ -140,8 +146,8 @@ of the five variables above.
 `build/release.sh` then:
 
 1. If a version was given, runs `build/bump.sh <version>`, commits exactly the
-   files that script rewrites (`Cargo.toml`, `Cargo.lock`, both
-   `package.json`s, `src-tauri/tauri.conf.json`, `README.md`) as
+   files that script rewrites (the manifests, the lockfiles, and `README.md` —
+   see "Bump the version" above) as
    `chore(release): bump version to <version>`, and pushes it. Already at that
    version, it's a no-op. Use `build/bump.sh` directly to bump without
    committing or releasing.
