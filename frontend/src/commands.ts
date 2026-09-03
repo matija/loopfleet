@@ -281,3 +281,9 @@ export function useRun(
 ): Promise<UseRunResult> {
   return invoke("use_run", { runId, targetBranch: targetBranch ?? null });
 }
+
+/// Open an `http(s)` URL in the default browser. Used by the About panel's
+/// links — a plain anchor would navigate the app's own webview instead.
+export function openExternal(url: string): Promise<void> {
+  return invoke("open_external", { url });
+}

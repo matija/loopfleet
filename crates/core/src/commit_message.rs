@@ -20,7 +20,7 @@ const MAX_SUBJECT_CHARS: usize = 72;
 /// `task_text`, summarized by `summary`, having taken `pass_count` passes.
 ///
 /// The subject text falls back through `summary`, then the first line of
-/// `task_text`, then `Apply loopfleet run <short-id>` — whichever is first to
+/// `task_text`, then `Apply Loopfleet run <short-id>` — whichever is first to
 /// give something non-empty — since a run can finish without the agent ever
 /// producing a usable summary. Whatever is chosen is trimmed to a single line
 /// (a summary or task first line can itself carry embedded newlines) before
@@ -48,7 +48,7 @@ pub fn compose_commit_message(
 ) -> String {
     let chosen = first_line(summary)
         .or_else(|| first_line(task_text).map(|line| strip_plan_syntax(&line)))
-        .unwrap_or_else(|| format!("Apply loopfleet run {}", short_id(run_id)));
+        .unwrap_or_else(|| format!("Apply Loopfleet run {}", short_id(run_id)));
 
     let agent_label = match model {
         Some(model) if !model.trim().is_empty() => format!("{agent}/{}", model.trim()),
@@ -311,7 +311,7 @@ mod tests {
         let msg = compose_commit_message("   ", "   ", "abc1234567890", "claude", None, 1, None);
         assert_eq!(
             msg,
-            "Apply loopfleet run abc12345 (claude)\n\nTask: \n\nloopfleet-run: abc1234567890"
+            "Apply Loopfleet run abc12345 (claude)\n\nTask: \n\nloopfleet-run: abc1234567890"
         );
     }
 

@@ -1,4 +1,4 @@
-//! loopfleet store: SQLite persistence (runs, iterations, events, refs) with a
+//! Loopfleet store: SQLite persistence (runs, iterations, events, refs) with a
 //! single-writer event log. This module owns the schema and its migrations; the
 //! normalized event enum and higher-level queries land in later milestones.
 

@@ -175,3 +175,17 @@ export function onAutoAdvanceStopped(
     handler(e.payload),
   );
 }
+
+/// Subscribe to the app menu's "About Loopfleet" item. The menu lives on the
+/// Rust side; what it opens is the frontend's business, so the item only
+/// announces itself and this side shows the panel.
+export function onMenuAbout(handler: () => void): Promise<UnlistenFn> {
+  return listen("menu_about", () => handler());
+}
+
+/// Subscribe to the app menu's "Check for Updates…" item. Same split as
+/// [`onMenuAbout`]: the menu announces, the frontend runs the check it already
+/// owns at launch.
+export function onMenuCheckUpdates(handler: () => void): Promise<UnlistenFn> {
+  return listen("menu_check_updates", () => handler());
+}

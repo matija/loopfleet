@@ -1,4 +1,4 @@
-/* Design tokens for the loopfleet app shell (PRD M7: "design tokens — color,
+/* Design tokens for the Loopfleet app shell (PRD M7: "design tokens — color,
  * type scale, spacing, radii"). Everything downstream references these vars;
  * no view hardcodes a raw color, size, or radius.
  *

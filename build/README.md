@@ -1,6 +1,6 @@
-# Building loopfleet
+# Building Loopfleet
 
-loopfleet is a [Tauri](https://tauri.app) app: a Rust workspace (`crates/*` +
+Loopfleet is a [Tauri](https://tauri.app) app: a Rust workspace (`crates/*` +
 `src-tauri`) with a React/Vite frontend (`frontend/`). This directory holds the
 version-bump and release scripts.
 
@@ -68,7 +68,7 @@ block between the `<!-- download-links:start -->` and
 the release being cut. Keep those markers in place; without them `bump.sh`
 warns and leaves the links alone. The URLs are built from `GH_REPO`
 (default `matija/loopfleet`) and Tauri's bundle naming
-(`loopfleet_<version>_aarch64.dmg` / `_x64.dmg`).
+(`Loopfleet_<version>_aarch64.dmg` / `_x64.dmg`).
 
 ### Required environment variables
 
@@ -172,7 +172,7 @@ replace releases, only adds to one. It then:
    arm64 host).
 2. Notarizes and staples the `.dmg`.
 3. Copies the updater tarball to an architecture-suffixed name (e.g.
-   `loopfleet-x86_64.app.tar.gz`) so it doesn't collide with the aarch64
+   `Loopfleet-x86_64.app.tar.gz`) so it doesn't collide with the aarch64
    tarball already on the release.
 4. Downloads the release's existing `latest.json` and adds a `darwin-x86_64`
    platform entry to it, rather than replacing the file.

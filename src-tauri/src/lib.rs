@@ -13,6 +13,7 @@ use loopfleet_core::{
 use loopfleet_gitx::GitActor;
 use loopfleet_sandbox::{confine_prefix, RenderParams};
 use loopfleet_store::{Connection, NewRun, Project, RunSummary};
+use tauri::menu::{Menu, MenuItem};
 use tauri::{AppHandle, Emitter, Listener, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_notification::{NotificationExt, PermissionState};
@@ -3139,6 +3140,57 @@ fn agent_dirs() -> Vec<PathBuf> {
         .collect()
 }
 
+// --- app menu ---
+
+/// Ids for the two app-menu items we own. The handler turns each into a
+/// `menu_*` event; the frontend decides what it opens, so both land in the
+/// app's own surfaces rather than a native panel — the About panel needs
+/// clickable links, which macOS's standard one can't render.
+const MENU_ABOUT: &str = "loopfleet://about";
+const MENU_CHECK_UPDATES: &str = "loopfleet://check-updates";
+
+/// The default Tauri menu with the app submenu's leading item swapped: the
+/// predefined (native, link-less) About gives way to our own About item plus
+/// "Check for Updates…". Everything else — Edit, Window, the standard
+/// Hide/Services/Quit block — is left exactly as Tauri builds it, so
+/// copy/paste and the usual macOS shortcuts keep working. The app ships for
+/// macOS only, so the app submenu is always item 0.
+fn app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let menu = Menu::default(app)?;
+    let Some(app_submenu) = menu.items()?.first().and_then(|i| i.as_submenu().cloned()) else {
+        return Ok(menu);
+    };
+    let about = MenuItem::with_id(app, MENU_ABOUT, "About Loopfleet", true, None::<&str>)?;
+    let updates = MenuItem::with_id(
+        app,
+        MENU_CHECK_UPDATES,
+        "Check for Updates…",
+        true,
+        None::<&str>,
+    )?;
+    // Index 0 is the predefined About `Menu::default` puts at the top of the
+    // app submenu; drop it so ours takes its place, above the same separator.
+    app_submenu.remove_at(0)?;
+    app_submenu.insert_items(&[&about, &updates], 0)?;
+    Ok(menu)
+}
+
+/// Open an `http(s)` URL in the default browser. The About panel's links are
+/// the only caller: a plain `target="_blank"` would navigate the app's own
+/// webview instead. Other schemes are refused so this can never be talked into
+/// opening a `file://` path or a custom handler.
+#[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err(format!("refusing to open a non-http URL: {url}"));
+    }
+    std::process::Command::new("open")
+        .arg(&url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // A Finder/Dock-launched .app inherits launchd's minimal PATH, which hides
@@ -3152,6 +3204,16 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .menu(app_menu)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            MENU_ABOUT => {
+                let _ = app.emit("menu_about", ());
+            }
+            MENU_CHECK_UPDATES => {
+                let _ = app.emit("menu_check_updates", ());
+            }
+            _ => {}
+        })
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -3303,10 +3365,11 @@ pub fn run() {
             compare_task,
             use_run,
             export_task_report,
-            export_plan_report
+            export_plan_report,
+            open_external
         ])
         .run(tauri::generate_context!())
-        .expect("error while running loopfleet");
+        .expect("error while running Loopfleet");
 }
 
 #[cfg(test)]

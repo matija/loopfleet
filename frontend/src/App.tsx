@@ -29,6 +29,8 @@ import {
 import {
   onAutoMergeFailed,
   onAutopilotResumePrompt,
+  onMenuAbout,
+  onMenuCheckUpdates,
   onRunStatus,
   onScheduledLaunch,
   onScheduledLaunchCancelled,
@@ -57,6 +59,7 @@ import { RunDock, type ActiveRun, type PendingLaunch } from "./components/RunDoc
 import { LiveRunView } from "./components/LiveRunView";
 import { RunTimeline } from "./components/RunTimeline";
 import { CompareView } from "./components/CompareView";
+import { About } from "./components/About";
 import { Toasts, useToasts } from "./components/Toasts";
 import { UpdateNotice, useAppUpdater } from "./components/UpdateNotice";
 import { Toolbar } from "./components/Toolbar";
@@ -201,6 +204,7 @@ export default function App() {
   // banner. Contextual form errors stay inline in their own components.
   const { toasts, push: pushError, dismiss: dismissToast } = useToasts();
   const updater = useAppUpdater(pushError);
+  const checkForUpdates = updater.checkNow;
   // Session-scoped registry of launched runs (the global run surface). Runs do
   // not survive a restart in v1, so this is complete for the session.
   const [runs, setRuns] = useState<ActiveRun[]>([]);
@@ -220,6 +224,9 @@ export default function App() {
   // ⌘K command palette — global keyboard-first navigator across projects,
   // tasks, runs, and quick actions. Toggled by Cmd/Ctrl-K anywhere.
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // The About panel, opened only from the app menu — there is no in-app
+  // affordance for it, which is where macOS users look for it anyway.
+  const [aboutOpen, setAboutOpen] = useState(false);
   // Whole-sidebar visibility — separate from the "Projects" disclosure above.
   // Toggled by the panel-left button in the sidebar top strip or ⌘B, and
   // persisted so the collapsed layout survives a reload.
@@ -386,6 +393,22 @@ export default function App() {
       for (const t of resumeTimersRef.current.values()) clearTimeout(t);
     };
   }, []);
+
+  // The two app-menu items the Rust side owns. Each only announces itself; what
+  // it opens lives here, next to the state it touches.
+  useEffect(() => {
+    const un = onMenuAbout(() => setAboutOpen(true));
+    return () => {
+      void un.then((f) => f());
+    };
+  }, []);
+
+  useEffect(() => {
+    const un = onMenuCheckUpdates(() => void checkForUpdates());
+    return () => {
+      void un.then((f) => f());
+    };
+  }, [checkForUpdates]);
 
   // A rate-limited run's re-run has been scheduled: surface "resuming at…" on
   // its dock chip until the resume fires or is cancelled.
@@ -1334,6 +1357,7 @@ export default function App() {
           />
         )}
       </div>
+      {aboutOpen && <About onClose={() => setAboutOpen(false)} />}
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}

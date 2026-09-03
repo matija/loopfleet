@@ -14,6 +14,7 @@ import "./runview.css";
 import "./status.css";
 import "./grid.css";
 import "./palette.css";
+import "./about.css";
 import "./toolbar.css";
 import "./popover.css";
 import "./hint.css";

@@ -18,7 +18,7 @@ use std::process::Command;
 /// [`commit_identity`]) so a run's work is attributed to them once used, but a
 /// fresh repo may have no identity set at all, and `commit-tree` needs one — this
 /// synthetic identity keeps snapshotting working in that case.
-const COMMIT_NAME: &str = "loopfleet";
+const COMMIT_NAME: &str = "Loopfleet";
 const COMMIT_EMAIL: &str = "loopfleet@tandoku.hr";
 
 /// The shadow ref for iteration `iter` of `run_id`:
@@ -306,7 +306,7 @@ mod tests {
     #[test]
     fn snapshot_is_attributed_to_repo_identity() {
         // The repo configures a real user identity (t <t@t.test>); the shadow
-        // commit must carry it, not the synthetic loopfleet fallback, so a used
+        // commit must carry it, not the synthetic Loopfleet fallback, so a used
         // run lands in the user's history under their name.
         let (repo, _root, wt) = repo_with_worktree("run-6");
         std::fs::write(wt.path.join("a.txt"), "one\n").unwrap();

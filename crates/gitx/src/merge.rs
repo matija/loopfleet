@@ -27,7 +27,7 @@
 //!
 //! That commit is both authored and committed by the repo's configured
 //! `user.name`/`user.email` — it is the user's work landing on the user's
-//! branch — with loopfleet credited through a `Co-authored-by:` trailer, the
+//! branch — with Loopfleet credited through a `Co-authored-by:` trailer, the
 //! convention forges parse to show both contributors.
 
 use std::path::Path;
@@ -37,18 +37,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Loopfleet's own identity. Git has only two identity slots (author and
 /// committer) and both belong to the user — the run is their work, landing on
 /// their branch, and a synthetic author would keep these commits out of their
-/// contribution history. So loopfleet is credited in the message instead, via
+/// contribution history. So Loopfleet is credited in the message instead, via
 /// [`MERGE_COMMIT_TRAILER`]. This pair remains the identity a repo with no
 /// `user.*` configured falls back to, since `git commit` needs one either way.
-const AUTHOR_NAME: &str = "loopfleet";
+const AUTHOR_NAME: &str = "Loopfleet";
 const AUTHOR_EMAIL: &str = "loopfleet@tandoku.hr";
 
 /// The trailer stamped at the bottom of every "use this run" squash commit: the
-/// work is a collaboration, so loopfleet is recorded as a co-author of a commit
+/// work is a collaboration, so Loopfleet is recorded as a co-author of a commit
 /// the user authored. Spelled as git's `Co-authored-by: Name <email>` trailer
 /// (the same shape `git commit --trailer` writes) so forges parse it and credit
 /// both contributors, rather than as a prose line they would ignore.
-pub const MERGE_COMMIT_TRAILER: &str = "Co-authored-by: loopfleet <loopfleet@tandoku.hr>";
+pub const MERGE_COMMIT_TRAILER: &str = "Co-authored-by: Loopfleet <loopfleet@tandoku.hr>";
 
 /// `message` with [`MERGE_COMMIT_TRAILER`] appended as its last paragraph: the
 /// commit keeps the run's own subject and body, and the shared origin of the
@@ -150,7 +150,7 @@ pub fn merge_run(
 /// landing on the user's branch, so it keeps the original wording rather than
 /// inventing a subject of its own.
 ///
-/// loopfleet's per-iteration shadow snapshots are skipped: they are bookkeeping
+/// Loopfleet's per-iteration shadow snapshots are skipped: they are bookkeeping
 /// (`run <id> iter <n>`), not something the user wrote. `None` when every commit
 /// in `base..source` is one of those snapshots — the agent left no wording of its
 /// own to carry forward, so there is nothing here for the caller to use; the
@@ -171,14 +171,14 @@ fn squash_message(repo: &Path, base: &str, source: &str) -> Result<Option<String
 }
 
 /// Fallback subject when neither the caller nor the source's own commits have
-/// anything to say (every commit in `base..source` was loopfleet bookkeeping,
+/// anything to say (every commit in `base..source` was Loopfleet bookkeeping,
 /// and no caller message was supplied) — identifies the run by its source
 /// commit rather than surfacing the bookkeeping text itself.
 fn fallback_message(source: &str) -> String {
-    format!("Apply loopfleet run {}", &source[..source.len().min(8)])
+    format!("Apply Loopfleet run {}", &source[..source.len().min(8)])
 }
 
-/// True for a loopfleet shadow-snapshot message (`run <id> iter <n>`, written by
+/// True for a Loopfleet shadow-snapshot message (`run <id> iter <n>`, written by
 /// `shadow::snapshot`) — app bookkeeping rather than a message about the work.
 fn is_snapshot_message(message: &str) -> bool {
     let mut parts = message.split_whitespace();
@@ -342,7 +342,7 @@ fn head_commit(dir: &Path) -> Result<String> {
 
 /// The identity to record as both **author and committer** of the squashed
 /// commit: the repo's configured `user.name`/`user.email`, so the run lands as
-/// the user's own commit (and counts as their contribution) with loopfleet
+/// the user's own commit (and counts as their contribution) with Loopfleet
 /// credited by trailer. Falls back to [`AUTHOR_NAME`]/[`AUTHOR_EMAIL`] when git
 /// has no identity configured — `git commit` needs one, and without this the
 /// merge would fail outright on a fresh repo. Both fields must be set to use the
@@ -793,7 +793,7 @@ mod tests {
 
     /// The squashed commit is the user's own: their configured identity on both
     /// the author and committer halves, so it counts as their contribution, with
-    /// loopfleet credited by the `Co-authored-by:` trailer instead.
+    /// Loopfleet credited by the `Co-authored-by:` trailer instead.
     #[test]
     fn squashed_commit_is_the_users_with_loopfleet_as_co_author() {
         let (repo, _root, wt) = repo_with_worktree("merge-r11");
@@ -808,7 +808,7 @@ mod tests {
         assert_eq!(committer, "t <t@t.test>");
         // Loopfleet's own credit rides in the message, as a parseable trailer.
         let msg = git_out(repo.path(), &["log", "-1", "--format=%B", "main"]);
-        assert!(msg.ends_with("Co-authored-by: loopfleet <loopfleet@tandoku.hr>"), "got {msg:?}");
+        assert!(msg.ends_with("Co-authored-by: Loopfleet <loopfleet@tandoku.hr>"), "got {msg:?}");
     }
 
     /// The same holds for a merge into an existing custom target, which commits
@@ -832,7 +832,7 @@ mod tests {
         assert_eq!(committer, "t <t@t.test>");
     }
 
-    /// With no usable `user.*` in the repo, the loopfleet identity stands in for
+    /// With no usable `user.*` in the repo, the Loopfleet identity stands in for
     /// both halves — without it `git commit` would refuse to run at all
     /// ("Please tell me who you are"), failing the merge. Local empty values
     /// are used so the result does not depend on the machine's global git
@@ -854,12 +854,12 @@ mod tests {
         merge_run(repo.path(), &snap.git_ref, None, scratch.path(), None).unwrap();
 
         let (author, committer) = identity(repo.path(), "main");
-        assert_eq!(author, "loopfleet <loopfleet@tandoku.hr>");
-        assert_eq!(committer, "loopfleet <loopfleet@tandoku.hr>");
+        assert_eq!(author, "Loopfleet <loopfleet@tandoku.hr>");
+        assert_eq!(committer, "Loopfleet <loopfleet@tandoku.hr>");
     }
 
     /// The squashed commit carries the run's own commit messages — what the work
-    /// says about itself — with loopfleet's per-iteration snapshot bookkeeping
+    /// says about itself — with Loopfleet's per-iteration snapshot bookkeeping
     /// skipped and the co-author trailer at the bottom.
     #[test]
     fn squashed_commit_carries_the_runs_own_commit_messages() {
@@ -868,7 +868,7 @@ mod tests {
             let out = Command::new("git").arg("-C").arg(&wt.path).args(args).output().unwrap();
             assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
         };
-        // The agent commits its own work in the run worktree, then loopfleet
+        // The agent commits its own work in the run worktree, then Loopfleet
         // snapshots whatever is left over on top.
         std::fs::write(wt.path.join("out.txt"), "result\n").unwrap();
         wt_git(&["add", "-A"]);
@@ -881,11 +881,11 @@ mod tests {
         let msg = git_out(repo.path(), &["log", "-1", "--format=%B", "main"]);
         assert_eq!(
             msg,
-            "Add the widget\n\nWith a body explaining why.\n\nCo-authored-by: loopfleet <loopfleet@tandoku.hr>"
+            "Add the widget\n\nWith a body explaining why.\n\nCo-authored-by: Loopfleet <loopfleet@tandoku.hr>"
         );
     }
 
-    /// When every commit in `base..source` is loopfleet bookkeeping (the agent
+    /// When every commit in `base..source` is Loopfleet bookkeeping (the agent
     /// committed nothing of its own) and the caller supplies no message either,
     /// the squash falls back to naming the run by its source commit rather than
     /// surfacing the bookkeeping snapshot text itself.
@@ -900,11 +900,11 @@ mod tests {
 
         let subject = git_out(repo.path(), &["log", "-1", "--pretty=%s", "main"]);
         assert!(!subject.contains("iter"), "bookkeeping text should not surface, got {subject:?}");
-        assert_eq!(subject, format!("Apply loopfleet run {}", &snap.commit[..8]));
+        assert_eq!(subject, format!("Apply Loopfleet run {}", &snap.commit[..8]));
     }
 
     /// A caller-supplied message is used only when the source carries no wording
-    /// of its own (every commit in `base..source` is loopfleet bookkeeping), but
+    /// of its own (every commit in `base..source` is Loopfleet bookkeeping), but
     /// still gets the trailer appended — `with_trailer` is the only place that
     /// happens, whichever wording it's applied to.
     #[test]
@@ -917,7 +917,7 @@ mod tests {
         merge_run(repo.path(), &snap.git_ref, None, scratch.path(), Some("Custom message")).unwrap();
 
         let msg = git_out(repo.path(), &["log", "-1", "--format=%B", "main"]);
-        assert_eq!(msg, "Custom message\n\nCo-authored-by: loopfleet <loopfleet@tandoku.hr>");
+        assert_eq!(msg, "Custom message\n\nCo-authored-by: Loopfleet <loopfleet@tandoku.hr>");
     }
 
     /// The agent's own commit message still wins even when the caller also
@@ -939,17 +939,17 @@ mod tests {
         merge_run(repo.path(), &snap.git_ref, None, scratch.path(), Some("Custom message")).unwrap();
 
         let msg = git_out(repo.path(), &["log", "-1", "--format=%B", "main"]);
-        assert_eq!(msg, "Add the widget\n\nCo-authored-by: loopfleet <loopfleet@tandoku.hr>");
+        assert_eq!(msg, "Add the widget\n\nCo-authored-by: Loopfleet <loopfleet@tandoku.hr>");
     }
 
     /// The trailer lands as the message's last paragraph, leaving the subject and
     /// body — what the run actually did — intact above it.
     #[test]
     fn trailer_is_appended_below_the_message() {
-        let msg = with_trailer("Apply loopfleet run abc12345 (claude)\n\n- [ ] the task");
+        let msg = with_trailer("Apply Loopfleet run abc12345 (claude)\n\n- [ ] the task");
         assert_eq!(
             msg,
-            "Apply loopfleet run abc12345 (claude)\n\n- [ ] the task\n\nCo-authored-by: loopfleet <loopfleet@tandoku.hr>"
+            "Apply Loopfleet run abc12345 (claude)\n\n- [ ] the task\n\nCo-authored-by: Loopfleet <loopfleet@tandoku.hr>"
         );
         // Already trailered (or empty) messages stay well-formed.
         assert_eq!(with_trailer(&msg), msg);

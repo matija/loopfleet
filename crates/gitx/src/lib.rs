@@ -1,4 +1,4 @@
-//! loopfleet gitx: the single serialized git actor for mutating ops (worktree
+//! Loopfleet gitx: the single serialized git actor for mutating ops (worktree
 //! add/remove, shadow commits, ref updates) plus `git2`-backed reads (diff,
 //! status, log). Mutations funnel through [`GitActor`] (M3) so concurrent runs
 //! never collide on git lockfiles; reads stay concurrent.

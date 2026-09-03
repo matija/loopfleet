@@ -42,11 +42,11 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/release-common.sh"
 
 # Cross-compiling to x86_64 still requires a macOS host with the x86_64 Rust
 # target installed: macOS is the only host that can codesign/notarize with
-# the loopfleet signing identity.
+# the Loopfleet signing identity.
 require_macos_target "$TARGET_TRIPLE"
 
 VERSION="$RELEASE_VERSION"
-banner "Release loopfleet $VERSION ($RELEASE_TAG) for $TARGET_TRIPLE"
+banner "Release Loopfleet $VERSION ($RELEASE_TAG) for $TARGET_TRIPLE"
 
 step "Checking that release $RELEASE_TAG already exists..."
 gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1 || {

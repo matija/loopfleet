@@ -1,4 +1,4 @@
-//! loopfleet core: supervisor, run loop, and the normalized event enum.
+//! Loopfleet core: supervisor, run loop, and the normalized event enum.
 //!
 //! This crate owns the domain logic shared across the app. M0 contributes
 //! project registration (tying git-repo validation in `gitx` to persistence in

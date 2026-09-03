@@ -1,6 +1,6 @@
-# PRD: Workbench UI — a panel-style workbench surface for loopfleet
+# PRD: Workbench UI — a panel-style workbench surface for Loopfleet
 
-loopfleet is a macOS desktop app (Tauri + Rust) that runs looping coding agents
+Loopfleet is a macOS desktop app (Tauri + Rust) that runs looping coding agents
 against PRD-style plans in sandboxed git worktrees, with a full timeline of what
 every run did.
 

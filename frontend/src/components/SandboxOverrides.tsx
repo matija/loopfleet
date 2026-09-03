@@ -144,7 +144,7 @@ export function SandboxOverrides({ projectId }: { projectId: string }) {
             label="sandbox write overrides"
           >
             <p>
-              Commits are app-owned: loopfleet writes them through the parent repo
+              Commits are app-owned: Loopfleet writes them through the parent repo
               itself, so no run ever needs write access to <em>.git</em>. Granting it
               would let an agent rewrite history outside its own worktree — the one
               thing this boundary exists to prevent.

@@ -1,0 +1,115 @@
+/* About panel — the app menu's "About Loopfleet". A small centered modal in
+ * the same surface/border/scrim tokens as the ⌘K palette; it exists instead of
+ * the native macOS About panel because the vendor and repo lines are links,
+ * which the native one can't render. */
+
+.about__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 18vh;
+  background: var(--c-scrim);
+  animation: about-fade var(--motion-fast) var(--ease-out);
+}
+
+@keyframes about-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.about {
+  width: min(340px, calc(100vw - 2 * var(--space-6)));
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+  animation: about-rise var(--motion-base) var(--ease-out);
+}
+
+/* The padding lives on the inner box, not on the bordered one — same split the
+ * palette uses, so the density pass sees a framed surface with its own content
+ * inset rather than a padded card. */
+.about__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  text-align: center;
+}
+
+@keyframes about-rise {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.about__name {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--c-text);
+}
+
+.about__version {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
+}
+
+.about__vendor,
+.about__repo {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
+}
+
+.about__vendor {
+  margin-top: var(--space-3);
+}
+
+.about__link {
+  padding: 0;
+  font: inherit;
+  color: var(--c-accent-text);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.about__link:hover {
+  color: var(--c-accent-text-hover);
+  text-decoration: underline;
+}
+
+.about__close {
+  margin-top: var(--space-4);
+  min-width: 96px;
+  height: var(--control-h);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--c-text);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.about__close:hover {
+  background: var(--c-surface-hover);
+  border-color: var(--c-border-strong);
+}

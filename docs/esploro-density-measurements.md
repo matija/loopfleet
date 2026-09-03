@@ -87,24 +87,24 @@ column's left hairline.
 | Titlebar right cluster | — | 8 (16 dev) |
 | Sidebar text | 8 (16 dev from window edge) | — (runs to the divider) |
 
-## loopfleet's current values (tokens.css `:root`, read 2026-09-02)
+## Loopfleet's current values (tokens.css `:root`, read 2026-09-02)
 
-| Token | loopfleet | Reference | Diff |
+| Token | Loopfleet | Reference | Diff |
 |---|---|---|---|
-| `--sidebar-w` | 268px | 318 | loopfleet **50px narrower** |
+| `--sidebar-w` | 268px | 318 | Loopfleet **50px narrower** |
 | `--titlebar-h` | 38px | 38 | **match** |
-| `--toolbar-h` | 44px | 36 | loopfleet **8px taller** |
+| `--toolbar-h` | 44px | 36 | Loopfleet **8px taller** |
 | `--control-h` | 28px | filter bar 28 = match; tab strip 30 | at/under reference |
-| `--control-h-lg` | 30px | toolbar buttons 24 | loopfleet **6px taller** |
-| `--row-h` | 30px | 33 pitch (32 content + 1 hairline) | loopfleet **2-3px tighter** |
+| `--control-h-lg` | 30px | toolbar buttons 24 | Loopfleet **6px taller** |
+| `--row-h` | 30px | 33 pitch (32 content + 1 hairline) | Loopfleet **2-3px tighter** |
 
 Notes for the retune task:
-- The reference's own row strip is a database grid; loopfleet's `--row-h`
+- The reference's own row strip is a database grid; Loopfleet's `--row-h`
   drives task rows, which the PRD's problem statement faults for *wrapping*
   (variable height), not for the base height — the token is already at or
   under the reference's pitch.
 - The reference's compact strip rhythm is 28-38 CSS; the toolbar (36) is the
-  only strip loopfleet's `--toolbar-h` (44) clearly overshoots.
-- Panel-padding band: reference row insets run ~8-13 CSS (loopfleet
+  only strip Loopfleet's `--toolbar-h` (44) clearly overshoots.
+- Panel-padding band: reference row insets run ~8-13 CSS (Loopfleet
   `--space-2/3` = 8/12); the reference has no card padding analogue above
   that (settings cards are the Phase 3 target).

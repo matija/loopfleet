@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "loopfleet",
+  "productName": "Loopfleet",
   "version": "0.1.15",
   "identifier": "com.loopfleet.app",
   "build": {
@@ -18,7 +18,7 @@
   "app": {
     "windows": [
       {
-        "title": "loopfleet",
+        "title": "Loopfleet",
         "width": 1200,
         "height": 800,
         "titleBarStyle": "Overlay",

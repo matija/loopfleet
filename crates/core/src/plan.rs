@@ -464,7 +464,7 @@ mod tests {
         let plan = parse_plan_file(Path::new(prd)).unwrap();
         assert_eq!(
             plan.title.as_deref(),
-            Some("PRD: Workbench UI — a panel-style workbench surface for loopfleet")
+            Some("PRD: Workbench UI — a panel-style workbench surface for Loopfleet")
         );
         // Only the four items under "Tasks" — the bulleted non-goals carry no
         // checkbox and the fenced example checkbox is not a task.

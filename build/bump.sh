@@ -123,9 +123,9 @@ awk -v new="$NEW" -v repo="$README_REPO" '
   /<!-- download-links:start -->/ {
     base = "https://github.com/" repo "/releases/download/" new
     print
-    print "**Download loopfleet " new "** —"
-    print "[Apple Silicon](" base "/loopfleet_" new "_aarch64.dmg)"
-    print "· [Intel](" base "/loopfleet_" new "_x64.dmg)"
+    print "**Download Loopfleet " new "** —"
+    print "[Apple Silicon](" base "/Loopfleet_" new "_aarch64.dmg)"
+    print "· [Intel](" base "/Loopfleet_" new "_x64.dmg)"
     skip = 1
     next
   }

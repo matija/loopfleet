@@ -61,7 +61,7 @@ fi
 require_macos_target "$TARGET_TRIPLE"
 
 VERSION="$RELEASE_VERSION"
-banner "Release loopfleet $VERSION ($RELEASE_TAG) for $TARGET_TRIPLE"
+banner "Release Loopfleet $VERSION ($RELEASE_TAG) for $TARGET_TRIPLE"
 
 cd "$ROOT"
 npm run tauri build -- --target "$TARGET_TRIPLE"
