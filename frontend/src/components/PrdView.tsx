@@ -61,7 +61,8 @@ export function PrdView({
   onError,
 }: {
   projectId: string;
-  /// Surfaces command failures (a failed export) through the app's toasts.
+  /// The app's toast surface. Used for command failures (a failed export)
+  /// and, for archive, the success outcome too — the archived path.
   onError: (message: string) => void;
 }) {
   const [plans, setPlans] = useState<Plan[] | null>(null);
@@ -222,19 +223,23 @@ export function PrdView({
       .catch((e) => setArchiveError(String(e)));
   }
 
-  // Archive: move the file and re-key the plan, then reload so it drops out
-  // of the live list.
+  // Archive: move the file and re-key the plan. The outcome is reported the
+  // way the app reports outcomes — the archived path through the toast on
+  // success, the command's own message on failure — and either way the plan
+  // list reloads, since the flow is over: success drops the doc out of the
+  // live list, failure leaves it in place but there's nothing left to confirm.
   async function confirmArchive() {
     if (!archivePlanId) return;
     setArchiveBusy(true);
     setArchiveError(null);
     try {
-      await archivePlan(archivePlanId, archiveNameField.trim());
-      load();
+      const path = await archivePlan(archivePlanId, archiveNameField.trim());
+      onError(`Archived to ${path}`);
     } catch (e) {
-      setArchiveError(String(e));
+      onError(String(e));
     } finally {
       setArchiveBusy(false);
+      load();
     }
   }
 
