@@ -41,9 +41,12 @@ const FALLBACK: &str = "untitled";
 /// is still a better name than "untitled".
 ///
 /// When the result is already `taken`, a `-2`, `-3`, … discriminator is
-/// appended — matched case-insensitively, since the archive may live on a
-/// case-insensitive filesystem where `Quiet-Cockpit.md` and `quiet-cockpit.md`
-/// are the same file.
+/// appended until the name is free — matched case-insensitively, since the
+/// archive may live on a case-insensitive filesystem where `Quiet-Cockpit.md`
+/// and `quiet-cockpit.md` are the same file. The discriminator is applied
+/// after the length trim, and the slug gives back the characters it needs, so
+/// even a disambiguated name stays within [`MAX_CHARS`]. The returned name is
+/// therefore one the caller can accept as it stands.
 pub fn proposed_archive_name(title: Option<&str>, taken: &[String]) -> String {
     let slug = slugify(title.unwrap_or_default());
     let mut candidate = format!("{slug}.md");
@@ -51,9 +54,18 @@ pub fn proposed_archive_name(title: Option<&str>, taken: &[String]) -> String {
     let mut n = 1;
     while is_taken(&candidate, taken) {
         n += 1;
-        candidate = format!("{slug}-{n}.md");
+        candidate = format!("{}.md", with_discriminator(&slug, n));
     }
     candidate
+}
+
+/// `slug` carrying a `-n` discriminator, cut back far enough that the whole
+/// stem still fits [`MAX_CHARS`]. The discriminator is the part that makes the
+/// name free, so the slug yields to it rather than the other way round.
+fn with_discriminator(slug: &str, n: usize) -> String {
+    let suffix = format!("-{n}");
+    let budget = MAX_CHARS.saturating_sub(suffix.chars().count());
+    format!("{}{suffix}", truncate_at_word(slug, budget))
 }
 
 /// The kebab slug for `title`, or [`FALLBACK`] when nothing survives.
@@ -235,6 +247,57 @@ mod tests {
         assert_eq!(
             proposed_archive_name(Some("Quiet Cockpit"), &taken),
             "quiet-cockpit-2.md"
+        );
+    }
+
+    #[test]
+    fn counts_up_until_the_name_is_free() {
+        let taken: Vec<String> = [
+            "quiet-cockpit.md",
+            "quiet-cockpit-2.md",
+            "quiet-cockpit-3.md",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(
+            proposed_archive_name(Some("Quiet Cockpit"), &taken),
+            "quiet-cockpit-4.md"
+        );
+    }
+
+    #[test]
+    fn a_discriminated_name_still_fits_the_character_cap() {
+        let title = "Reconciliation supervisor reattachment budgeting";
+        assert_eq!(name(title).chars().count(), MAX_CHARS + ".md".len());
+
+        let taken = vec![name(title)];
+        let out = proposed_archive_name(Some(title), &taken);
+        // The slug gives back the two characters the `-2` needs, and gives
+        // them back a whole word at a time.
+        assert_eq!(out, "reconciliation-supervisor-reattachment-2.md");
+        assert!(out.strip_suffix(".md").unwrap().chars().count() <= MAX_CHARS);
+    }
+
+    #[test]
+    fn a_discriminated_overlong_word_is_cut_hard_to_fit() {
+        let title = "a".repeat(60);
+        let taken = vec![name(&title)];
+        let out = proposed_archive_name(Some(&title), &taken);
+        assert_eq!(out, format!("{}-2.md", "a".repeat(MAX_CHARS - 2)));
+        assert_eq!(out.strip_suffix(".md").unwrap().chars().count(), MAX_CHARS);
+    }
+
+    #[test]
+    fn keeps_counting_when_the_trimmed_name_is_taken_too() {
+        let title = "Reconciliation supervisor reattachment budgeting";
+        let taken = vec![
+            name(title),
+            "reconciliation-supervisor-reattachment-2.md".to_string(),
+        ];
+        assert_eq!(
+            proposed_archive_name(Some(title), &taken),
+            "reconciliation-supervisor-reattachment-3.md"
         );
     }
 
