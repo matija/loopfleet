@@ -30,6 +30,20 @@ export type ProjectRemovalPreview = {
   worktrees_on_disk: number;
 };
 
+/// What an archive confirmation dialog needs to state the consequences of
+/// archiving a plan: its title, current path, the name it would be given, the
+/// directory it would land in, and how much it would carry along.
+/// `core::ArchivePlanPreview`.
+export type ArchivePreview = {
+  title: string | null;
+  file_path: string;
+  proposed_file_name: string;
+  destination_dir: string;
+  destination_exists: boolean;
+  task_count: number;
+  run_count: number;
+};
+
 // --- store: settings.rs ---
 
 /// Global app defaults. `store::Settings`.

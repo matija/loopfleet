@@ -7,6 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AgentStatus,
   AgentUsageCheck,
+  ArchivePreview,
   CompareView,
   ContinuePlanResult,
   PlanEditProposal,
@@ -44,6 +45,24 @@ export function projectRemovalPreview(
 /// or running.
 export function removeProject(projectId: string): Promise<void> {
   return invoke("remove_project", { projectId });
+}
+
+/// What an archive confirmation dialog shows for a plan — title, path,
+/// proposed name/directory, and task/run counts — gathered without moving
+/// anything.
+export function archivePlanPreview(planId: string): Promise<ArchivePreview> {
+  return invoke("archive_plan_preview", { planId });
+}
+
+/// Archive a plan: move its file into `<repo>/prds/` under `fileName` and
+/// re-key its store row. Rejects if the plan has runs still queued or
+/// running, or if the destination already exists. Resolves to the absolute
+/// archived path.
+export function archivePlan(
+  planId: string,
+  fileName: string,
+): Promise<string> {
+  return invoke("archive_plan", { planId, fileName });
 }
 
 /// Discover the v1 agent CLIs: availability, version, drift.
