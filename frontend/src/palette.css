@@ -193,6 +193,17 @@
   color: var(--c-text-muted);
 }
 
+.palette__row--disabled,
+.palette__row--disabled:hover {
+  cursor: default;
+  color: var(--c-text-faint);
+  background: transparent;
+}
+
+.palette__row--disabled .palette__row-hint {
+  color: var(--c-text-faint);
+}
+
 .palette__foot {
   display: flex;
   flex-wrap: wrap;

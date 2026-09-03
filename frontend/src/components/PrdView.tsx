@@ -59,11 +59,20 @@ type ArchivePhase = "loading" | "confirm";
 export function PrdView({
   projectId,
   onError,
+  autoArchivePlanId,
+  onAutoArchiveHandled,
 }: {
   projectId: string;
   /// The app's toast surface. Used for command failures (a failed export)
   /// and, for archive, the success outcome too — the archived path.
   onError: (message: string) => void;
+  /// Set by the command palette's "Archive plan" action to jump straight
+  /// into the archive confirmation for that plan once it's loaded, instead
+  /// of requiring the Archive button click.
+  autoArchivePlanId?: string | null;
+  /// Called once `autoArchivePlanId` has been consumed (matched or not), so
+  /// the caller can clear it and not re-trigger on the next render.
+  onAutoArchiveHandled?: () => void;
 }) {
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -222,6 +231,17 @@ export function PrdView({
       })
       .catch((e) => setArchiveError(String(e)));
   }
+
+  // Consume a palette-driven `autoArchivePlanId` once its plan has loaded:
+  // jump straight to the archive confirmation, same as clicking that plan's
+  // own Archive button. Runs once per id (an unmatched id, e.g. a stale one
+  // from a project switch, is dropped silently rather than retried).
+  useEffect(() => {
+    if (!autoArchivePlanId || !plans) return;
+    const plan = plans.find((p) => p.plan_id === autoArchivePlanId);
+    if (plan) startArchive(plan);
+    onAutoArchiveHandled?.();
+  }, [autoArchivePlanId, plans]);
 
   // Archive: move the file and re-key the plan. The outcome is reported the
   // way the app reports outcomes — the archived path through the toast on

@@ -21,7 +21,7 @@ import { taskSummary } from "../displayText";
 import { fuzzyMatch } from "../fuzzy";
 import { SHORTCUTS, shortcutKeyGlyphs } from "../shortcuts";
 import type { PlanView as Plan, Project } from "../types";
-import { RUN_STATUS_LABEL } from "../status";
+import { isActiveRun, RUN_STATUS_LABEL } from "../status";
 import type { ActiveRun } from "./RunDock";
 import { ChecklistIcon, ComposeIcon, FolderIcon, PlayIcon, SearchIcon, TrashIcon } from "./Icon";
 
@@ -47,6 +47,9 @@ export type CommandPaletteProps = {
   onClose: () => void;
   projects: Project[];
   runs: ActiveRun[];
+  /// The project currently selected in the sidebar, if any — what "Archive
+  /// plan" targets. `null` when nothing is selected (the overview pane).
+  currentProjectId: string | null;
   onOpenProject: (projectId: string) => void;
   onOpenTask: (task: PaletteOpenTask) => void;
   onOpenRun: (runId: string) => void;
@@ -55,6 +58,9 @@ export type CommandPaletteProps = {
   /// Opens the sidebar's remove-project confirmation for the given project,
   /// mirroring the trash icon on its sidebar row.
   onRemoveProject: (projectId: string) => void;
+  /// Jumps to the current project's plan in the PRD view and starts the
+  /// archive flow for it, mirroring PrdView's own Archive button.
+  onArchivePlan: (projectId: string, planId: string) => void;
 };
 
 type Item = {
@@ -68,6 +74,10 @@ type Item = {
   /// project" row still living in the Projects group, but drawn with a
   /// trash glyph so it doesn't read as another way to open the project).
   icon?: typeof FolderIcon;
+  /// Set with the reason it's inert (e.g. "No plan to archive") — the row
+  /// still renders and is readable, but Enter/click no-op and the reason
+  /// shows in place of the hint.
+  disabledReason?: string;
 };
 
 /// Footer hint rows for the palette's own (non-global) keys — arrow
@@ -89,18 +99,24 @@ export function CommandPalette({
   onClose,
   projects,
   runs,
+  currentProjectId,
   onOpenProject,
   onOpenTask,
   onOpenRun,
   onAddProject,
   onOpenOverview,
   onRemoveProject,
+  onArchivePlan,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const [tasks, setTasks] = useState<
     { projectId: string; planId: string; planLabel: string; anchor: string; text: string }[]
   >([]);
+  // The plans backing each project's tasks, keyed by project id — the same
+  // `plan_overview` fan-out below, kept whole (not just flattened into
+  // `tasks`) so "Archive plan" can name the current project's plan.
+  const [plansByProject, setPlansByProject] = useState<Record<string, Plan[]>>({});
   // True while the per-project `plan_overview` fan-out is in flight, so the
   // Tasks group can signal it is still indexing rather than reading as empty.
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -120,8 +136,10 @@ export function CommandPalette({
     Promise.all(
       projects.map((p) =>
         planOverview(p.id)
-          .then((plans: Plan[]) =>
-            plans.flatMap((plan) =>
+          .then((plans: Plan[]) => ({
+            projectId: p.id,
+            plans,
+            tasks: plans.flatMap((plan) =>
               plan.tasks.map((t) => ({
                 projectId: p.id,
                 planId: plan.plan_id,
@@ -130,12 +148,13 @@ export function CommandPalette({
                 text: t.text,
               })),
             ),
-          )
-          .catch(() => [] as typeof tasks),
+          }))
+          .catch(() => ({ projectId: p.id, plans: [] as Plan[], tasks: [] as typeof tasks })),
       ),
-    ).then((groups) => {
+    ).then((results) => {
       if (cancelled) return;
-      setTasks(groups.flat());
+      setTasks(results.flatMap((r) => r.tasks));
+      setPlansByProject(Object.fromEntries(results.map((r) => [r.projectId, r.plans])));
       setTasksLoading(false);
     });
     return () => {
@@ -147,6 +166,38 @@ export function CommandPalette({
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
+
+  // "Archive plan" targets the current project's plan (its first synced plan
+  // document — the common case is exactly one). Disabled with a stated
+  // reason when there's no project selected, the project has no plan, or the
+  // plan has a run still queued or running (the same guard `archive_plan`
+  // itself enforces server-side, checked here against the same task/run data
+  // the palette already indexes so the reason shows without a round trip).
+  const archiveTarget = useMemo(() => {
+    if (!currentProjectId) {
+      return { planId: null as string | null, disabledReason: "No project selected" };
+    }
+    const plans = plansByProject[currentProjectId];
+    if (!plans || plans.length === 0) {
+      return { planId: null as string | null, disabledReason: "No plan to archive" };
+    }
+    const plan = plans[0];
+    const activeAnchors = new Set(
+      runs
+        .filter((r) => isActiveRun(r.status) && r.projectId === currentProjectId)
+        .map((r) => r.taskAnchor),
+    );
+    const hasActiveRun = tasks.some(
+      (t) =>
+        t.projectId === currentProjectId &&
+        t.planId === plan.plan_id &&
+        activeAnchors.has(t.anchor),
+    );
+    return {
+      planId: plan.plan_id,
+      disabledReason: hasActiveRun ? "Plan has a run still active" : undefined,
+    };
+  }, [currentProjectId, plansByProject, tasks, runs]);
 
   const items = useMemo<Item[]>(() => {
     const actions: Item[] = [
@@ -165,6 +216,18 @@ export function CommandPalette({
         subtitle: "Agents, settings, sandbox boundary",
         hint: "home",
         run: onOpenOverview,
+      },
+      {
+        id: "act:archive-plan",
+        group: "Actions",
+        title: "Archive plan",
+        subtitle: archiveTarget.disabledReason ?? "Move the current plan into prds/",
+        hint: archiveTarget.disabledReason ?? "archive",
+        disabledReason: archiveTarget.disabledReason,
+        run: () => {
+          if (archiveTarget.disabledReason || !currentProjectId || !archiveTarget.planId) return;
+          onArchivePlan(currentProjectId, archiveTarget.planId);
+        },
       },
     ];
     const projectItems: Item[] = projects.map((p) => ({
@@ -211,8 +274,11 @@ export function CommandPalette({
     projects,
     tasks,
     runs,
+    archiveTarget,
+    currentProjectId,
     onAddProject,
     onOpenOverview,
+    onArchivePlan,
     onOpenProject,
     onRemoveProject,
     onOpenTask,
@@ -268,7 +334,7 @@ export function CommandPalette({
     } else if (e.key === "Enter") {
       e.preventDefault();
       const item = results[selected];
-      if (item) {
+      if (item && !item.disabledReason) {
         item.run();
         onClose();
       }
@@ -324,15 +390,21 @@ export function CommandPalette({
                 {g.rows.map((item) => {
                   const idx = results.indexOf(item);
                   const active = idx === selected;
+                  const disabled = item.disabledReason !== undefined;
                   const GroupIcon = item.icon ?? GROUP_ICON[item.group];
                   return (
                     <button
                       key={item.id}
                       data-idx={idx}
-                      className={`palette__row${active ? " palette__row--active" : ""}`}
+                      className={`palette__row${active ? " palette__row--active" : ""}${
+                        disabled ? " palette__row--disabled" : ""
+                      }`}
                       aria-current={active}
+                      aria-disabled={disabled}
+                      title={item.disabledReason}
                       onMouseEnter={() => setSelected(idx)}
                       onClick={() => {
+                        if (disabled) return;
                         item.run();
                         onClose();
                       }}

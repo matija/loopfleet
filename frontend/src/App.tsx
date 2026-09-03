@@ -161,6 +161,12 @@ export default function App() {
   // `paletteOpenOverview`) without a click.
   const [overviewExpanded, setOverviewExpanded] =
     useState<OverviewSection | null>(null);
+  // Set by the command palette's "Archive plan" action: the plan to jump
+  // straight into the archive confirmation for once PlanSurface/PrdView have
+  // switched to the PRD view for its project. Cleared once consumed.
+  const [pendingArchivePlanId, setPendingArchivePlanId] = useState<
+    string | null
+  >(null);
   // The picked palette. Seeded from localStorage rather than the default so a
   // reload doesn't briefly re-render in dark before the stored value lands —
   // the inline script in index.html has already set data-theme to this same
@@ -871,6 +877,14 @@ export default function App() {
   }, []);
   // Opens the same remove-project confirmation as the sidebar's trash icon,
   // anchored to that project's own (always-mounted) sidebar row button.
+  // Jumps to the project's plan, switches to its PRD view, and starts the
+  // archive flow for `planId` — the palette's disabled/enabled check already
+  // confirmed the plan exists and has no active run.
+  const paletteArchivePlan = useCallback((projectId: string, planId: string) => {
+    setSelectedId(projectId);
+    setView({ kind: "plan", projectId });
+    setPendingArchivePlanId(planId);
+  }, []);
   const paletteRemoveProject = useCallback(
     (id: string) => {
       const p = projects.find((x) => x.id === id);
@@ -1291,6 +1305,8 @@ export default function App() {
               })
             }
             toolbarActions={toolbarActionsEl}
+            pendingArchivePlanId={pendingArchivePlanId}
+            onPendingArchiveHandled={() => setPendingArchivePlanId(null)}
           />
         ) : (
           <Overview
@@ -1308,12 +1324,14 @@ export default function App() {
         onClose={() => setPaletteOpen(false)}
         projects={projects}
         runs={runs}
+        currentProjectId={selectedId}
         onOpenProject={paletteOpenProject}
         onOpenTask={paletteOpenTask}
         onOpenRun={paletteOpenRun}
         onAddProject={paletteAddProject}
         onOpenOverview={paletteOpenOverview}
         onRemoveProject={paletteRemoveProject}
+        onArchivePlan={paletteArchivePlan}
       />
     </AppShell>
   );

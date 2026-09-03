@@ -5,7 +5,7 @@
 // a document (PrdView). The toggle is local to the pane; switching views never
 // refetches projects or changes the app-level route.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { PlanView, type CompareTarget, type LaunchedRun } from "./PlanView";
 import { PrdView } from "./PrdView";
@@ -20,6 +20,8 @@ export function PlanSurface({
   onCompare,
   onError,
   toolbarActions,
+  pendingArchivePlanId,
+  onPendingArchiveHandled,
 }: {
   projectId: string;
   planNonce: number;
@@ -30,8 +32,17 @@ export function PlanSurface({
   /// The toolbar's action-slot DOM node. The Tasks/PRD toggle portals there
   /// instead of rendering inline.
   toolbarActions: HTMLElement | null;
+  /// A plan id to jump straight into the archive confirmation for, set by
+  /// the command palette's "Archive plan" action. Forces the PRD view open
+  /// so PrdView can consume it.
+  pendingArchivePlanId?: string | null;
+  onPendingArchiveHandled?: () => void;
 }) {
   const [mode, setMode] = useState<Mode>("tasks");
+
+  useEffect(() => {
+    if (pendingArchivePlanId) setMode("prd");
+  }, [pendingArchivePlanId]);
 
   const toggle = (
     <div className="plan-toggle" role="tablist" aria-label="Plan views">
@@ -73,7 +84,13 @@ export function PlanSurface({
           <SandboxOverrides projectId={projectId} />
         </>
       ) : (
-        <PrdView key={projectId} projectId={projectId} onError={onError} />
+        <PrdView
+          key={projectId}
+          projectId={projectId}
+          onError={onError}
+          autoArchivePlanId={pendingArchivePlanId}
+          onAutoArchiveHandled={onPendingArchiveHandled}
+        />
       )}
     </>
   );
