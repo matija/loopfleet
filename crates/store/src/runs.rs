@@ -114,7 +114,10 @@ pub fn fail_interrupted_runs(conn: &Connection) -> rusqlite::Result<Vec<String>>
 /// Mark a run accepted ("use this run"). Acceptance is a separate flag from
 /// status (PRD data model): `"Implemented" = a run you accepted`. Idempotent.
 pub fn set_run_accepted(conn: &Connection, run_id: &str) -> rusqlite::Result<()> {
-    conn.execute("UPDATE runs SET accepted = 1 WHERE id = ?1", params![run_id])?;
+    conn.execute(
+        "UPDATE runs SET accepted = 1 WHERE id = ?1",
+        params![run_id],
+    )?;
     Ok(())
 }
 
@@ -365,7 +368,10 @@ pub struct ProjectRun {
 /// `remove_project` reaps each one's worktree itself rather than relying on
 /// the sweep, since the project (and its runs' rows) are about to be deleted
 /// outright.
-pub fn list_runs_for_project(conn: &Connection, project_id: &str) -> rusqlite::Result<Vec<ProjectRun>> {
+pub fn list_runs_for_project(
+    conn: &Connection,
+    project_id: &str,
+) -> rusqlite::Result<Vec<ProjectRun>> {
     let mut stmt = conn.prepare(
         "SELECT r.id, r.worktree_path
          FROM runs r
@@ -393,6 +399,18 @@ pub fn has_active_runs_for_project(conn: &Connection, project_id: &str) -> rusql
              WHERE pl.project_id = ?1 AND r.status IN ('queued', 'running')
          )",
         [project_id],
+        |r| r.get::<_, bool>(0),
+    )
+}
+
+/// Whether `plan_id` has any run still `queued` or `running`. Same guard as
+/// [`has_active_runs_for_project`], scoped to a single plan.
+pub fn has_active_runs_for_plan(conn: &Connection, plan_id: &str) -> rusqlite::Result<bool> {
+    conn.query_row(
+        "SELECT EXISTS(
+             SELECT 1 FROM runs WHERE plan_id = ?1 AND status IN ('queued', 'running')
+         )",
+        [plan_id],
         |r| r.get::<_, bool>(0),
     )
 }
@@ -453,11 +471,17 @@ mod tests {
         insert_iteration(&conn, "r1", 2, "refs/agentapp/run-r1/iter-2", Some(9)).unwrap();
         update_run_status(&conn, "r1", "completed").unwrap();
 
-        assert_eq!(list_runs_for_plan(&conn, &pid).unwrap()[0].status, "completed");
+        assert_eq!(
+            list_runs_for_plan(&conn, &pid).unwrap()[0].status,
+            "completed"
+        );
         let iters = load_iterations(&conn, "r1").unwrap();
         assert_eq!(iters.len(), 2);
         assert_eq!(iters[0].n, 1);
-        assert_eq!(iters[0].shadow_ref.as_deref(), Some("refs/agentapp/run-r1/iter-1"));
+        assert_eq!(
+            iters[0].shadow_ref.as_deref(),
+            Some("refs/agentapp/run-r1/iter-1")
+        );
         assert_eq!(iters[1].event_log_offset, Some(9));
     }
 
@@ -482,7 +506,10 @@ mod tests {
         let pid = seed(&conn);
         insert_run(&conn, &new_run("r1", &pid, "task a", "running")).unwrap();
 
-        assert_eq!(project_id_for_run(&conn, "r1").unwrap().as_deref(), Some("p"));
+        assert_eq!(
+            project_id_for_run(&conn, "r1").unwrap().as_deref(),
+            Some("p")
+        );
         assert!(project_id_for_run(&conn, "nope").unwrap().is_none());
     }
 
@@ -550,7 +577,10 @@ mod tests {
             insert_run(&conn, &new_run(id, &pid, "task a", "running")).unwrap();
             assert!(finished_at(&conn, id).is_none());
             update_run_status(&conn, id, status).unwrap();
-            assert!(finished_at(&conn, id).is_some(), "{status} should stamp finished_at");
+            assert!(
+                finished_at(&conn, id).is_some(),
+                "{status} should stamp finished_at"
+            );
         }
     }
 
@@ -600,8 +630,14 @@ mod tests {
         assert_eq!(
             runs,
             vec![
-                ProjectRun { id: "r1".into(), worktree_path: Some("/wt".into()) },
-                ProjectRun { id: "r2".into(), worktree_path: Some("/wt".into()) },
+                ProjectRun {
+                    id: "r1".into(),
+                    worktree_path: Some("/wt".into())
+                },
+                ProjectRun {
+                    id: "r2".into(),
+                    worktree_path: Some("/wt".into())
+                },
             ]
         );
     }
@@ -617,6 +653,22 @@ mod tests {
         insert_run(&conn, &new_run("r2", &pid2, "task b", "queued")).unwrap();
         assert!(!has_active_runs_for_project(&conn, "p").unwrap());
         assert!(has_active_runs_for_project(&conn, "p2").unwrap());
+    }
+
+    #[test]
+    fn has_active_runs_for_plan_checks_queued_and_running_only() {
+        let conn = crate::open(":memory:").unwrap();
+        let pid = seed(&conn);
+        let pid2 = crate::plan_id("p", "OTHER.md");
+        crate::upsert_plan(&conn, &pid2, "p", "OTHER.md").unwrap();
+        crate::upsert_task(&conn, &pid2, "task b", 1, "Task B", false).unwrap();
+
+        insert_run(&conn, &new_run("r1", &pid, "task a", "completed")).unwrap();
+        assert!(!has_active_runs_for_plan(&conn, &pid).unwrap());
+
+        insert_run(&conn, &new_run("r2", &pid2, "task b", "queued")).unwrap();
+        assert!(!has_active_runs_for_plan(&conn, &pid).unwrap());
+        assert!(has_active_runs_for_plan(&conn, &pid2).unwrap());
     }
 
     #[test]

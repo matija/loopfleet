@@ -204,7 +204,10 @@ mod tests {
             launches[0].created_at > 0,
             "created_at is stamped on insert"
         );
-        assert_eq!(launches[0].reschedule_count, 0, "a fresh launch has never been rescheduled");
+        assert_eq!(
+            launches[0].reschedule_count, 0,
+            "a fresh launch has never been rescheduled"
+        );
         assert_eq!(launches[0].origin, "manual", "defaults to manual");
     }
 

@@ -213,7 +213,10 @@ mod tests {
         let reader = open(&db).unwrap();
         let stored = load_events(&reader, "run-1").unwrap();
         assert_eq!(
-            stored.iter().map(|s| s.event_json.as_str()).collect::<Vec<_>>(),
+            stored
+                .iter()
+                .map(|s| s.event_json.as_str())
+                .collect::<Vec<_>>(),
             vec![
                 r#"{"kind":"turn_started"}"#,
                 r#"{"kind":"file_changed","path":"src/lib.rs"}"#,

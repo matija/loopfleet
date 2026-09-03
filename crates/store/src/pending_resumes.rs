@@ -80,7 +80,10 @@ pub fn list_pending_resumes(conn: &Connection) -> rusqlite::Result<Vec<PendingRe
 /// Clear the pending resume for `run_id`, whether because it fired or was
 /// cancelled. A no-op if none exists.
 pub fn delete_pending_resume(conn: &Connection, run_id: &str) -> rusqlite::Result<()> {
-    conn.execute("DELETE FROM pending_resumes WHERE run_id = ?1", params![run_id])?;
+    conn.execute(
+        "DELETE FROM pending_resumes WHERE run_id = ?1",
+        params![run_id],
+    )?;
     Ok(())
 }
 
@@ -240,7 +243,8 @@ mod tests {
         seed(&conn);
         insert_pending_resume(&conn, &new_resume("r1", 1)).unwrap();
 
-        conn.execute("DELETE FROM runs WHERE id = 'r1'", []).unwrap();
+        conn.execute("DELETE FROM runs WHERE id = 'r1'", [])
+            .unwrap();
         assert!(list_pending_resumes(&conn).unwrap().is_empty());
     }
 
@@ -277,7 +281,10 @@ mod tests {
         insert_pending_resume(&conn, &new_resume("r1", 1)).unwrap();
         insert_pending_resume(
             &conn,
-            &NewPendingResume { run_id: "r2".into(), ..new_resume("r2", 1) },
+            &NewPendingResume {
+                run_id: "r2".into(),
+                ..new_resume("r2", 1)
+            },
         )
         .unwrap();
 

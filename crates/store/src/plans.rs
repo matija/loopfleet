@@ -204,7 +204,9 @@ pub fn rekey_plan(
         // no-op (unknown old_id) or merge two plans' tasks onto the same
         // `(plan_id, normalized_text)` primary key (occupied new_id).
         if !plan_exists(conn, old_id)? {
-            return Err(rekey_rejected(format!("rekey_plan: no plan with id {old_id:?}")));
+            return Err(rekey_rejected(format!(
+                "rekey_plan: no plan with id {old_id:?}"
+            )));
         }
         if old_id != new_id && plan_exists(conn, new_id)? {
             return Err(rekey_rejected(format!(
@@ -392,7 +394,10 @@ mod tests {
         let new_id = plan_id("proj", "PLAN.md");
         rekey_plan(&conn, &old_id, &new_id, "PLAN.md").unwrap();
 
-        assert_eq!(plan_file_path(&conn, &new_id).unwrap().as_deref(), Some("PLAN.md"));
+        assert_eq!(
+            plan_file_path(&conn, &new_id).unwrap().as_deref(),
+            Some("PLAN.md")
+        );
         assert_eq!(plan_file_path(&conn, &old_id).unwrap(), None);
 
         let task_plan_id: String = conn
@@ -405,7 +410,9 @@ mod tests {
         assert_eq!(task_plan_id, new_id);
 
         let run_plan_id: String = conn
-            .query_row("SELECT plan_id FROM runs WHERE id = 'run-1'", [], |r| r.get(0))
+            .query_row("SELECT plan_id FROM runs WHERE id = 'run-1'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(run_plan_id, new_id);
 
@@ -446,8 +453,14 @@ mod tests {
         assert!(err.is_err());
 
         // Both plans and both tasks must be untouched, not merged.
-        assert_eq!(plan_file_path(&conn, &old_id).unwrap().as_deref(), Some("PRD.md"));
-        assert_eq!(plan_file_path(&conn, &new_id).unwrap().as_deref(), Some("PLAN.md"));
+        assert_eq!(
+            plan_file_path(&conn, &old_id).unwrap().as_deref(),
+            Some("PRD.md")
+        );
+        assert_eq!(
+            plan_file_path(&conn, &new_id).unwrap().as_deref(),
+            Some("PLAN.md")
+        );
         let n: i64 = conn
             .query_row("SELECT COUNT(*) FROM tasks", [], |r| r.get(0))
             .unwrap();

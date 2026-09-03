@@ -98,8 +98,16 @@ pub fn load_settings(conn: &Connection) -> rusqlite::Result<Settings> {
 /// Persist every settings field (upsert per key).
 pub fn save_settings(conn: &Connection, s: &Settings) -> rusqlite::Result<()> {
     set(conn, "default_agent", &s.default_agent)?;
-    set(conn, "default_model", s.default_model.as_deref().unwrap_or(""))?;
-    set(conn, "default_iterations", &s.default_iterations.to_string())?;
+    set(
+        conn,
+        "default_model",
+        s.default_model.as_deref().unwrap_or(""),
+    )?;
+    set(
+        conn,
+        "default_iterations",
+        &s.default_iterations.to_string(),
+    )?;
     set(conn, "concurrency_cap", &s.concurrency_cap.to_string())?;
     set(
         conn,
@@ -135,12 +143,14 @@ pub fn save_settings(conn: &Connection, s: &Settings) -> rusqlite::Result<()> {
 }
 
 fn get(conn: &Connection, key: &str) -> rusqlite::Result<Option<String>> {
-    conn.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0))
-        .map(Some)
-        .or_else(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => Ok(None),
-            other => Err(other),
-        })
+    conn.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
+        r.get(0)
+    })
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
 }
 
 fn set(conn: &Connection, key: &str, value: &str) -> rusqlite::Result<()> {
@@ -154,7 +164,10 @@ fn set(conn: &Connection, key: &str, value: &str) -> rusqlite::Result<()> {
 
 /// A project's per-project sandbox write overrides, as a list of paths (one per
 /// stored line; blank lines dropped).
-pub fn project_sandbox_writes(conn: &Connection, project_id: &str) -> rusqlite::Result<Vec<String>> {
+pub fn project_sandbox_writes(
+    conn: &Connection,
+    project_id: &str,
+) -> rusqlite::Result<Vec<String>> {
     let raw: String = conn.query_row(
         "SELECT sandbox_extra_writes FROM projects WHERE id = ?1",
         [project_id],
@@ -233,8 +246,12 @@ mod tests {
         seed_project(&conn);
         assert!(project_sandbox_writes(&conn, "p").unwrap().is_empty());
 
-        set_project_sandbox_writes(&conn, "p", &["/opt/data".into(), "  ".into(), "/var/x".into()])
-            .unwrap();
+        set_project_sandbox_writes(
+            &conn,
+            "p",
+            &["/opt/data".into(), "  ".into(), "/var/x".into()],
+        )
+        .unwrap();
         // Blank entries dropped.
         assert_eq!(
             project_sandbox_writes(&conn, "p").unwrap(),

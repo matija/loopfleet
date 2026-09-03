@@ -26,8 +26,8 @@ pub fn insert_project(conn: &Connection, project: &Project) -> rusqlite::Result<
 
 /// All registered projects, ordered by repo path for a stable listing.
 pub fn list_projects(conn: &Connection) -> rusqlite::Result<Vec<Project>> {
-    let mut stmt = conn
-        .prepare("SELECT id, repo_path, plan_convention FROM projects ORDER BY repo_path")?;
+    let mut stmt =
+        conn.prepare("SELECT id, repo_path, plan_convention FROM projects ORDER BY repo_path")?;
     let rows = stmt
         .query_map([], |r| {
             Ok(Project {
@@ -61,7 +61,10 @@ pub struct DeleteProjectSummary {
 /// tasks, then the plans, the sessions, and finally the project row. `runs`
 /// reference `tasks` (and `scheduled_launches` reference `tasks` too) without
 /// `ON DELETE CASCADE`, so both must go before `tasks` is deleted.
-pub fn delete_project(conn: &Connection, project_id: &str) -> rusqlite::Result<DeleteProjectSummary> {
+pub fn delete_project(
+    conn: &Connection,
+    project_id: &str,
+) -> rusqlite::Result<DeleteProjectSummary> {
     conn.execute_batch("BEGIN")?;
     let result = (|| {
         let mut summary = DeleteProjectSummary::default();
@@ -93,12 +96,18 @@ pub fn delete_project(conn: &Connection, project_id: &str) -> rusqlite::Result<D
             params![project_id],
         )?;
 
-        summary.plans = conn.execute("DELETE FROM plans WHERE project_id = ?1", params![project_id])?;
+        summary.plans = conn.execute(
+            "DELETE FROM plans WHERE project_id = ?1",
+            params![project_id],
+        )?;
 
-        summary.sessions =
-            conn.execute("DELETE FROM sessions WHERE project_id = ?1", params![project_id])?;
+        summary.sessions = conn.execute(
+            "DELETE FROM sessions WHERE project_id = ?1",
+            params![project_id],
+        )?;
 
-        summary.projects = conn.execute("DELETE FROM projects WHERE id = ?1", params![project_id])?;
+        summary.projects =
+            conn.execute("DELETE FROM projects WHERE id = ?1", params![project_id])?;
 
         Ok(summary)
     })();
@@ -171,7 +180,10 @@ pub fn project_removal_preview(
     let worktree_paths = stmt
         .query_map(params![project_id], |r| r.get::<_, String>(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    let worktrees_on_disk = worktree_paths.iter().filter(|p| Path::new(p).exists()).count();
+    let worktrees_on_disk = worktree_paths
+        .iter()
+        .filter(|p| Path::new(p).exists())
+        .count();
 
     Ok(ProjectRemovalPreview {
         plans,
@@ -201,7 +213,10 @@ mod tests {
         insert_project(&conn, &project("p2", "/repos/a")).unwrap();
         let got = list_projects(&conn).unwrap();
         // Ordered by repo_path.
-        assert_eq!(got, vec![project("p2", "/repos/a"), project("p1", "/repos/b")]);
+        assert_eq!(
+            got,
+            vec![project("p2", "/repos/a"), project("p1", "/repos/b")]
+        );
     }
 
     #[test]
@@ -300,13 +315,23 @@ mod tests {
         );
 
         for table in [
-            "projects", "plans", "tasks", "runs", "events", "sessions",
-            "pending_resumes", "scheduled_launches", "iterations",
+            "projects",
+            "plans",
+            "tasks",
+            "runs",
+            "events",
+            "sessions",
+            "pending_resumes",
+            "scheduled_launches",
+            "iterations",
         ] {
             let count: i64 = conn
                 .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
                 .unwrap();
-            assert_eq!(count, 0, "table {table} should be empty after delete_project");
+            assert_eq!(
+                count, 0,
+                "table {table} should be empty after delete_project"
+            );
         }
     }
 
@@ -322,7 +347,9 @@ mod tests {
         assert_eq!(remaining, vec![project("p2", "/repos/p2")]);
 
         let run_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM runs WHERE id = 'p2-run'", [], |r| r.get(0))
+            .query_row("SELECT COUNT(*) FROM runs WHERE id = 'p2-run'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(run_count, 1, "other project's run must survive");
     }
@@ -346,8 +373,9 @@ mod tests {
 
         // Read-only: nothing was removed.
         assert_eq!(list_projects(&conn).unwrap().len(), 1);
-        let run_count: i64 =
-            conn.query_row("SELECT COUNT(*) FROM runs", [], |r| r.get(0)).unwrap();
+        let run_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM runs", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(run_count, 1);
     }
 
