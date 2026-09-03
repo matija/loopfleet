@@ -14,6 +14,7 @@ use loopfleet_store::Project;
 use rusqlite::Connection;
 
 pub mod adapter;
+pub mod archive;
 pub mod autopilot;
 pub mod commit_message;
 pub mod compare;
@@ -29,6 +30,7 @@ pub mod task_status;
 pub mod timeline;
 pub mod usage;
 pub use adapter::{AdapterError, AgentAdapter, RunHandle, RunSpec, SessionHandle, SessionSeed};
+pub use archive::proposed_archive_name;
 pub use autopilot::{should_auto_merge, AutoMergeBlockedReason, AutoMergeDecision};
 pub use commit_message::compose_commit_message;
 pub use compare::{compare_view, CompareError, CompareView, RunCompare};
