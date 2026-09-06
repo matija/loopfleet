@@ -24,26 +24,37 @@ export type ThemeId =
   | "tairiki-light"
   | "dracula";
 
+/// Whether a theme paints on a dark or a light field. Mirrors the
+/// `color-scheme` declaration in that theme's tokens.css block — the same fact,
+/// told to two different consumers: the CSS one tints native in-page chrome
+/// (scrollbars, form controls), this one tints the chrome outside the page.
+/// The window wears an overlay title bar (tauri.conf.json), so its frame — and
+/// the hairline macOS draws along the top edge — is painted by the OS from the
+/// window's appearance, which no stylesheet can reach.
+export type ThemeAppearance = "dark" | "light";
+
 export type Theme = {
   id: ThemeId;
   /// Human-readable name for the theme picker.
   label: string;
+  /// The field this theme paints on; see [`ThemeAppearance`].
+  appearance: ThemeAppearance;
 };
 
 /// dark is first because it's the default — tokens.css also applies it via
 /// :root with no attribute set, so it's what the app looks like before any
 /// preference is read.
 export const THEMES: readonly Theme[] = [
-  { id: "dark", label: "Dark" },
-  { id: "rose-pine-moon", label: "Rosé Pine Moon" },
-  { id: "github-dark", label: "GitHub Dark" },
-  { id: "github-light", label: "GitHub Light" },
-  { id: "tokyo-night", label: "Tokyo Night" },
-  { id: "tokyo-night-storm", label: "Tokyo Night Storm" },
-  { id: "tokyo-night-light", label: "Tokyo Night Light" },
-  { id: "tairiki-dark", label: "Tairiki Dark" },
-  { id: "tairiki-light", label: "Tairiki Light" },
-  { id: "dracula", label: "Dracula" },
+  { id: "dark", label: "Dark", appearance: "dark" },
+  { id: "rose-pine-moon", label: "Rosé Pine Moon", appearance: "dark" },
+  { id: "github-dark", label: "GitHub Dark", appearance: "dark" },
+  { id: "github-light", label: "GitHub Light", appearance: "light" },
+  { id: "tokyo-night", label: "Tokyo Night", appearance: "dark" },
+  { id: "tokyo-night-storm", label: "Tokyo Night Storm", appearance: "dark" },
+  { id: "tokyo-night-light", label: "Tokyo Night Light", appearance: "light" },
+  { id: "tairiki-dark", label: "Tairiki Dark", appearance: "dark" },
+  { id: "tairiki-light", label: "Tairiki Light", appearance: "light" },
+  { id: "dracula", label: "Dracula", appearance: "dark" },
 ] as const;
 
 export const DEFAULT_THEME_ID: ThemeId = "dark";
@@ -64,6 +75,13 @@ export function resolveThemeId(stored: unknown): ThemeId {
 export function themeById(id: ThemeId): Theme {
   // Non-null: ThemeId is exactly the set of ids in THEMES.
   return THEMES.find((theme) => theme.id === id)!;
+}
+
+/// The field a theme paints on, resolving an arbitrary stored value the same
+/// way [`applyTheme`] does so a stale id reports the default's appearance
+/// rather than nothing.
+export function themeAppearance(stored: unknown): ThemeAppearance {
+  return themeById(resolveThemeId(stored)).appearance;
 }
 
 /// The theme a preview should paint while a picker is being browsed: the

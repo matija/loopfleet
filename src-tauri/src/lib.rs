@@ -21,6 +21,7 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use tokio::sync::watch;
 
+mod orphans;
 mod path_env;
 
 /// The future returned by [`spawn_run`]. Boxed and type-erased so a rate-limited
@@ -3243,12 +3244,20 @@ pub fn run() {
             let sweep_dir = dir;
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                // Crash recovery: runs don't survive an app restart in v1, so any
-                // run still marked queued/running was interrupted by a prior
-                // crash or quit — its background task and agent process are
-                // gone. Mark them failed (shadow refs are kept). Then prune
-                // orphan worktree metadata for each project (worktrees whose
-                // checkout vanished on the crash).
+                // Crash recovery, first half: a crash or force-quit never got
+                // to SIGTERM its agents' process groups, so they and everything
+                // they forked are still running against worktrees nobody owns.
+                // Reap them before anything else — an orphan holding a worktree
+                // open makes `sweep_worktrees` skip it as in use, so it would
+                // never be reaped either.
+                orphans::reap(&sweep_dir).await;
+
+                // Second half: runs don't survive an app restart in v1, so any
+                // run still marked queued/running was interrupted by that same
+                // crash or quit — its background task is gone and its agent has
+                // just been reaped. Mark them failed (shadow refs are kept).
+                // Then prune orphan worktree metadata for each project
+                // (worktrees whose checkout vanished on the crash).
                 let interrupted = {
                     let conn = sweep_db.lock().unwrap();
                     loopfleet_store::fail_interrupted_runs(&conn).unwrap_or_default()

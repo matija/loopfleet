@@ -9,6 +9,7 @@ import {
   readStoredThemeId,
   resolveThemeId,
   storeThemeId,
+  themeAppearance,
   themeById,
   THEMES,
   THEME_STORAGE_KEY,
@@ -77,18 +78,18 @@ afterEach(() => {
 const NEW_THEME_IDS = ["tairiki-dark", "tairiki-light", "dracula"] as const;
 
 describe("THEMES", () => {
-  it("lists every theme as an { id, label } pair", () => {
+  it("lists every theme as an { id, label, appearance } triple", () => {
     expect(THEMES).toEqual([
-      { id: "dark", label: "Dark" },
-      { id: "rose-pine-moon", label: "Rosé Pine Moon" },
-      { id: "github-dark", label: "GitHub Dark" },
-      { id: "github-light", label: "GitHub Light" },
-      { id: "tokyo-night", label: "Tokyo Night" },
-      { id: "tokyo-night-storm", label: "Tokyo Night Storm" },
-      { id: "tokyo-night-light", label: "Tokyo Night Light" },
-      { id: "tairiki-dark", label: "Tairiki Dark" },
-      { id: "tairiki-light", label: "Tairiki Light" },
-      { id: "dracula", label: "Dracula" },
+      { id: "dark", label: "Dark", appearance: "dark" },
+      { id: "rose-pine-moon", label: "Rosé Pine Moon", appearance: "dark" },
+      { id: "github-dark", label: "GitHub Dark", appearance: "dark" },
+      { id: "github-light", label: "GitHub Light", appearance: "light" },
+      { id: "tokyo-night", label: "Tokyo Night", appearance: "dark" },
+      { id: "tokyo-night-storm", label: "Tokyo Night Storm", appearance: "dark" },
+      { id: "tokyo-night-light", label: "Tokyo Night Light", appearance: "light" },
+      { id: "tairiki-dark", label: "Tairiki Dark", appearance: "dark" },
+      { id: "tairiki-light", label: "Tairiki Light", appearance: "light" },
+      { id: "dracula", label: "Dracula", appearance: "dark" },
     ]);
   });
 
@@ -122,6 +123,42 @@ describe("THEMES", () => {
 
     expect(new Set(cssIds)).toEqual(new Set(registryIds));
     expect(cssIds.length).toBe(registryIds.length);
+  });
+
+  // Each theme's `appearance` is the registry's copy of the `color-scheme` its
+  // tokens.css block declares — the two are read by different consumers (the
+  // window frame vs. in-page native chrome) and would drift apart unnoticed,
+  // since a mismatch only shows as chrome painted for the wrong field.
+  it("gives every theme the appearance its tokens.css block declares", () => {
+    const tokensPath = fileURLToPath(new URL("./tokens.css", import.meta.url));
+    const css = readFileSync(tokensPath, "utf8");
+    const declared = new Map(
+      [
+        ...css.matchAll(
+          /\[data-theme="([^"]+)"\]\s*\{[^}]*?color-scheme:\s*(dark|light);/gs,
+        ),
+      ].map((m) => [m[1], m[2]]),
+    );
+
+    for (const theme of THEMES) {
+      expect(declared.get(theme.id)).toBe(theme.appearance);
+    }
+  });
+});
+
+describe("themeAppearance", () => {
+  it("reports the field each registered theme paints on", () => {
+    for (const theme of THEMES) {
+      expect(themeAppearance(theme.id)).toBe(theme.appearance);
+    }
+  });
+
+  it("falls back to the default theme's appearance for unknown values", () => {
+    for (const value of ["", "light", "solarized", null, undefined, 3]) {
+      expect(themeAppearance(value)).toBe(
+        themeById(DEFAULT_THEME_ID).appearance,
+      );
+    }
   });
 });
 

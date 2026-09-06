@@ -1,3 +1,4 @@
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   useCallback,
   useEffect,
@@ -94,6 +95,7 @@ import {
   applyTheme,
   readStoredThemeId,
   storeThemeId,
+  themeAppearance,
   type ThemeId,
 } from "./themes";
 
@@ -696,6 +698,17 @@ export default function App() {
   useEffect(() => {
     applyTheme(themeId);
     storeThemeId(themeId);
+    // The window's frame is drawn by the OS, not by the stylesheet: with an
+    // overlay title bar, macOS still paints a hairline along the window's top
+    // edge, in whatever appearance the window wears. Left on the system
+    // appearance, a dark palette gets a white line across the top — so the
+    // native appearance follows the palette.
+    void getCurrentWindow()
+      .setTheme(themeAppearance(themeId))
+      .catch(() => {
+        // Not fatal: the app is themed either way, only the window frame
+        // stays on the system appearance.
+      });
   }, [themeId]);
 
   const toggleSidebarHidden = useCallback(() => setSidebarHidden((h) => !h), []);
