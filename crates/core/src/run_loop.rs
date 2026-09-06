@@ -253,8 +253,8 @@ fn read_progress(path: &Path) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
 
-/// Assemble a pass's prompt: the bound task, the progress-file protocol, and the
-/// prior progress as the durable memory the fresh context reads back.
+/// Assemble a pass's prompt: the bound task, the loop rules, the progress-file
+/// protocol, and the prior progress the fresh context reads back.
 fn build_prompt(cfg: &LoopConfig, prior: &str) -> String {
     let prior = if prior.trim().is_empty() {
         "(no prior progress yet)"
@@ -263,12 +263,23 @@ fn build_prompt(cfg: &LoopConfig, prior: &str) -> String {
     };
     format!(
         "Task:\n{task}\n\n\
-You are running in a loop with fresh context each pass. Your durable memory is \
-the progress file at:\n  {progress}\n\n\
-Read your prior progress below, continue the work, and append what you did this \
-pass to that file. When the task is fully done, write to the progress file a line \
-containing exactly `{marker}` and a line starting with `{summary}` that describes \
-what the run changed: one line, imperative mood, under 72 characters.\n\n\
+You do this task in a loop. Each pass starts with no memory of the passes before \
+it. The progress file is your only memory:\n  {progress}\n\n\
+Do these steps in this pass:\n\
+1. Read the prior progress at the end of this message.\n\
+2. Do the next part of the task.\n\
+3. Append to the progress file what you did and what is still open. Write facts, \
+not plans.\n\n\
+Obey these rules:\n\
+- Follow YAGNI. Write only the code that the task asks for. Do not add options, \
+layers, or hooks for a possible future need.\n\
+- Prefer the shortest solution that is correct. If one line is sufficient, write \
+one line.\n\
+- Change only the files that the task needs.\n\n\
+When the task is fully done, write two more lines in the progress file:\n\
+- a line that contains exactly `{marker}`\n\
+- a line that starts with `{summary}` and tells what the run changed. Use one \
+line, imperative mood, less than 72 characters.\n\n\
 --- prior progress ---\n{prior}\n",
         task = cfg.task_text,
         progress = cfg.progress_path.display(),
