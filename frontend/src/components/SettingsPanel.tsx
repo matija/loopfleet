@@ -75,7 +75,7 @@ import { AgentIcon, DotIcon, FolderIcon, PlayIcon, SettingsIcon } from "./Icon";
 
 // The v1 agent keys (matches the adapters' discovery set). A small stable list;
 // no need to derive it from `agent_status` here.
-const AGENTS = ["claude", "pi", "cursor"];
+const AGENTS = ["claude", "pi", "cursor", "codex"];
 
 // Human-readable byte count for the sweep toast (binary units, matches how
 // most OS file browsers report disk usage).

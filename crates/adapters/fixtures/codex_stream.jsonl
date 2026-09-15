@@ -1,0 +1,9 @@
+{"type":"thread.started","thread_id":"019f3659-e2f0-7eba-a213-675ca580af06"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"I will inspect the project."}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"I will run the test."}}
+{"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"cargo test","aggregated_output":"ok\n","exit_code":0,"status":"completed"}}
+{"type":"item.started","item":{"id":"item_3","type":"mcp_tool_call","server":"docs","tool":"read","arguments":{"path":"README.md"},"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_3","type":"mcp_tool_call","server":"docs","tool":"read","arguments":{"path":"README.md"},"result":{"content":[{"type":"text","text":"Loopfleet"}],"structured_content":null},"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_4","type":"agent_message","text":"Done."}}
+{"type":"turn.completed","usage":{"input_tokens":120,"cached_input_tokens":40,"cache_write_input_tokens":0,"output_tokens":25,"reasoning_output_tokens":10}}

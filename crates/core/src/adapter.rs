@@ -1,8 +1,8 @@
 //! The `AgentAdapter` trait and its associated types.
 //!
 //! Per the PRD architecture, both the supervisor/run-loop and the adapter trait
-//! live in `core`; the per-agent implementations (Claude Code, pi, cursor-agent)
-//! live in the `loopfleet-adapters` crate and `impl` this trait. Keeping the
+//! live in `core`. The `loopfleet-adapters` crate implements Claude Code, Codex,
+//! pi, and cursor-agent. Keeping the
 //! trait here lets the run loop (also in `core`) compose over a
 //! `&dyn AgentAdapter` without `core` depending on `adapters` (which would be a
 //! cycle, since `adapters` depends on `core` for [`NormalizedEvent`]).

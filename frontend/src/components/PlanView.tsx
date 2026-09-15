@@ -82,12 +82,13 @@ export type LaunchedRun = {
 };
 
 /// Model presets offered in the launch menu, per agent — only agents whose
-/// CLI accepts `--model` (Claude Code, pi) get an entry. Free text is still
+/// CLI accepts `--model` (Claude Code, Codex, pi) get an entry. Free text is still
 /// accepted for anything not listed (e.g. a pinned version like
 /// "claude-opus-4-1-20250805", or a pi "provider/id" pattern) — these are
 /// just the common shortcuts.
 const AGENT_MODEL_PRESETS: Record<string, string[]> = {
   claude: ["opus", "sonnet", "haiku"],
+  codex: ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
   pi: ["opus", "sonnet", "haiku"],
 };
 

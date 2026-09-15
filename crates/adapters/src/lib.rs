@@ -1,5 +1,5 @@
 //! Loopfleet adapters: the `AgentAdapter` trait and per-agent implementations
-//! (Claude Code, pi, cursor-agent) that normalize each agent's stream into the
+//! (Claude Code, Codex, pi, cursor-agent) that normalize each agent's stream into the
 //! shared event enum. Implemented in M1.
 //!
 //! An adapter's only job is to turn one agent's native transport into the
@@ -16,11 +16,13 @@ use std::ffi::OsString;
 use tokio::process::{Child, Command};
 
 mod claude;
+mod codex;
 mod cursor;
 mod discovery;
 mod pi;
 mod stub;
 pub use claude::ClaudeAdapter;
+pub use codex::CodexAdapter;
 pub use cursor::CursorAdapter;
 pub use discovery::{discover, discover_all, spec_for, AgentSpec, AgentStatus, KNOWN_AGENTS};
 pub use pi::PiAdapter;

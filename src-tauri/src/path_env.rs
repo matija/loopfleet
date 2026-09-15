@@ -3,7 +3,7 @@
 //! `npm run tauri dev` starts the app from a terminal, so it inherits the
 //! shell's `PATH` and finds the agent CLIs. A `.app` launched from Finder or
 //! the Dock inherits launchd's minimal `PATH` instead
-//! (`/usr/bin:/bin:/usr/sbin:/sbin`), so `claude`, `pi` and `cursor-agent` —
+//! (`/usr/bin:/bin:/usr/sbin:/sbin`), so the supported agent CLIs —
 //! which live in Homebrew, `~/.local/bin`, `~/.bun/bin`, a node version
 //! manager's shim dir, … — are invisible and discovery reports them as
 //! "not found on PATH".

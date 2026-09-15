@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use loopfleet_adapters::{ClaudeAdapter, CursorAdapter, PiAdapter};
+use loopfleet_adapters::{ClaudeAdapter, CodexAdapter, CursorAdapter, PiAdapter};
 use loopfleet_core::{
     fold_rate_limit, launch_decision, resolve_display, run_loop, should_auto_merge, AgentAdapter,
     AutoMergeBlockedReason, AutoMergeDecision, CompareView, LaunchDecision, LoopConfig,
@@ -3053,7 +3053,7 @@ async fn agent_usage(app: AppHandle) -> Result<Vec<UsageSnapshot>, String> {
     let mut out = Vec::with_capacity(loopfleet_adapters::KNOWN_AGENTS.len());
     for spec in loopfleet_adapters::KNOWN_AGENTS {
         let now = now_ms();
-        // Probes are sequential, like `discover_all`'s: at v1's three agents
+        // The probes run in sequence, as they do in `discover_all`.
         // only `claude` spawns anything, and its probe is bounded by its own
         // timeout.
         let probed = match build_adapter(spec.key) {
@@ -3117,28 +3117,36 @@ async fn check_agent_usage(agent: String, app: AppHandle) -> Result<AgentUsageCh
     Ok(AgentUsageCheck { snapshot, decision })
 }
 
-/// The v1 agents, dispatched by name. Boxed so the loop holds a `dyn` adapter.
+/// Dispatch an agent by name. The loop stores the result as a `dyn` adapter.
 fn build_adapter(agent: &str) -> Option<Box<dyn AgentAdapter>> {
     match agent {
         "claude" => Some(Box::new(ClaudeAdapter)),
+        "codex" => Some(Box::new(CodexAdapter)),
         "pi" => Some(Box::new(PiAdapter)),
         "cursor" | "cursor-agent" => Some(Box::new(CursorAdapter)),
         _ => None,
     }
 }
 
-/// The `$HOME` dirs the v1 agent CLIs write to (config, cache, session state).
-/// Granted in the sandbox so a confined agent can start. A superset across the
-/// v1 agents; nonexistent subpaths are harmless in a Seatbelt grant.
+/// The `$HOME` paths that the agent CLIs use for configuration, cache, and sessions.
+/// The sandbox permits writes to these paths. A missing path has no effect.
 fn agent_dirs() -> Vec<PathBuf> {
     let home = match std::env::var_os("HOME") {
         Some(h) => PathBuf::from(h),
         None => return Vec::new(),
     };
-    [".claude", ".claude.json", ".config", ".cache", ".pi", ".cursor"]
-        .iter()
-        .map(|d| home.join(d))
-        .collect()
+    [
+        ".claude",
+        ".claude.json",
+        ".codex",
+        ".config",
+        ".cache",
+        ".pi",
+        ".cursor",
+    ]
+    .iter()
+    .map(|d| home.join(d))
+    .collect()
 }
 
 // --- app menu ---

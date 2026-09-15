@@ -34,7 +34,7 @@ pub struct AgentSpec {
     pub models: &'static [&'static str],
 }
 
-/// The three v1.0 agents. Keys match `build_adapter` and the stored run `agent`;
+/// The known agents. Keys match `build_adapter` and the stored run `agent`;
 /// the tested versions are the ones the adapters were captured/tested against.
 pub const KNOWN_AGENTS: &[AgentSpec] = &[
     AgentSpec {
@@ -43,7 +43,11 @@ pub const KNOWN_AGENTS: &[AgentSpec] = &[
         binary: "claude",
         version_arg: "--version",
         tested_version: "2.1.201",
-        models: &["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"],
+        models: &[
+            "claude-opus-5",
+            "claude-sonnet-5",
+            "claude-haiku-4-5-20251001",
+        ],
     },
     AgentSpec {
         key: "pi",
@@ -60,6 +64,19 @@ pub const KNOWN_AGENTS: &[AgentSpec] = &[
         version_arg: "--version",
         tested_version: "2026.07.01",
         models: &[],
+    },
+    AgentSpec {
+        key: "codex",
+        display: "Codex",
+        binary: "codex",
+        version_arg: "--version",
+        tested_version: "0.154.0",
+        models: &[
+            "gpt-6-astra",
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+        ],
     },
 ];
 
@@ -148,8 +165,7 @@ pub async fn discover(spec: &AgentSpec) -> AgentStatus {
     }
 }
 
-/// Discover all v1 agents. Sequential — three fast `--version` spawns, no need
-/// for a join-all dependency.
+/// Discover all known agents. Four fast `--version` commands run in sequence.
 pub async fn discover_all() -> Vec<AgentStatus> {
     let mut out = Vec::with_capacity(KNOWN_AGENTS.len());
     for spec in KNOWN_AGENTS {
@@ -219,6 +235,7 @@ mod tests {
     #[test]
     fn spec_lookup_and_cursor_alias() {
         assert_eq!(spec_for("claude").map(|s| s.binary), Some("claude"));
+        assert_eq!(spec_for("codex").map(|s| s.binary), Some("codex"));
         assert_eq!(spec_for("pi").map(|s| s.binary), Some("pi"));
         // Both the key and the CLI name resolve to the same cursor spec.
         assert_eq!(spec_for("cursor").map(|s| s.binary), Some("cursor-agent"));

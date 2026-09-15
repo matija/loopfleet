@@ -74,8 +74,8 @@ export function AgentStatusPanel() {
         <p className="panel__loading">Detecting agent CLIs…</p>
       ) : agents.length === 0 ? (
         <p className="panel__empty">
-          No agent CLIs detected. Install <code>claude</code>, <code>pi</code>, or{" "}
-          <code>cursor</code> to launch runs.
+          No agent CLIs detected. Install <code>claude</code>, <code>codex</code>,{" "}
+          <code>pi</code>, or <code>cursor-agent</code> to launch runs.
         </p>
       ) : (
         <div className="agent-chips">
