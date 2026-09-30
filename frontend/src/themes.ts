@@ -22,7 +22,8 @@ export type ThemeId =
   | "tokyo-night-light"
   | "tairiki-dark"
   | "tairiki-light"
-  | "dracula";
+  | "dracula"
+  | "polar-aurora";
 
 /// Whether a theme paints on a dark or a light field. Mirrors the
 /// `color-scheme` declaration in that theme's tokens.css block — the same fact,
@@ -55,6 +56,7 @@ export const THEMES: readonly Theme[] = [
   { id: "tairiki-dark", label: "Tairiki Dark", appearance: "dark" },
   { id: "tairiki-light", label: "Tairiki Light", appearance: "light" },
   { id: "dracula", label: "Dracula", appearance: "dark" },
+  { id: "polar-aurora", label: "Polar Aurora", appearance: "dark" },
 ] as const;
 
 export const DEFAULT_THEME_ID: ThemeId = "dark";

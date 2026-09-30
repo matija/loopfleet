@@ -71,11 +71,7 @@ afterEach(() => {
   delete (globalThis as { document?: unknown }).document;
 });
 
-// The three ids the registry gained after the existing cases were written
-// (commit "Add Tairiki Dark, Tairiki Light, Dracula to theme registry"). No
-// current test names them, so the preview, pick, and relaunch flows below are
-// the first to exercise the newest palettes.
-const NEW_THEME_IDS = ["tairiki-dark", "tairiki-light", "dracula"] as const;
+const NEW_THEME_IDS = ["tairiki-dark", "tairiki-light", "dracula", "polar-aurora"] as const;
 
 describe("THEMES", () => {
   it("lists every theme as an { id, label, appearance } triple", () => {
@@ -90,6 +86,7 @@ describe("THEMES", () => {
       { id: "tairiki-dark", label: "Tairiki Dark", appearance: "dark" },
       { id: "tairiki-light", label: "Tairiki Light", appearance: "light" },
       { id: "dracula", label: "Dracula", appearance: "dark" },
+      { id: "polar-aurora", label: "Polar Aurora", appearance: "dark" },
     ]);
   });
 
