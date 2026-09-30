@@ -21,9 +21,9 @@ Context is kept deliberately small per run, so each agent stays focused on its c
 ## Download
 
 <!-- download-links:start -->
-**Download Loopfleet 0.2.0** —
-[Apple Silicon](https://github.com/matija/loopfleet/releases/download/0.2.0/Loopfleet_0.2.0_aarch64.dmg)
-· [Intel](https://github.com/matija/loopfleet/releases/download/0.2.0/Loopfleet_0.2.0_x64.dmg)
+**Download Loopfleet 0.2.1** —
+[Apple Silicon](https://github.com/matija/loopfleet/releases/download/0.2.1/Loopfleet_0.2.1_aarch64.dmg)
+· [Intel](https://github.com/matija/loopfleet/releases/download/0.2.1/Loopfleet_0.2.1_x64.dmg)
 <!-- download-links:end -->
 
 Signed and notarized `.dmg` builds; the app updates itself from there.
