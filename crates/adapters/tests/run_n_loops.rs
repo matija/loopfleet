@@ -5,7 +5,7 @@
 //! [`GitActor`] cuts a worktree and takes app-owned shadow snapshots, the
 //! `SeatbeltSandbox` renders the per-run boundary, [`confine_prefix`] turns it
 //! into the opaque wrapper prefix the [`ClaudeAdapter`] prepends to its spawn,
-//! and [`run_loop`] drives the passes until the agent writes `STATUS: COMPLETE`
+//! and [`run_loop`] drives the passes until the agent writes `<STATUS>COMPLETE</STATUS>`
 //! to its external progress file.
 //!
 //! Ignored by default and macOS-only: it spawns the real `claude` CLI (needs the
@@ -117,7 +117,7 @@ async fn runs_n_loops_on_a_task_with_claude() {
     let (_cancel_tx, mut cancel_rx) = tokio::sync::watch::channel(false);
     let outcome = run_loop(&ClaudeAdapter, &git, &cfg, &mut cancel_rx, &mut |_pass, _ev| {}).await;
 
-    // The agent wrote STATUS: COMPLETE within N passes.
+    // The agent wrote <STATUS>COMPLETE</STATUS> within N passes.
     assert_eq!(
         outcome.state,
         RunState::Completed,

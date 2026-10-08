@@ -12,10 +12,10 @@
 //! Each pass: seed the prompt with the bound task plus the prior progress-file
 //! contents → `start_run` a fresh agent invocation → drain its normalized events
 //! → snapshot the worktree to `refs/agentapp/run-<id>/iter-<n>` → check the
-//! progress file for the `STATUS: COMPLETE` marker.
+//! progress file for the `<STATUS>COMPLETE</STATUS>` marker.
 //!
 //! Stop conditions (PRD run status machine):
-//! - the bound task's `STATUS: COMPLETE` appears → [`RunState::Completed`];
+//! - the bound task's `<STATUS>COMPLETE</STATUS>` appears → [`RunState::Completed`];
 //! - the user requests a stop via `cancel` → [`RunState::Stopped`];
 //! - the agent hit a rate limit during the pass and it did not otherwise finish
 //!   → [`RunState::LimitReached`] (the caller schedules a re-run once it resets);
@@ -263,28 +263,40 @@ fn build_prompt(cfg: &LoopConfig, prior: &str) -> String {
     };
     format!(
         "Task:\n{task}\n\n\
-Complete the entire task in this attempt, including all required tests and \
-verification. Do not stop after a subtask or assume another attempt will finish \
-your work. Any later attempt is a fresh attempt, not a planned continuation.\n\n\
-Prior attempts may have left changes and recorded progress here:\n  {progress}\n\n\
-Do these steps in this attempt:\n\
-1. Read the prior progress at the end of this message and inspect existing changes.\n\
-2. Finish all remaining requirements and run the required verification. Keep \
-working until the whole task is complete or a concrete blocker prevents further \
-progress. A completed subtask is not a reason to stop.\n\
-3. Append what you completed and the verification results to the progress file. \
-If blocked, record the concrete blocker and unfinished requirements. Write facts, \
-not plans.\n\n\
+Complete the entire task in this attempt. Do all required tests and checks.\n\
+The required result is the completed task, not a progress report or a plan.\n\
+If a task requirement remains unfinished, this attempt failed.\n\
+A problem that prevents further work does not make the task completed.\n\
+A missing test, an omitted check, or a failed check means that the task remains unfinished.\n\n\
+Progress file:\n  {progress}\n\n\
+Do these steps:\n\
+1. Read the previous progress at the end of this message.\n\
+2. Examine the existing changes.\n\
+3. Complete each unfinished task requirement.\n\
+4. Do all required tests and checks.\n\
+5. Compare the result with each task requirement.\n\
+6. Make sure that the result satisfies each task requirement.\n\
+7. Make sure that all required tests and checks passed.\n\n\
 Obey these rules:\n\
-- Follow YAGNI. Write only the code that the task asks for. Do not add options, \
-layers, or hooks for a possible future need.\n\
-- Prefer the shortest solution that is correct. If one line is sufficient, write \
-one line.\n\
-- Change only the files that the task needs.\n\n\
-When the task is fully done, write two more lines in the progress file:\n\
-- a line that contains exactly `{marker}`\n\
-- a line that starts with `{summary}` and tells what the run changed. Use one \
-line, imperative mood, less than 72 characters.\n\n\
+- Do not stop after one part of the task.\n\
+- Do not leave required work for another attempt.\n\
+- Do not ask for permission to continue the task.\n\
+- Do not describe unfinished requirements as optional work.\n\
+- Write only the code that the task requires.\n\
+- Do not add options, layers, or hooks for possible future requirements.\n\
+- Use the shortest correct solution.\n\
+- If one line is sufficient, write one line.\n\
+- Change only the files that the task requires.\n\n\
+Record the result:\n\
+1. Add the completed work and the test results to the progress file.\n\
+2. If a problem prevents further work, write the cause and the unfinished requirements in the progress file.\n\
+3. Write facts, not plans.\n\
+4. If required work or checks remain unfinished, do not write `{marker}`.\n\
+5. If each requirement is satisfied and all required checks passed, write `{marker}` on a separate line.\n\
+6. After the completion marker, write a summary line that starts with `{summary}`.\n\
+7. Describe the changes in the summary line.\n\
+8. Start the summary with an imperative verb.\n\
+9. Use fewer than 72 characters for the summary.\n\n\
 --- prior progress ---\n{prior}\n",
         task = cfg.task_text,
         progress = cfg.progress_path.display(),
@@ -310,7 +322,7 @@ mod tests {
     /// and replays a fixed event list.
     struct ScriptedAdapter {
         progress_path: PathBuf,
-        /// 1-based pass on which to write `STATUS: COMPLETE`; `None` = never.
+        /// 1-based pass on which to write `<STATUS>COMPLETE</STATUS>`; `None` = never.
         complete_on: Option<u32>,
         /// 1-based pass on which to emit a `RateLimited` event (carrying this
         /// reset time) instead of finishing normally; `None` = never.
@@ -356,7 +368,7 @@ mod tests {
                 .unwrap();
             writeln!(f, "pass {n} did work").unwrap();
             if self.complete_on == Some(n) {
-                writeln!(f, "STATUS: COMPLETE").unwrap();
+                writeln!(f, "{}", crate::progress::COMPLETION_MARKER).unwrap();
             }
 
             // Change the worktree so each snapshot has real content.
@@ -591,8 +603,16 @@ mod tests {
             assert!(prompt.contains(crate::progress::COMPLETION_MARKER));
             assert!(prompt.contains(crate::progress::SUMMARY_MARKER));
             assert!(prompt.contains("Complete the entire task in this attempt"));
-            assert!(prompt.contains("including all required tests and verification"));
-            assert!(prompt.contains("A completed subtask is not a reason to stop."));
+            assert!(prompt.contains("Do all required tests and checks."));
+            assert!(prompt.contains("Do not stop after one part of the task."));
+            assert!(
+                prompt.contains("If a task requirement remains unfinished, this attempt failed.")
+            );
+            assert!(prompt.contains(
+                "A problem that prevents further work does not make the task completed."
+            ));
+            assert!(prompt.contains("A missing test, an omitted check, or a failed check"));
+            assert!(prompt.contains("If required work or checks remain unfinished, do not write"));
             assert!(!prompt.contains("Do the next part of the task"));
         }
     }

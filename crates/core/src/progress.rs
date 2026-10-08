@@ -22,7 +22,7 @@ use tokio::sync::oneshot;
 
 /// The machine-readable marker the agent writes to signal its bound task is
 /// fully done. It must appear on its own (trimmed) line.
-pub const COMPLETION_MARKER: &str = "STATUS: COMPLETE";
+pub const COMPLETION_MARKER: &str = "<STATUS>COMPLETE</STATUS>";
 
 /// Whether `contents` carries the completion marker on its own (trimmed) line.
 /// Prose that merely mentions the marker mid-line does not trip this.
@@ -94,16 +94,18 @@ mod tests {
 
     #[test]
     fn marker_on_its_own_line_is_complete() {
-        assert!(contents_mark_complete("did work\nSTATUS: COMPLETE\n"));
+        assert!(contents_mark_complete("did work\n<STATUS>COMPLETE</STATUS>\n"));
         // Leading/trailing whitespace on the line is tolerated.
-        assert!(contents_mark_complete("  STATUS: COMPLETE  "));
+        assert!(contents_mark_complete("  <STATUS>COMPLETE</STATUS>  "));
     }
 
     #[test]
     fn prose_mentioning_the_marker_is_not_complete() {
         assert!(!contents_mark_complete(
-            "I will write STATUS: COMPLETE when done\n"
+            "I will write <STATUS>COMPLETE</STATUS> when done\n"
         ));
+        assert!(!contents_mark_complete("STATUS: COMPLETE\n"));
+        assert!(!contents_mark_complete("<STATUS>INCOMPLETE</STATUS>\n"));
         assert!(!contents_mark_complete("nothing here yet\n"));
         assert!(!contents_mark_complete(""));
     }
@@ -154,7 +156,7 @@ mod tests {
 
     #[test]
     fn summary_and_completion_are_independent() {
-        let contents = "SUMMARY: shipped it\nSTATUS: COMPLETE\n";
+        let contents = "SUMMARY: shipped it\n<STATUS>COMPLETE</STATUS>\n";
         assert!(contents_mark_complete(contents));
         assert_eq!(
             summary_from_contents(contents).as_deref(),
@@ -172,7 +174,7 @@ mod tests {
     fn present_file_with_marker_is_complete() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("progress.md");
-        std::fs::write(&p, "pass 1 did work\nSTATUS: COMPLETE\n").unwrap();
+        std::fs::write(&p, "pass 1 did work\n<STATUS>COMPLETE</STATUS>\n").unwrap();
         assert!(file_marks_complete(&p));
     }
 
@@ -180,7 +182,7 @@ mod tests {
     async fn returns_true_when_marker_already_present() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("progress.md");
-        std::fs::write(&p, "STATUS: COMPLETE\n").unwrap();
+        std::fs::write(&p, "<STATUS>COMPLETE</STATUS>\n").unwrap();
         let (_tx, rx) = oneshot::channel();
         assert!(watch_for_completion(&p, Duration::from_millis(5), rx).await);
     }
@@ -198,7 +200,7 @@ mod tests {
                 .append(true)
                 .open(&writer_path)
                 .unwrap();
-            writeln!(f, "STATUS: COMPLETE").unwrap();
+            writeln!(f, "<STATUS>COMPLETE</STATUS>").unwrap();
         });
 
         let (_tx, rx) = oneshot::channel();

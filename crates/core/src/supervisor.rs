@@ -23,7 +23,7 @@ use std::process::ExitStatus;
 use tokio::process::{Child, Command};
 
 /// The run lifecycle state machine: `queued → running → (completed | failed |
-/// stopped | limit-reached)`. `completed` = the bound task's `STATUS: COMPLETE`
+/// stopped | limit-reached)`. `completed` = the bound task's `<STATUS>COMPLETE</STATUS>`
 /// marker appeared within N iterations; `failed` = N reached still incomplete,
 /// or a crash; `stopped` = the user stopped the run; `limit-reached` = the agent
 /// hit a rate limit, so the run ended early to wait it out (the app schedules a
