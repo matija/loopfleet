@@ -50,6 +50,14 @@ pub(crate) fn base_command(wrapper: &[OsString], program: &str) -> Command {
         }
         None => Command::new(program),
     };
+    if !wrapper.is_empty() {
+        if let Some(home) = std::env::var_os("HOME") {
+            cmd.env(
+                "CARGO_HOME",
+                std::path::PathBuf::from(home).join(".cache/loopfleet/cargo"),
+            );
+        }
+    }
     #[cfg(unix)]
     cmd.process_group(0);
     cmd
@@ -70,6 +78,29 @@ pub(crate) fn stop_agent(child: &mut Child) {
     }
     #[cfg(not(unix))]
     let _ = child.start_kill();
+}
+
+#[cfg(test)]
+mod command_tests {
+    use super::*;
+
+    #[test]
+    fn sandboxed_agents_receive_writable_cargo_home() {
+        let Some(home) = std::env::var_os("HOME") else {
+            return;
+        };
+        let cmd = base_command(&[OsString::from("sandbox-exec")], "pi");
+        let expected = std::path::PathBuf::from(home).join(".cache/loopfleet/cargo");
+        assert!(cmd.as_std().get_envs().any(|(key, value)| {
+            key == "CARGO_HOME" && value == Some(expected.as_os_str())
+        }));
+    }
+
+    #[test]
+    fn unsandboxed_agents_preserve_inherited_cargo_home() {
+        let cmd = base_command(&[], "pi");
+        assert!(!cmd.as_std().get_envs().any(|(key, _)| key == "CARGO_HOME"));
+    }
 }
 
 // The `AgentAdapter` trait and its launch/handle types live in `core` — next to

@@ -263,12 +263,17 @@ fn build_prompt(cfg: &LoopConfig, prior: &str) -> String {
     };
     format!(
         "Task:\n{task}\n\n\
-You do this task in a loop. Each pass starts with no memory of the passes before \
-it. The progress file is your only memory:\n  {progress}\n\n\
-Do these steps in this pass:\n\
-1. Read the prior progress at the end of this message.\n\
-2. Do the next part of the task.\n\
-3. Append to the progress file what you did and what is still open. Write facts, \
+Complete the entire task in this attempt, including all required tests and \
+verification. Do not stop after a subtask or assume another attempt will finish \
+your work. Any later attempt is a fresh attempt, not a planned continuation.\n\n\
+Prior attempts may have left changes and recorded progress here:\n  {progress}\n\n\
+Do these steps in this attempt:\n\
+1. Read the prior progress at the end of this message and inspect existing changes.\n\
+2. Finish all remaining requirements and run the required verification. Keep \
+working until the whole task is complete or a concrete blocker prevents further \
+progress. A completed subtask is not a reason to stop.\n\
+3. Append what you completed and the verification results to the progress file. \
+If blocked, record the concrete blocker and unfinished requirements. Write facts, \
 not plans.\n\n\
 Obey these rules:\n\
 - Follow YAGNI. Write only the code that the task asks for. Do not add options, \
@@ -585,6 +590,10 @@ mod tests {
         for prompt in prompts.iter() {
             assert!(prompt.contains(crate::progress::COMPLETION_MARKER));
             assert!(prompt.contains(crate::progress::SUMMARY_MARKER));
+            assert!(prompt.contains("Complete the entire task in this attempt"));
+            assert!(prompt.contains("including all required tests and verification"));
+            assert!(prompt.contains("A completed subtask is not a reason to stop."));
+            assert!(!prompt.contains("Do the next part of the task"));
         }
     }
 
