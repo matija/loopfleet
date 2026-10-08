@@ -40,6 +40,7 @@ pub struct RenderParams {
     /// Per-project write overrides (PRD M6 settings). Additional absolute paths
     /// the run may write. Never include the parent repo's `.git`.
     pub extra_writes: Vec<PathBuf>,
+    pub native_automation: bool,
 }
 
 impl RenderParams {
@@ -51,6 +52,7 @@ impl RenderParams {
             agent_dirs: Vec::new(),
             temp_dirs: default_temp_dirs(),
             extra_writes: Vec::new(),
+            native_automation: false,
         }
     }
 }
@@ -109,7 +111,11 @@ pub fn render(params: &RenderParams) -> Result<String, RenderError> {
         subpaths.push('\n');
     }
 
-    Ok(TEMPLATE.replace(WRITE_SUBPATHS_MARKER, subpaths.trim_end()))
+    let mut profile = TEMPLATE.replace(WRITE_SUBPATHS_MARKER, subpaths.trim_end());
+    if params.native_automation {
+        profile.push_str("\n(allow lsopen)\n(allow appleevent-send)\n");
+    }
+    Ok(profile)
 }
 
 /// One `(subpath "…")` line for a validated, escaped path.
@@ -302,6 +308,29 @@ mod tests {
         assert!(profile.contains("(allow file-read*)"));
         assert!(profile.contains("(allow network*)"));
         assert!(profile.contains("(allow file-write*"));
+    }
+
+    #[test]
+    fn permits_process_inspection_and_confined_signals() {
+        let profile = render(&params()).unwrap();
+        assert!(profile.contains("(allow process-info*)"));
+        assert!(profile.contains("(allow signal (target same-sandbox))"));
+        assert!(!profile.contains("(allow signal)"));
+        assert!(!profile.contains("(allow appleevent-send"));
+    }
+
+    #[test]
+    fn native_automation_requires_explicit_permission() {
+        let mut p = params();
+        let restricted = render(&p).unwrap();
+        assert!(!restricted.contains("(allow lsopen)"));
+        assert!(!restricted.contains("(allow appleevent-send)"));
+        p.native_automation = true;
+        let native = render(&p).unwrap();
+        assert!(native.contains("(allow lsopen)"));
+        assert!(native.contains("(allow appleevent-send)"));
+        assert!(native.contains("(deny default)"));
+        assert!(native.contains("(allow signal (target same-sandbox))"));
     }
 
     #[test]
@@ -499,6 +528,32 @@ mod tests {
         assert!(
             out.status.success() || nested_apply_denied,
             "profile failed to parse under sandbox-exec: {stderr}"
+        );
+    }
+
+    #[test]
+    #[ignore]
+    #[cfg(target_os = "macos")]
+    fn inspects_processes_and_stops_child_workers() {
+        use std::process::Command;
+
+        let dir = tempfile::tempdir().unwrap();
+        let profile = dir.path().join("run.sb");
+        persist_profile(&RenderParams::new(dir.path(), dir.path()), &profile).unwrap();
+        let output = Command::new(SANDBOX_EXEC)
+            .args([
+                OsStr::new("-f"),
+                profile.as_os_str(),
+                OsStr::new("/bin/sh"),
+                OsStr::new("-c"),
+            ])
+            .arg(format!("set -eu; if kill -0 {} 2>/dev/null; then exit 1; fi; /bin/sleep 30 & worker=$!; trap 'kill $worker 2>/dev/null || :; wait $worker 2>/dev/null || :' EXIT; /usr/bin/pgrep -P $$; kill -TERM $worker; set +e; wait $worker; result=$?; set -e; test $result -eq 143", std::process::id()))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
         );
     }
 

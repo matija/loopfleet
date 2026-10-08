@@ -102,6 +102,14 @@ export function saveSettings(settings: Settings): Promise<void> {
 }
 
 /// A project's sandbox write overrides (extra absolute paths granted per run).
+export function projectNativeAutomation(projectId: string): Promise<boolean> {
+  return invoke("project_native_automation", { projectId });
+}
+
+export function setProjectNativeAutomation(projectId: string, enabled: boolean): Promise<void> {
+  return invoke("set_project_native_automation", { projectId, enabled });
+}
+
 export function projectSandboxWrites(projectId: string): Promise<string[]> {
   return invoke("project_sandbox_writes", { projectId });
 }

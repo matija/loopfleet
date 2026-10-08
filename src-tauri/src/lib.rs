@@ -556,6 +556,25 @@ fn set_project_sandbox_writes(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn project_native_automation(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    loopfleet_store::project_native_automation(&state.db.lock().unwrap(), &project_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_project_native_automation(
+    project_id: String,
+    enabled: bool,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    loopfleet_store::set_project_native_automation(&state.db.lock().unwrap(), &project_id, enabled)
+        .map_err(|e| e.to_string())
+}
+
 /// The plan overview for a project: its plan(s) with a derived `TaskStatus`
 /// overlay per task. Syncs plan + tasks into the store as a side effect (so runs
 /// can bind to them); never edits the frozen plan file.
@@ -968,7 +987,7 @@ fn spawn_run(
     // the plan + tasks into the store, so the run's FK resolves on insert. Also
     // enforce the concurrency cap (M6 settings) and read the project's sandbox
     // write overrides — all under one lock.
-    let (project, plan_id, task_text, extra_writes) = {
+    let (project, plan_id, task_text, extra_writes, native_automation) = {
         let conn = db.lock().unwrap();
 
         let settings = loopfleet_store::load_settings(&conn).map_err(|e| e.to_string())?;
@@ -995,7 +1014,9 @@ fn spawn_run(
             .ok_or_else(|| format!("no task anchored at '{task_anchor}'"))?;
         let extra_writes = loopfleet_store::project_sandbox_writes(&conn, &project_id)
             .map_err(|e| e.to_string())?;
-        (project, plan_id, task_text, extra_writes)
+        let native_automation = loopfleet_store::project_native_automation(&conn, &project_id)
+            .map_err(|e| e.to_string())?;
+        (project, plan_id, task_text, extra_writes, native_automation)
     };
 
     // App-managed paths, keyed by run id (outside the repo).
@@ -1023,6 +1044,7 @@ fn spawn_run(
     let mut params = RenderParams::new(&worktree.path, &progress_dir);
     params.agent_dirs = agent_dirs();
     params.extra_writes = extra_writes.into_iter().map(PathBuf::from).collect();
+    params.native_automation = native_automation;
     let wrapper = confine_prefix(&params, &profile_path).map_err(|e| e.to_string())?;
 
     // Keep the launch inputs for a possible rate-limit re-run (`task_anchor` and
@@ -3361,6 +3383,8 @@ pub fn run() {
             save_settings,
             project_sandbox_writes,
             set_project_sandbox_writes,
+            project_native_automation,
+            set_project_native_automation,
             plan_overview,
             plan_document,
             plan_edit,

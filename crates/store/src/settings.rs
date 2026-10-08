@@ -200,6 +200,29 @@ pub fn set_project_sandbox_writes(
     Ok(())
 }
 
+pub fn project_native_automation(conn: &Connection, project_id: &str) -> rusqlite::Result<bool> {
+    conn.query_row(
+        "SELECT native_automation FROM projects WHERE id = ?1",
+        [project_id],
+        |r| r.get(0),
+    )
+}
+
+pub fn set_project_native_automation(
+    conn: &Connection,
+    project_id: &str,
+    enabled: bool,
+) -> rusqlite::Result<()> {
+    if conn.execute(
+        "UPDATE projects SET native_automation = ?2 WHERE id = ?1",
+        params![project_id, enabled],
+    )? == 0
+    {
+        return Err(rusqlite::Error::QueryReturnedNoRows);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,6 +261,24 @@ mod tests {
         // Re-saving overwrites rather than duplicating keys.
         save_settings(&conn, &Settings::default()).unwrap();
         assert_eq!(load_settings(&conn).unwrap(), Settings::default());
+    }
+
+    #[test]
+    fn native_automation_is_opt_in_and_project_scoped() {
+        let conn = crate::open(":memory:").unwrap();
+        seed_project(&conn);
+        conn.execute(
+            "INSERT INTO projects (id, repo_path, plan_convention) VALUES ('other','/other','prd')",
+            [],
+        )
+        .unwrap();
+        assert!(!project_native_automation(&conn, "p").unwrap());
+        set_project_native_automation(&conn, "p", true).unwrap();
+        assert!(project_native_automation(&conn, "p").unwrap());
+        assert!(!project_native_automation(&conn, "other").unwrap());
+        set_project_native_automation(&conn, "p", false).unwrap();
+        assert!(!project_native_automation(&conn, "p").unwrap());
+        assert!(set_project_native_automation(&conn, "missing", true).is_err());
     }
 
     #[test]

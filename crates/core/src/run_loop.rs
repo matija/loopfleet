@@ -286,7 +286,18 @@ Obey these rules:\n\
 - Do not add options, layers, or hooks for possible future requirements.\n\
 - Use the shortest correct solution.\n\
 - If one line is sufficient, write one line.\n\
-- Change only the files that the task requires.\n\n\
+- Change only the files that the task requires.\n\
+- Preserve the task requirements in plan files.\n\
+- Add results to plan files without replacement of the plan.\n\
+- Preserve processes that were active before this attempt.\n\
+- Before you stop, stop each background process that you started for this attempt.\n\
+- Make sure that each process you stopped exited.\n\n\
+Process inspection:\n\
+The macOS sandbox blocks setuid programs, including `ps` and `top`.\n\
+- Find processes with `pgrep` instead of `ps`.\n\
+- Measure process resources with `libproc` instead of `top`.\n\
+- If native app launch returns error -54, record that native automation permission is necessary.\n\
+- Do not remove the sandbox or change its permissions.\n\n\
 Record the result:\n\
 1. Add the completed work and the test results to the progress file.\n\
 2. If a problem prevents further work, write the cause and the unfinished requirements in the progress file.\n\

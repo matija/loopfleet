@@ -23,7 +23,8 @@
 ;; Processes: agents spawn toolchains (node, python, git, compilers).
 (allow process-exec)
 (allow process-fork)
-(allow signal (target self))
+(allow signal (target same-sandbox))
+(allow process-info*)
 
 ;; Infrastructure dev toolchains need to start.
 (allow sysctl-read)

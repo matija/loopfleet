@@ -1,0 +1,1 @@
+ALTER TABLE projects ADD COLUMN native_automation INTEGER NOT NULL DEFAULT 0;

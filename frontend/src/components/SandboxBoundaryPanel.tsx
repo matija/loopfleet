@@ -23,8 +23,8 @@ export function SandboxBoundaryPanel() {
       </div>
       <p className="panel__lead">
         Agents run in full-auto with their own permission systems disabled. The
-        OS sandbox profile rendered per run is the single security boundary — not
-        a footnote.
+        OS sandbox profile rendered per run confines agent processes. Native app
+        automation is an optional, per-project exception.
       </p>
 
       <div className="sandbox-rules">
@@ -36,8 +36,9 @@ export function SandboxBoundaryPanel() {
             <strong>Writes</strong>
             <p>
               Limited to the run's git worktree and its app-managed progress dir.
-              The parent repo's <code>.git</code> is never writable — commits are
-              app-owned.
+              Agent processes cannot write to the parent repo's <code>.git</code>.
+              Commits are app-owned. If you enable native app automation, launched
+              apps run outside this boundary and can write elsewhere.
             </p>
           </div>
         </div>
