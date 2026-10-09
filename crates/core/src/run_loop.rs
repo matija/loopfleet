@@ -135,11 +135,30 @@ pub async fn run_loop(
         // recorded in the external progress file so far.
         let prior = read_progress(&cfg.progress_path);
         while let Ok(tap) = taps.try_recv() {
-            if tap::route(adapter.can_steer(), false, false) == Delivery::Queued {
+            let delivery = tap::route(adapter.can_steer(), false, false);
+            on_event(
+                n,
+                &NormalizedEvent::UserMessage {
+                    id: tap.id.clone(),
+                    text: tap.text.as_str().to_owned(),
+                    delivery,
+                },
+            );
+            if delivery == Delivery::Queued {
                 pending.push(tap);
             }
         }
         let prompt = build_prompt(cfg, &prior, &pending);
+        for tap in pending.drain(..) {
+            on_event(
+                n,
+                &NormalizedEvent::UserMessage {
+                    id: tap.id,
+                    text: tap.text.into(),
+                    delivery: Delivery::Delivered { pass: n },
+                },
+            );
+        }
         let spec = RunSpec {
             cwd: cfg.worktree.clone(),
             prompt,
@@ -157,7 +176,6 @@ pub async fn run_loop(
                 }
             }
         };
-        pending.clear();
 
         // Drain the pass. The stream ends on `Ended`/`Failed` or when the
         // adapter's child exits. A mid-pass stop breaks out and drops the handle
@@ -180,9 +198,8 @@ pub async fn run_loop(
                     None => break,
                 },
                 Some(tap) = taps.recv() => {
-                    if tap::route(adapter.can_steer(), true, handle.steer.is_some())
-                        == Delivery::Steered
-                    {
+                    let mut delivery = tap::route(adapter.can_steer(), true, handle.steer.is_some());
+                    if delivery == Delivery::Steered {
                         let (ack, _) = oneshot::channel();
                         let request = SteerRequest {
                             tap_id: tap.id.clone(),
@@ -190,9 +207,15 @@ pub async fn run_loop(
                             ack,
                         };
                         if handle.steer.as_ref().unwrap().try_send(request).is_err() {
-                            pending.push(tap);
+                            delivery = Delivery::Queued;
                         }
-                    } else {
+                    }
+                    on_event(n, &NormalizedEvent::UserMessage {
+                        id: tap.id.clone(),
+                        text: tap.text.as_str().to_owned(),
+                        delivery,
+                    });
+                    if delivery == Delivery::Queued {
                         pending.push(tap);
                     }
                 },
