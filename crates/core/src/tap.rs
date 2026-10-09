@@ -61,6 +61,14 @@ pub fn route(can_steer: bool, pass_in_flight: bool, steering_enabled: bool) -> D
     }
 }
 
+pub(crate) fn acknowledged(result: Option<Result<(), crate::adapter::AdapterError>>) -> Delivery {
+    match result {
+        Some(Ok(())) => Delivery::Steered,
+        Some(Err(_)) => Delivery::Queued,
+        None => Delivery::Unknown,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -186,6 +186,10 @@ pub async fn run_loop(
         // may itself be `None`); the run ends limit-reached if the pass doesn't
         // otherwise complete or get cancelled.
         let mut rate_limited: Option<Option<String>> = None;
+        let mut acknowledgements: Vec<(
+            Tap,
+            oneshot::Receiver<Result<(), crate::adapter::AdapterError>>,
+        )> = Vec::new();
         loop {
             tokio::select! {
                 event = handle.events.recv() => match event {
@@ -208,7 +212,7 @@ pub async fn run_loop(
                     }
                     let mut delivery = tap::route(adapter.can_steer(), true, handle.steer.is_some());
                     if delivery == Delivery::Steered {
-                        let (ack, _) = oneshot::channel();
+                        let (ack, receiver) = oneshot::channel();
                         let request = SteerRequest {
                             tap_id: tap.id.clone(),
                             text: tap.text.as_str().to_owned(),
@@ -216,16 +220,23 @@ pub async fn run_loop(
                         };
                         if handle.steer.as_ref().unwrap().try_send(request).is_err() {
                             delivery = Delivery::Queued;
+                        } else {
+                            acknowledgements.push((tap, receiver));
+                            continue;
                         }
                     }
-                    on_event(n, &NormalizedEvent::UserMessage {
-                        id: tap.id.clone(),
-                        text: tap.text.as_str().to_owned(),
-                        delivery,
-                    });
-                    if delivery == Delivery::Queued {
-                        pending.push(tap);
+                    resolve_tap(n, tap, delivery, &mut pending, on_event);
+                },
+                (index, result) = std::future::poll_fn(|cx| {
+                    for (index, (_, receiver)) in acknowledgements.iter_mut().enumerate() {
+                        if let std::task::Poll::Ready(result) = std::future::Future::poll(std::pin::Pin::new(receiver), cx) {
+                            return std::task::Poll::Ready((index, result.ok()));
+                        }
                     }
+                    std::task::Poll::Pending
+                }), if !acknowledgements.is_empty() => {
+                    let (tap, _) = acknowledgements.remove(index);
+                    resolve_tap(n, tap, tap::acknowledged(result), &mut pending, on_event);
                 },
                 changed = cancel.changed() => {
                     // A stop request (or all senders dropped, i.e. app shutdown)
@@ -240,6 +251,15 @@ pub async fn run_loop(
         // Stop the agent promptly if we broke early (drop closes the receiver →
         // the adapter SIGTERMs the process group). A no-op if the pass ended.
         drop(handle);
+        for (tap, mut receiver) in acknowledgements {
+            resolve_tap(
+                n,
+                tap,
+                tap::acknowledged(receiver.try_recv().ok()),
+                &mut pending,
+                on_event,
+            );
+        }
 
         // App-owned snapshot of this pass's worktree state (the agent never
         // commits). Taken even on stop, so shadow refs are kept. A snapshot
@@ -302,6 +322,26 @@ pub async fn run_loop(
         state: RunState::Failed,
         iterations,
         reset_at: None,
+    }
+}
+
+fn resolve_tap(
+    pass: u32,
+    tap: Tap,
+    delivery: Delivery,
+    pending: &mut Vec<Tap>,
+    on_event: &mut (dyn FnMut(u32, &NormalizedEvent) + Send),
+) {
+    on_event(
+        pass,
+        &NormalizedEvent::UserMessage {
+            id: tap.id.clone(),
+            text: tap.text.as_str().to_owned(),
+            delivery,
+        },
+    );
+    if delivery == Delivery::Queued {
+        pending.push(tap);
     }
 }
 
@@ -390,6 +430,8 @@ mod tests {
         can_steer: bool,
         steer_open: Option<bool>,
         steer_full: bool,
+        acknowledgement: Option<bool>,
+        wait_for_stop: bool,
         steered: Arc<Mutex<Vec<(String, String)>>>,
     }
 
@@ -418,18 +460,40 @@ mod tests {
             if self.steer_open != Some(true) {
                 requests.close();
             }
+            let acknowledgement = self.acknowledgement;
+            let wait_for_stop = self.wait_for_stop;
             let taps = self.taps.clone();
             let steered = self.steered.clone();
             let live_steering = self.can_steer && self.steer_open == Some(true) && !self.steer_full;
             tokio::spawn(async move {
+                let mut held = Vec::new();
                 for text in ["First correction", "Second correction"] {
                     taps.send(test_tap(text)).await.unwrap();
                     drop(taps.reserve().await.unwrap());
                     if live_steering {
                         let request = requests.recv().await.unwrap();
                         steered.lock().unwrap().push((request.tap_id, request.text));
-                        let _ = request.ack.send(Ok(()));
+                        match acknowledgement {
+                            Some(true) => {
+                                let _ = request.ack.send(Ok(()));
+                            }
+                            Some(false) => {
+                                let _ = request
+                                    .ack
+                                    .send(Err(AdapterError::Protocol("rejected".into())));
+                            }
+                            None if wait_for_stop => held.push(request.ack),
+                            None => drop(request.ack),
+                        }
                     }
+                }
+                let _ = events
+                    .send(NormalizedEvent::AssistantText {
+                        text: "still draining".into(),
+                    })
+                    .await;
+                if wait_for_stop {
+                    events.closed().await;
                 }
                 drop(events);
             });
@@ -475,12 +539,26 @@ mod tests {
                 can_steer,
                 steer_open,
                 steer_full,
+                acknowledgement: Some(true),
+                wait_for_stop: false,
                 steered: Arc::new(Mutex::new(Vec::new())),
             };
             let (_ctx, mut cancel) = watch::channel(false);
+            let mut deliveries = Vec::new();
             let outcome = tokio::time::timeout(
                 std::time::Duration::from_secs(10),
-                run_loop(&adapter, &git, &cfg, &mut cancel, &mut taps, &mut |_, _| {}),
+                run_loop(
+                    &adapter,
+                    &git,
+                    &cfg,
+                    &mut cancel,
+                    &mut taps,
+                    &mut |_, event| {
+                        if let NormalizedEvent::UserMessage { delivery, .. } = event {
+                            deliveries.push(*delivery);
+                        }
+                    },
+                ),
             )
             .await
             .unwrap();
@@ -490,6 +568,7 @@ mod tests {
             assert!(!prompts[0].contains("correction"));
             assert!(!prompts[2].contains("correction"));
             if can_steer && steer_open == Some(true) && !steer_full {
+                assert_eq!(deliveries, [Delivery::Steered, Delivery::Steered]);
                 assert_eq!(
                     steered.as_slice(),
                     &[
@@ -503,6 +582,67 @@ mod tests {
                 assert!(prompts[1].contains("## Corrections from the human"));
                 assert!(prompts[1].contains("First correction\n\nSecond correction"));
             }
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn acknowledges_rejection_and_lost_ack_without_blocking_events_or_stop() {
+        for (acknowledgement, stop) in [(Some(false), false), (None, false), (None, true)] {
+            let git = GitActor::spawn();
+            let (cfg, _repo, _root, _prog) = setup("loop-ack", 2, &git).await;
+            let (tx, mut taps) = mpsc::channel(1);
+            let adapter = TapAdapter {
+                inner: ScriptedAdapter::new(cfg.progress_path.clone(), Some(2)),
+                taps: tx,
+                can_steer: true,
+                steer_open: Some(true),
+                steer_full: false,
+                acknowledgement,
+                wait_for_stop: stop,
+                steered: Arc::new(Mutex::new(Vec::new())),
+            };
+            let (ctx, mut cancel) = watch::channel(false);
+            let mut deliveries = Vec::new();
+            let mut drained = false;
+            let outcome = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                run_loop(&adapter, &git, &cfg, &mut cancel, &mut taps, &mut |_, event| {
+                    if let NormalizedEvent::UserMessage { delivery, .. } = event {
+                        deliveries.push(*delivery);
+                    }
+                    if matches!(event, NormalizedEvent::AssistantText { text } if text == "still draining") {
+                        drained = true;
+                        if stop { ctx.send(true).unwrap(); }
+                    }
+                }),
+            ).await.unwrap();
+            assert!(drained);
+            assert_eq!(
+                outcome.state,
+                if stop {
+                    RunState::Stopped
+                } else {
+                    RunState::Completed
+                }
+            );
+            let expected = if acknowledgement == Some(false) {
+                Delivery::Queued
+            } else {
+                Delivery::Unknown
+            };
+            assert_eq!(&deliveries[..2], &[expected, expected]);
+            if !stop {
+                let prompts = adapter.inner.prompts.lock().unwrap();
+                assert_eq!(
+                    prompts[1].contains("First correction"),
+                    acknowledgement == Some(false)
+                );
+                assert_eq!(
+                    prompts[1].contains("Second correction"),
+                    acknowledgement == Some(false)
+                );
+            }
+            assert!(!deliveries.contains(&Delivery::Steered));
         }
     }
 

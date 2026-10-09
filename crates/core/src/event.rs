@@ -211,6 +211,19 @@ mod tests {
         assert_eq!(unit["kind"], "ended");
     }
 
+    #[test]
+    fn unknown_delivery_is_explicit_in_events_and_command_results() {
+        let delivery = serde_json::to_value(crate::tap::Delivery::Unknown).unwrap();
+        assert_eq!(delivery, serde_json::json!({"kind": "unknown"}));
+        let event = serde_json::to_value(NormalizedEvent::UserMessage {
+            id: "tap".into(),
+            text: "correction".into(),
+            delivery: Delivery::Unknown,
+        })
+        .unwrap();
+        assert_eq!(event["delivery"], delivery);
+    }
+
     /// A `ToolResult` correlates to its `ToolCall` by `call_id` across a
     /// serialize / deserialize boundary.
     #[test]
