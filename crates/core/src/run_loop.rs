@@ -41,9 +41,10 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use loopfleet_gitx::GitActor;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, oneshot, watch};
 
-use crate::adapter::{AgentAdapter, RunSpec};
+use crate::adapter::{AgentAdapter, RunSpec, SteerRequest};
+use crate::tap::{self, Delivery};
 use crate::{NormalizedEvent, RunState, Tap};
 
 /// Everything the loop needs to run one task to completion (or failure).
@@ -117,6 +118,7 @@ pub async fn run_loop(
     on_event: &mut (dyn FnMut(u32, &NormalizedEvent) + Send),
 ) -> LoopOutcome {
     let mut iterations = Vec::new();
+    let mut pending = Vec::new();
 
     for n in 1..=cfg.max_iterations {
         // Boundary stop (PRD default): a stop requested between passes returns
@@ -132,13 +134,21 @@ pub async fn run_loop(
         // Fresh context each pass: seed with the task and whatever the agent has
         // recorded in the external progress file so far.
         let prior = read_progress(&cfg.progress_path);
+        while let Ok(tap) = taps.try_recv() {
+            if tap::route(adapter.can_steer(), false, false) == Delivery::Queued {
+                pending.push(tap);
+            }
+        }
+        let mut prompt = build_prompt(cfg, &prior);
+        if let Some(notes) = tap::render_notes(&pending) {
+            prompt.push_str(&format!("\n{notes}\n"));
+        }
         let spec = RunSpec {
             cwd: cfg.worktree.clone(),
-            prompt: build_prompt(cfg, &prior),
+            prompt,
             wrapper: cfg.wrapper.clone(),
             model: cfg.model.clone(),
         };
-
         let mut handle = match adapter.start_run(&spec).await {
             Ok(h) => h,
             // Could not even spawn the agent: a hard failure (a crash).
@@ -150,6 +160,7 @@ pub async fn run_loop(
                 }
             }
         };
+        pending.clear();
 
         // Drain the pass. The stream ends on `Ended`/`Failed` or when the
         // adapter's child exits. A mid-pass stop breaks out and drops the handle
@@ -171,7 +182,23 @@ pub async fn run_loop(
                     }
                     None => break,
                 },
-                Some(_) = taps.recv() => {},
+                Some(tap) = taps.recv() => {
+                    if tap::route(adapter.can_steer(), true, handle.steer.is_some())
+                        == Delivery::Steered
+                    {
+                        let (ack, _) = oneshot::channel();
+                        let request = SteerRequest {
+                            tap_id: tap.id.clone(),
+                            text: tap.text.as_str().to_owned(),
+                            ack,
+                        };
+                        if handle.steer.as_ref().unwrap().try_send(request).is_err() {
+                            pending.push(tap);
+                        }
+                    } else {
+                        pending.push(tap);
+                    }
+                },
                 changed = cancel.changed() => {
                     // A stop request (or all senders dropped, i.e. app shutdown)
                     // ends the pass.
@@ -327,6 +354,145 @@ mod tests {
     use std::io::Write;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::{Arc, Mutex};
+
+    struct TapAdapter {
+        inner: ScriptedAdapter,
+        taps: mpsc::Sender<Tap>,
+        can_steer: bool,
+        steer_open: Option<bool>,
+        steer_full: bool,
+        steered: Arc<Mutex<Vec<(String, String)>>>,
+    }
+
+    #[async_trait]
+    impl AgentAdapter for TapAdapter {
+        fn can_steer(&self) -> bool {
+            self.can_steer
+        }
+
+        async fn start_run(&self, spec: &RunSpec) -> Result<RunHandle, AdapterError> {
+            let handle = self.inner.start_run(spec).await?;
+            if self.inner.call.load(Ordering::SeqCst) != 1 {
+                return Ok(handle);
+            }
+            let (events, rx) = mpsc::channel(1);
+            let (steer, mut requests) = mpsc::channel::<SteerRequest>(1);
+            if self.steer_full {
+                steer
+                    .try_send(SteerRequest {
+                        tap_id: String::new(),
+                        text: String::new(),
+                        ack: oneshot::channel().0,
+                    })
+                    .unwrap();
+            }
+            if self.steer_open != Some(true) {
+                requests.close();
+            }
+            let taps = self.taps.clone();
+            let steered = self.steered.clone();
+            let live_steering = self.can_steer && self.steer_open == Some(true) && !self.steer_full;
+            tokio::spawn(async move {
+                for text in ["First correction", "Second correction"] {
+                    taps.send(test_tap(text)).await.unwrap();
+                    drop(taps.reserve().await.unwrap());
+                    if live_steering {
+                        let request = requests.recv().await.unwrap();
+                        steered.lock().unwrap().push((request.tap_id, request.text));
+                        let _ = request.ack.send(Ok(()));
+                    }
+                }
+                drop(events);
+            });
+            Ok(RunHandle {
+                events: rx,
+                steer: self.steer_open.map(|_| steer),
+            })
+        }
+
+        async fn open_session(
+            &self,
+            cwd: &Path,
+            seed: SessionSeed,
+        ) -> Result<SessionHandle, AdapterError> {
+            self.inner.open_session(cwd, seed).await
+        }
+    }
+
+    fn test_tap(text: &str) -> Tap {
+        Tap {
+            id: text.into(),
+            text: text.to_owned().try_into().unwrap(),
+            created_at_ms: 0,
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn routes_live_taps_and_delivers_pending_notes_once() {
+        for (can_steer, steer_open, steer_full) in [
+            (false, None, false),
+            (false, Some(true), false),
+            (true, None, false),
+            (true, Some(false), false),
+            (true, Some(true), false),
+            (true, Some(true), true),
+        ] {
+            let git = GitActor::spawn();
+            let (cfg, _repo, _root, _prog) = setup("loop-taps", 3, &git).await;
+            let (tx, mut taps) = mpsc::channel(1);
+            let adapter = TapAdapter {
+                inner: ScriptedAdapter::new(cfg.progress_path.clone(), Some(3)),
+                taps: tx,
+                can_steer,
+                steer_open,
+                steer_full,
+                steered: Arc::new(Mutex::new(Vec::new())),
+            };
+            let (_ctx, mut cancel) = watch::channel(false);
+            let outcome = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                run_loop(&adapter, &git, &cfg, &mut cancel, &mut taps, &mut |_, _| {}),
+            )
+            .await
+            .unwrap();
+            assert_eq!(outcome.state, RunState::Completed);
+            let prompts = adapter.inner.prompts.lock().unwrap();
+            let steered = adapter.steered.lock().unwrap();
+            assert!(!prompts[0].contains("correction"));
+            assert!(!prompts[2].contains("correction"));
+            if can_steer && steer_open == Some(true) && !steer_full {
+                assert_eq!(
+                    steered.as_slice(),
+                    &[
+                        ("First correction".into(), "First correction".into()),
+                        ("Second correction".into(), "Second correction".into())
+                    ]
+                );
+                assert!(!prompts[1].contains("correction"));
+            } else {
+                assert!(steered.is_empty());
+                assert!(prompts[1].contains("## Corrections from the human"));
+                assert!(prompts[1].contains("First correction\n\nSecond correction"));
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn delivers_boundary_taps_in_the_next_prompt_once() {
+        let git = GitActor::spawn();
+        let (cfg, _repo, _root, _prog) = setup("loop-boundary-taps", 2, &git).await;
+        let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(2));
+        let (tx, mut taps) = mpsc::channel(2);
+        tx.send(test_tap("First correction")).await.unwrap();
+        tx.send(test_tap("Second correction")).await.unwrap();
+        let (_ctx, mut cancel) = watch::channel(false);
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut taps, &mut |_, _| {}).await;
+        assert_eq!(outcome.state, RunState::Completed);
+        let prompts = adapter.prompts.lock().unwrap();
+        assert!(prompts[0]
+            .contains("## Corrections from the human\n\nFirst correction\n\nSecond correction"));
+        assert!(!prompts[1].contains("correction"));
+    }
 
     /// A scripted adapter: on each `start_run` it records the prompt, appends a
     /// line to the external progress file (optionally the completion marker on a
