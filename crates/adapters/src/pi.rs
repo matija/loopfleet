@@ -1,4 +1,4 @@
-//! pi adapter, headless. Spawns `pi -p --mode json <prompt>` in the run's
+//! pi adapter, headless. Spawns `pi --mode rpc` in the run's
 //! worktree and maps its newline-delimited AgentEvent JSONL into
 //! [`NormalizedEvent`]s.
 //!
@@ -29,9 +29,10 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use async_trait::async_trait;
+use loopfleet_core::adapter::SteerRequest;
 use loopfleet_core::{NormalizedEvent, Usage};
-use serde_json::Value;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use serde_json::{json, Value};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
 use crate::{AdapterError, AgentAdapter, RunHandle, RunSpec, SessionHandle, SessionSeed};
@@ -46,25 +47,26 @@ pub struct PiAdapter;
 
 #[async_trait]
 impl AgentAdapter for PiAdapter {
+    fn can_steer(&self) -> bool {
+        true
+    }
+
     async fn start_run(&self, spec: &RunSpec) -> Result<RunHandle, AdapterError> {
-        // `-p` is non-interactive (process the prompt and exit); `--mode json`
-        // selects the AgentEvent JSONL transport. In headless mode pi resolves
-        // permission prompts automatically — the Seatbelt profile (M2) is the
-        // real boundary, so no per-agent bypass flag is passed here.
         let mut cmd = crate::base_command(&spec.wrapper, "pi");
-        cmd.arg("-p").args(["--mode", "json"]);
+        cmd.args(["--mode", "rpc"]);
         if let Some(model) = &spec.model {
             cmd.arg("--model").arg(model);
         }
         let mut child = cmd
-            .arg(&spec.prompt)
             .current_dir(&spec.cwd)
-            .stdin(std::process::Stdio::null())
+            .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true)
             .spawn()
             .map_err(AdapterError::Spawn)?;
 
+        let stdin = child.stdin.take().expect("stdin was piped");
         let stdout = child
             .stdout
             .take()
@@ -77,10 +79,19 @@ impl AgentAdapter for PiAdapter {
         // Bounded channel: the backpressure contract (a slow consumer stalls the
         // reader) matching the stub and the M1 event-log writer.
         let (tx, rx) = mpsc::channel(64);
-        tokio::spawn(drive(child, stdout, stderr, tx));
+        let (steer, requests) = mpsc::channel(64);
+        tokio::spawn(drive(
+            child,
+            stdin,
+            stdout,
+            stderr,
+            tx,
+            spec.prompt.clone(),
+            requests,
+        ));
         Ok(RunHandle {
             events: rx,
-            steer: None,
+            steer: Some(steer),
         })
     }
 
@@ -93,78 +104,145 @@ impl AgentAdapter for PiAdapter {
     }
 }
 
-/// Reads the process's stdout line by line, maps each into normalized events,
-/// and forwards them. When the stream ends without a terminal `agent_end` line,
-/// synthesizes a `Failed`/`Ended` pair from stderr so consumers always see a
-/// termination.
+async fn send(stdin: &mut tokio::process::ChildStdin, value: Value) -> Result<(), AdapterError> {
+    stdin
+        .write_all(format!("{value}\n").as_bytes())
+        .await
+        .map_err(|e| AdapterError::Protocol(format!("writing agent stdin: {e}")))
+}
+
+fn response(value: &Value, command: &str, dispositions: &[&str]) -> Result<(), AdapterError> {
+    if value["command"] != command || value["success"].as_bool() != Some(true) {
+        return Err(AdapterError::Protocol(
+            value["error"]
+                .as_str()
+                .unwrap_or("invalid RPC response")
+                .into(),
+        ));
+    }
+    if !dispositions.is_empty()
+        && !value["data"]["disposition"]
+            .as_str()
+            .is_some_and(|d| dispositions.contains(&d))
+    {
+        return Err(AdapterError::Protocol("invalid RPC disposition".into()));
+    }
+    Ok(())
+}
+
 async fn drive(
     mut child: tokio::process::Child,
+    mut stdin: tokio::process::ChildStdin,
     stdout: tokio::process::ChildStdout,
     stderr: tokio::process::ChildStderr,
     tx: mpsc::Sender<NormalizedEvent>,
+    prompt: String,
+    mut requests: mpsc::Receiver<SteerRequest>,
 ) {
-    let mut mapper = PiMapper::new();
-    let mut lines = BufReader::new(stdout).lines();
-    let mut saw_terminal = false;
-
-    loop {
-        match lines.next_line().await {
-            Ok(Some(line)) => {
-                let events = match mapper.map_line(&line) {
-                    Ok(events) => events,
-                    // A single unparseable line shouldn't kill the run; surface
-                    // it and keep reading.
-                    Err(e) => vec![NormalizedEvent::Failed {
-                        reason: e.to_string(),
-                    }],
-                };
-                for ev in events {
-                    if matches!(ev, NormalizedEvent::Ended) {
-                        saw_terminal = true;
+    let mut stderr = tokio::spawn(async move {
+        let mut lines = BufReader::new(stderr).lines();
+        let mut text = String::new();
+        while let Ok(Some(line)) = lines.next_line().await {
+            text = excerpt(&format!("{text}\n{line}"));
+        }
+        text
+    });
+    let mut pending = None::<(String, SteerRequest)>;
+    let result = async {
+        send(&mut stdin, json!({"id":"0","type":"set_steering_mode","mode":"one-at-a-time"})).await?;
+        let mut lines = BufReader::new(stdout).lines();
+        let mut mapper = PiMapper::new();
+        let mut ready = false;
+        let mut settled = false;
+        let mut next_id = 2u64;
+        loop {
+            let line = tokio::select! {
+                biased;
+                _ = tx.closed() => return Ok(()),
+                line = lines.next_line() => line.map_err(|e| AdapterError::Protocol(format!("reading agent stdout: {e}")))?,
+                Some(request) = requests.recv(), if ready && !settled && pending.is_none() => {
+                    let id = next_id.to_string();
+                    next_id += 1;
+                    let command = json!({"id":id,"type":"steer","message":request.text});
+                    pending = Some((id, request));
+                    send(&mut stdin, command).await?;
+                    continue;
+                },
+            };
+            let Some(line) = line else {
+                return Err(AdapterError::Protocol("agent exited without agent_settled".into()));
+            };
+            if line.trim().is_empty() {
+                continue;
+            }
+            let value: Value = serde_json::from_str(&line)
+                .map_err(|e| AdapterError::Protocol(format!("invalid JSONL line: {e}")))?;
+            if value["type"] == "response" {
+                match value["id"].as_str() {
+                    Some("0") if !ready => {
+                        response(&value, "set_steering_mode", &[])?;
+                        send(&mut stdin, json!({"id":"1","type":"prompt","message":prompt})).await?;
                     }
-                    if tx.send(ev).await.is_err() {
-                        // Consumer dropped: SIGTERM the agent's group and stop.
-                        crate::stop_agent(&mut child);
-                        return;
+                    Some("1") if !ready => {
+                        response(&value, "prompt", &["started", "queued", "handled"])?;
+                        ready = true;
+                        settled |= value["data"]["disposition"] == "handled";
+                    }
+                    Some(id) if pending.as_ref().is_some_and(|(expected, _)| expected == id) => {
+                        let (_, request) = pending.take().unwrap();
+                        let _ = request.ack.send(response(&value, "steer", &["queued", "handled"]));
+                    }
+                    _ => return Err(AdapterError::Protocol("unexpected response id".into())),
+                }
+            } else if value["type"] == "agent_settled" {
+                settled = true;
+            } else if value["type"] != "agent_end" {
+                for event in mapper.map_line(&line)? {
+                    if tx.send(event).await.is_err() {
+                        return Ok(());
                     }
                 }
             }
-            Ok(None) => break,
-            Err(e) => {
-                let _ = tx
-                    .send(NormalizedEvent::Failed {
-                        reason: format!("reading agent stdout: {e}"),
-                    })
-                    .await;
-                break;
+            if ready && settled && pending.is_none() {
+                let _ = tx.send(NormalizedEvent::Ended).await;
+                return Ok(());
             }
         }
+    }.await;
+    if let Some((_, request)) = pending {
+        let _ = request.ack.send(Err(AdapterError::Protocol(
+            "Pi ended before acknowledging steer".into(),
+        )));
     }
-
-    if !saw_terminal {
-        let reason = read_stderr(stderr)
-            .await
-            .filter(|s| !s.is_empty())
-            .map(|s| format!("agent exited without agent_end: {s}"))
-            .unwrap_or_else(|| "agent exited without agent_end".to_string());
-        let _ = tx.send(NormalizedEvent::Failed { reason }).await;
+    requests.close();
+    while let Ok(request) = requests.try_recv() {
+        let _ = request
+            .ack
+            .send(Err(AdapterError::Protocol("no active Pi run".into())));
+    }
+    crate::stop_agent(&mut child);
+    drop(stdin);
+    if tokio::time::timeout(std::time::Duration::from_secs(2), child.wait())
+        .await
+        .is_err()
+    {
+        let _ = child.kill().await;
+    }
+    let stderr = match tokio::time::timeout(std::time::Duration::from_secs(2), &mut stderr).await {
+        Ok(result) => result.unwrap_or_default(),
+        Err(_) => {
+            stderr.abort();
+            let _ = stderr.await;
+            String::new()
+        }
+    };
+    if let Err(error) = result {
+        let _ = tx
+            .send(NormalizedEvent::Failed {
+                reason: format!("{error}: {}", stderr.trim()),
+            })
+            .await;
         let _ = tx.send(NormalizedEvent::Ended).await;
-    }
-
-    let _ = child.wait().await;
-}
-
-/// Drains stderr into a string for a failure reason. Best-effort.
-async fn read_stderr(stderr: tokio::process::ChildStderr) -> Option<String> {
-    let mut lines = BufReader::new(stderr).lines();
-    let mut collected = Vec::new();
-    while let Ok(Some(line)) = lines.next_line().await {
-        collected.push(line);
-    }
-    if collected.is_empty() {
-        None
-    } else {
-        Some(collected.join("\n"))
     }
 }
 
@@ -225,14 +303,23 @@ impl PiMapper {
     /// Maps `tool_execution_start`: `bash` → `CommandRun`; anything else →
     /// `ToolCall`. Records `bash` ids so the matching end is dropped.
     fn map_tool_start(&mut self, v: &Value) -> Option<NormalizedEvent> {
-        let id = v.get("toolCallId").and_then(Value::as_str).unwrap_or_default();
-        let name = v.get("toolName").and_then(Value::as_str).unwrap_or_default();
+        let id = v
+            .get("toolCallId")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let name = v
+            .get("toolName")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         let args = v.get("args").cloned().unwrap_or(Value::Null);
         if name == "bash" {
             // Shell-exec is normalized to CommandRun (no result pairing);
             // remember the id so we drop its tool_execution_end.
             self.bash_calls.insert(id.to_string());
-            let cmd = args.get("command").and_then(Value::as_str).unwrap_or_default();
+            let cmd = args
+                .get("command")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             // pi's bash result carries no numeric exit code (only an isError
             // flag), so exit is unknown at invocation and stays absent.
             Some(NormalizedEvent::CommandRun {
@@ -251,7 +338,10 @@ impl PiMapper {
     /// Maps `tool_execution_end` to a `ToolResult`, dropping the results of
     /// `bash` calls (already emitted as `CommandRun`).
     fn map_tool_end(&self, v: &Value) -> Option<NormalizedEvent> {
-        let id = v.get("toolCallId").and_then(Value::as_str).unwrap_or_default();
+        let id = v
+            .get("toolCallId")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         if self.bash_calls.contains(id) {
             return None;
         }
@@ -296,7 +386,10 @@ fn map_assistant_block(b: &Value) -> Option<NormalizedEvent> {
             (!text.is_empty()).then(|| NormalizedEvent::AssistantText { text: text.into() })
         }
         Some("thinking") => {
-            let text = b.get("thinking").and_then(Value::as_str).unwrap_or_default();
+            let text = b
+                .get("thinking")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             (!text.is_empty()).then(|| NormalizedEvent::Reasoning { text: text.into() })
         }
         _ => None,
@@ -352,6 +445,139 @@ fn excerpt(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validates_rpc_responses() {
+        for disposition in ["queued", "handled"] {
+            assert!(response(
+                &json!({"command":"steer","success":true,"data":{"disposition":disposition}}),
+                "steer",
+                &["queued", "handled"]
+            )
+            .is_ok());
+        }
+        for value in [
+            json!({"command":"steer","success":false,"error":"rejected"}),
+            json!({"command":"steer","success":true}),
+            json!({"command":"steer","success":true,"data":{"disposition":"started"}}),
+            json!({"command":"prompt","success":true,"data":{"disposition":"queued"}}),
+        ] {
+            assert!(response(&value, "steer", &["queued", "handled"]).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn rpc_preserves_order_and_acknowledges_consumed_input() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("rpc.py");
+        std::fs::write(&script, r#"
+import json, sys
+def read():
+    return json.loads(sys.stdin.readline())
+def emit(value):
+    print(json.dumps(value), flush=True)
+def reply(request, **fields):
+    emit(dict(type='response', id=request['id'], command=request['type'], **fields))
+assert sys.argv[1:] == ['pi', '--mode', 'rpc', '--model', 'test-model']
+mode = read()
+assert mode == dict(id='0', type='set_steering_mode', mode='one-at-a-time')
+reply(mode, success=True)
+prompt = read()
+assert prompt == dict(id='1', type='prompt', message='initial\nprompt')
+reply(prompt, success=True, data=dict(disposition='started'))
+emit(dict(type='turn_start'))
+ids = {mode['id'], prompt['id']}
+for index, disposition in enumerate(['queued', 'handled', 'rejected', 'invalid']):
+    request = read()
+    assert request['type'] == 'steer' and request['message'] == str(index)
+    assert request['id'] not in ids
+    ids.add(request['id'])
+    if disposition == 'rejected':
+        reply(request, success=False, error='rejected')
+    else:
+        reply(request, success=True, data=dict(disposition=disposition))
+emit(dict(type='agent_end', willRetry=True))
+emit(dict(type='message_end', message=dict(role='assistant', content=[dict(type='text', text='after retry')])))
+emit(dict(type='agent_settled', aborted=False))
+sys.stdin.read()
+"#).unwrap();
+        let mut run = PiAdapter
+            .start_run(&RunSpec {
+                cwd: dir.path().into(),
+                prompt: "initial\nprompt".into(),
+                wrapper: vec!["python3".into(), script.into_os_string()],
+                model: Some("test-model".into()),
+            })
+            .await
+            .unwrap();
+        assert!(PiAdapter.can_steer());
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            assert_eq!(run.events.recv().await, Some(NormalizedEvent::TurnStarted));
+            let mut replies = Vec::new();
+            for index in 0..4 {
+                let (ack, receiver) = tokio::sync::oneshot::channel();
+                run.steer
+                    .as_ref()
+                    .unwrap()
+                    .send(SteerRequest {
+                        tap_id: "same-id".into(),
+                        text: index.to_string(),
+                        ack,
+                    })
+                    .await
+                    .unwrap();
+                replies.push(receiver);
+            }
+            for (index, reply) in replies.into_iter().enumerate() {
+                assert_eq!(reply.await.unwrap().is_ok(), index < 2);
+            }
+            assert_eq!(
+                run.events.recv().await,
+                Some(NormalizedEvent::AssistantText {
+                    text: "after retry".into()
+                })
+            );
+            assert_eq!(run.events.recv().await, Some(NormalizedEvent::Ended));
+            assert_eq!(run.events.recv().await, None);
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn handled_prompt_finishes_without_agent_events() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("handled.py");
+        std::fs::write(
+            &script,
+            r#"
+import json, sys
+for disposition in [None, 'handled']:
+    request = json.loads(sys.stdin.readline())
+    response = dict(type='response', id=request['id'], command=request['type'], success=True)
+    if disposition:
+        response['data'] = dict(disposition=disposition)
+    print(json.dumps(response), flush=True)
+sys.stdin.read()
+"#,
+        )
+        .unwrap();
+        let mut run = PiAdapter
+            .start_run(&RunSpec {
+                cwd: dir.path().into(),
+                prompt: "consumed".into(),
+                wrapper: vec!["python3".into(), script.into_os_string()],
+                model: None,
+            })
+            .await
+            .unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            assert_eq!(run.events.recv().await, Some(NormalizedEvent::Ended));
+            assert_eq!(run.events.recv().await, None);
+        })
+        .await
+        .unwrap();
+    }
 
     fn map_all(text: &str) -> Vec<NormalizedEvent> {
         let mut mapper = PiMapper::new();
