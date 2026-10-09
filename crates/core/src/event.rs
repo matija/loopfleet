@@ -166,22 +166,27 @@ mod tests {
             NormalizedEvent::FileChanged {
                 path: PathBuf::from("src/lib.rs"),
             },
-        ];
-
-        let events = events.into_iter().chain(
-            [
-                Delivery::Steered,
-                Delivery::Queued,
-                Delivery::Delivered { pass: 1 },
-                Delivery::Unknown,
-            ]
-            .into_iter()
-            .map(|delivery| NormalizedEvent::UserMessage {
+            NormalizedEvent::UserMessage {
                 id: "m1".into(),
                 text: "hello".into(),
-                delivery,
-            }),
-        );
+                delivery: Delivery::Steered,
+            },
+            NormalizedEvent::UserMessage {
+                id: "m1".into(),
+                text: "hello".into(),
+                delivery: Delivery::Queued,
+            },
+            NormalizedEvent::UserMessage {
+                id: "m1".into(),
+                text: "hello".into(),
+                delivery: Delivery::Delivered { pass: 1 },
+            },
+            NormalizedEvent::UserMessage {
+                id: "m1".into(),
+                text: "hello".into(),
+                delivery: Delivery::Unknown,
+            },
+        ];
 
         for ev in events {
             let json = serde_json::to_string(&ev).unwrap();
@@ -237,15 +242,22 @@ mod tests {
 
     #[test]
     fn lanes_classify_correctly() {
-        assert_eq!(
-            NormalizedEvent::UserMessage {
-                id: "m1".into(),
-                text: "hello".into(),
-                delivery: Delivery::Unknown,
-            }
-            .lane(),
-            Lane::App
-        );
+        for delivery in [
+            Delivery::Steered,
+            Delivery::Queued,
+            Delivery::Delivered { pass: 1 },
+            Delivery::Unknown,
+        ] {
+            assert_eq!(
+                NormalizedEvent::UserMessage {
+                    id: "m1".into(),
+                    text: "hello".into(),
+                    delivery,
+                }
+                .lane(),
+                Lane::App
+            );
+        }
         assert_eq!(
             NormalizedEvent::FileChanged {
                 path: PathBuf::from("a")
