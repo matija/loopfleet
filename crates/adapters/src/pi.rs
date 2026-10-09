@@ -48,10 +48,11 @@ pub struct PiAdapter;
 #[async_trait]
 impl AgentAdapter for PiAdapter {
     fn can_steer(&self) -> bool {
-        true
+        crate::discovery::can_steer("pi")
     }
 
     async fn start_run(&self, spec: &RunSpec) -> Result<RunHandle, AdapterError> {
+        let can_steer = self.can_steer();
         let mut cmd = crate::base_command(&spec.wrapper, "pi");
         cmd.args(["--mode", "rpc"]);
         if let Some(model) = &spec.model {
@@ -91,7 +92,7 @@ impl AgentAdapter for PiAdapter {
         ));
         Ok(RunHandle {
             events: rx,
-            steer: Some(steer),
+            steer: can_steer.then_some(steer),
         })
     }
 

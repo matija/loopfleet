@@ -17,10 +17,11 @@ pub struct CodexAdapter;
 #[async_trait]
 impl AgentAdapter for CodexAdapter {
     fn can_steer(&self) -> bool {
-        true
+        crate::discovery::can_steer("codex")
     }
 
     async fn start_run(&self, spec: &RunSpec) -> Result<RunHandle, AdapterError> {
+        let can_steer = self.can_steer();
         let mut cmd = crate::base_command(&spec.wrapper, "codex");
         let mut child = cmd
             .arg("app-server")
@@ -55,7 +56,7 @@ impl AgentAdapter for CodexAdapter {
         ));
         Ok(RunHandle {
             events: rx,
-            steer: Some(steer),
+            steer: can_steer.then_some(steer),
         })
     }
 

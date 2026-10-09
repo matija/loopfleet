@@ -18,6 +18,14 @@ Loopfleet is a native macOS app for **scheduled and continuous task execution**.
 
 Context is kept deliberately small per run, so each agent stays focused on its current task instead of drowning in accumulated history. The app keeps the plan, the runs, and the resulting diffs in one place: scan the fleet, review what changed, and accept or reject tasks without losing the thread.
 
+## Live steering
+
+Live steering requires **Codex 0.154.0 or later** (app-server) or
+**pi 0.80.3 or later** (RPC). Older, unrecognized, or unavailable versions
+use notes instead of live steering. Discovery and run handles use the same
+version check. Claude Code and Cursor keep their existing transports and
+use notes (`can_steer() == false`).
+
 ## Download
 
 <!-- download-links:start -->

@@ -87,6 +87,46 @@ pub fn spec_for(key: &str) -> Option<&'static AgentSpec> {
     KNOWN_AGENTS.iter().find(|a| a.key == key)
 }
 
+fn steering_minimum(key: &str) -> Option<[u64; 3]> {
+    match key {
+        "codex" => Some([0, 154, 0]),
+        "pi" => Some([0, 80, 3]),
+        _ => None,
+    }
+}
+
+fn supports_steering(key: &str, version: Option<&str>) -> bool {
+    let Some(minimum) = steering_minimum(key) else {
+        return false;
+    };
+    let Some(version) = version else { return false };
+    let parts: Vec<_> = version.split('.').map(str::parse::<u64>).collect();
+    matches!(parts.as_slice(), [Ok(major), Ok(minor), Ok(patch)] if [*major, *minor, *patch] >= minimum)
+}
+
+pub(crate) fn can_steer(key: &str) -> bool {
+    let Some(spec) = spec_for(key) else {
+        return false;
+    };
+    let Ok(output) = std::process::Command::new(spec.binary)
+        .arg(spec.version_arg)
+        .stdin(Stdio::null())
+        .output()
+    else {
+        return false;
+    };
+    let text = if String::from_utf8_lossy(&output.stdout).trim().is_empty() {
+        &output.stderr
+    } else {
+        &output.stdout
+    };
+    output.status.success()
+        && supports_steering(
+            key,
+            extract_version(&String::from_utf8_lossy(text)).as_deref(),
+        )
+}
+
 /// The result of discovering one agent's CLI.
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentStatus {
@@ -96,6 +136,7 @@ pub struct AgentStatus {
     pub tested_version: String,
     /// Whether the binary was found on `PATH` and ran.
     pub installed: bool,
+    pub can_steer: bool,
     /// The detected version (the first version-like token in `--version`
     /// output), if installed and recognized.
     pub version: Option<String>,
@@ -121,6 +162,7 @@ pub async fn discover(spec: &AgentSpec) -> AgentStatus {
         binary: spec.binary.into(),
         tested_version: spec.tested_version.into(),
         installed: false,
+        can_steer: false,
         version: None,
         version_matches: None,
         detail: Some(detail),
@@ -134,6 +176,10 @@ pub async fn discover(spec: &AgentSpec) -> AgentStatus {
         .await;
 
     match output {
+        Ok(out) if !out.status.success() => missing(format!(
+            "'{} --version' exited with {}",
+            spec.binary, out.status
+        )),
         Ok(out) => {
             // Prefer stdout; some CLIs print the version banner on stderr.
             let stdout = String::from_utf8_lossy(&out.stdout);
@@ -150,9 +196,16 @@ pub async fn discover(spec: &AgentSpec) -> AgentStatus {
                 binary: spec.binary.into(),
                 tested_version: spec.tested_version.into(),
                 installed: true,
-                detail: version
-                    .is_none()
-                    .then(|| "version output not recognized".into()),
+                can_steer: supports_steering(spec.key, version.as_deref()),
+                detail: if steering_minimum(spec.key).is_some()
+                    && !supports_steering(spec.key, version.as_deref())
+                {
+                    Some("live steering unavailable for this version; use notes".into())
+                } else {
+                    version
+                        .is_none()
+                        .then(|| "version output not recognized".into())
+                },
                 version,
                 version_matches,
                 models: spec.models.iter().map(|m| m.to_string()).collect(),
@@ -205,6 +258,39 @@ fn extract_version(output: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AgentAdapter;
+
+    #[test]
+    fn steering_requires_supported_versions() {
+        for (key, older, minimum, newer) in [
+            ("codex", "0.153.9", "0.154.0", "0.162.0"),
+            ("pi", "0.80.2", "0.80.3", "1.1.0"),
+        ] {
+            assert!(!supports_steering(key, None));
+            assert!(!supports_steering(key, Some("invalid")));
+            assert!(!supports_steering(key, Some(older)));
+            assert!(supports_steering(key, Some(minimum)));
+            assert!(supports_steering(key, Some(newer)));
+        }
+        assert!(!crate::ClaudeAdapter.can_steer());
+        assert!(!crate::CursorAdapter.can_steer());
+        for key in ["claude", "cursor", "cursor-agent"] {
+            assert!(!supports_steering(key, Some("999.0.0")));
+        }
+    }
+
+    #[tokio::test]
+    async fn discovery_agrees_with_adapters() {
+        for (key, adapter) in [
+            ("codex", &crate::CodexAdapter as &dyn AgentAdapter),
+            ("pi", &crate::PiAdapter),
+            ("claude", &crate::ClaudeAdapter),
+            ("cursor", &crate::CursorAdapter),
+        ] {
+            let status = discover(spec_for(key).unwrap()).await;
+            assert_eq!(status.can_steer, adapter.can_steer());
+        }
+    }
 
     #[test]
     fn extracts_version_from_banners() {
