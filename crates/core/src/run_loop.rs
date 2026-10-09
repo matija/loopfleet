@@ -424,8 +424,7 @@ mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::{Arc, Mutex};
 
-    struct TapAdapter {
-        inner: ScriptedAdapter,
+    struct TapScript {
         taps: mpsc::Sender<Tap>,
         can_steer: bool,
         steer_open: Option<bool>,
@@ -435,16 +434,10 @@ mod tests {
         steered: Arc<Mutex<Vec<(String, String)>>>,
     }
 
-    #[async_trait]
-    impl AgentAdapter for TapAdapter {
-        fn can_steer(&self) -> bool {
-            self.can_steer
-        }
-
-        async fn start_run(&self, spec: &RunSpec) -> Result<RunHandle, AdapterError> {
-            let handle = self.inner.start_run(spec).await?;
-            if self.inner.call.load(Ordering::SeqCst) != 1 {
-                return Ok(handle);
+    impl TapScript {
+        fn start_run(&self, handle: RunHandle, pass: u32) -> RunHandle {
+            if pass != 1 {
+                return handle;
             }
             let (events, rx) = mpsc::channel(1);
             let (steer, mut requests) = mpsc::channel::<SteerRequest>(1);
@@ -497,18 +490,10 @@ mod tests {
                 }
                 drop(events);
             });
-            Ok(RunHandle {
+            RunHandle {
                 events: rx,
                 steer: self.steer_open.map(|_| steer),
-            })
-        }
-
-        async fn open_session(
-            &self,
-            cwd: &Path,
-            seed: SessionSeed,
-        ) -> Result<SessionHandle, AdapterError> {
-            self.inner.open_session(cwd, seed).await
+            }
         }
     }
 
@@ -533,8 +518,8 @@ mod tests {
             let git = GitActor::spawn();
             let (cfg, _repo, _root, _prog) = setup("loop-taps", 3, &git).await;
             let (tx, mut taps) = mpsc::channel(1);
-            let adapter = TapAdapter {
-                inner: ScriptedAdapter::new(cfg.progress_path.clone(), Some(3)),
+            let mut adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(3));
+            adapter.taps = Some(TapScript {
                 taps: tx,
                 can_steer,
                 steer_open,
@@ -542,7 +527,7 @@ mod tests {
                 acknowledgement: Some(true),
                 wait_for_stop: false,
                 steered: Arc::new(Mutex::new(Vec::new())),
-            };
+            });
             let (_ctx, mut cancel) = watch::channel(false);
             let mut deliveries = Vec::new();
             let outcome = tokio::time::timeout(
@@ -563,8 +548,8 @@ mod tests {
             .await
             .unwrap();
             assert_eq!(outcome.state, RunState::Completed);
-            let prompts = adapter.inner.prompts.lock().unwrap();
-            let steered = adapter.steered.lock().unwrap();
+            let prompts = adapter.prompts.lock().unwrap();
+            let steered = adapter.taps.as_ref().unwrap().steered.lock().unwrap();
             assert!(!prompts[0].contains("correction"));
             assert!(!prompts[2].contains("correction"));
             if can_steer && steer_open == Some(true) && !steer_full {
@@ -578,6 +563,15 @@ mod tests {
                 );
                 assert!(!prompts[1].contains("correction"));
             } else {
+                assert_eq!(
+                    deliveries,
+                    [
+                        Delivery::Queued,
+                        Delivery::Queued,
+                        Delivery::Delivered { pass: 2 },
+                        Delivery::Delivered { pass: 2 }
+                    ]
+                );
                 assert!(steered.is_empty());
                 assert!(prompts[1].contains("## Corrections from the human"));
                 assert!(prompts[1].contains("First correction\n\nSecond correction"));
@@ -591,8 +585,8 @@ mod tests {
             let git = GitActor::spawn();
             let (cfg, _repo, _root, _prog) = setup("loop-ack", 2, &git).await;
             let (tx, mut taps) = mpsc::channel(1);
-            let adapter = TapAdapter {
-                inner: ScriptedAdapter::new(cfg.progress_path.clone(), Some(2)),
+            let mut adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(2));
+            adapter.taps = Some(TapScript {
                 taps: tx,
                 can_steer: true,
                 steer_open: Some(true),
@@ -600,7 +594,7 @@ mod tests {
                 acknowledgement,
                 wait_for_stop: stop,
                 steered: Arc::new(Mutex::new(Vec::new())),
-            };
+            });
             let (ctx, mut cancel) = watch::channel(false);
             let mut deliveries = Vec::new();
             let mut drained = false;
@@ -632,7 +626,7 @@ mod tests {
             };
             assert_eq!(&deliveries[..2], &[expected, expected]);
             if !stop {
-                let prompts = adapter.inner.prompts.lock().unwrap();
+                let prompts = adapter.prompts.lock().unwrap();
                 assert_eq!(
                     prompts[1].contains("First correction"),
                     acknowledgement == Some(false)
@@ -663,11 +657,107 @@ mod tests {
         assert!(!prompts[1].contains("correction"));
     }
 
+    #[tokio::test(flavor = "multi_thread")]
+    async fn stop_before_tap_leaves_it_undelivered() {
+        for at_boundary in [true, false] {
+            let git = GitActor::spawn();
+            let (cfg, _repo, _root, _prog) = setup("loop-stop-tap", 2, &git).await;
+            let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(2));
+            let (tx, mut taps) = mpsc::channel(1);
+            let (ctx, mut cancel) = watch::channel(at_boundary);
+            if at_boundary {
+                tx.send(test_tap("Late correction")).await.unwrap();
+            }
+            let mut deliveries = Vec::new();
+            let outcome = run_loop(
+                &adapter,
+                &git,
+                &cfg,
+                &mut cancel,
+                &mut taps,
+                &mut |_, event| {
+                    if matches!(event, NormalizedEvent::TurnStarted) {
+                        ctx.send(true).unwrap();
+                        tx.try_send(test_tap("Late correction")).unwrap();
+                    }
+                    if let NormalizedEvent::UserMessage { delivery, .. } = event {
+                        deliveries.push(*delivery);
+                    }
+                },
+            )
+            .await;
+            assert_eq!(outcome.state, RunState::Stopped);
+            assert_eq!(outcome.iterations.len(), usize::from(!at_boundary));
+            let prompts = adapter.prompts.lock().unwrap();
+            assert_eq!(prompts.len(), usize::from(!at_boundary));
+            assert!(prompts
+                .iter()
+                .all(|prompt| !prompt.contains("Late correction")));
+            assert!(deliveries.is_empty());
+            if at_boundary {
+                assert_eq!(taps.try_recv().unwrap().id, "Late correction");
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn tap_after_last_pass_does_not_start_another_pass() {
+        for complete_on in [Some(1), None] {
+            let git = GitActor::spawn();
+            let (cfg, _repo, _root, _prog) = setup("loop-last-tap", 1, &git).await;
+            let mut adapter = ScriptedAdapter::new(cfg.progress_path.clone(), complete_on);
+            let (tx, mut taps) = mpsc::channel(1);
+            adapter.taps = Some(TapScript {
+                taps: tx.clone(),
+                can_steer: false,
+                steer_open: None,
+                steer_full: false,
+                acknowledgement: Some(true),
+                wait_for_stop: false,
+                steered: Arc::new(Mutex::new(Vec::new())),
+            });
+            let (_ctx, mut cancel) = watch::channel(false);
+            let mut deliveries = Vec::new();
+            let outcome = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                run_loop(
+                    &adapter,
+                    &git,
+                    &cfg,
+                    &mut cancel,
+                    &mut taps,
+                    &mut |_, event| {
+                        if let NormalizedEvent::UserMessage { delivery, .. } = event {
+                            deliveries.push(*delivery);
+                        }
+                    },
+                ),
+            )
+            .await
+            .unwrap();
+            assert_eq!(deliveries, [Delivery::Queued, Delivery::Queued]);
+            assert!(!adapter.prompts.lock().unwrap()[0].contains("correction"));
+            tx.send(test_tap("Late correction")).await.unwrap();
+            assert_eq!(
+                outcome.state,
+                if complete_on.is_some() {
+                    RunState::Completed
+                } else {
+                    RunState::Failed
+                }
+            );
+            assert_eq!(outcome.iterations.len(), 1);
+            assert_eq!(adapter.prompts.lock().unwrap().len(), 1);
+            assert_eq!(taps.try_recv().unwrap().id, "Late correction");
+        }
+    }
+
     /// A scripted adapter: on each `start_run` it records the prompt, appends a
     /// line to the external progress file (optionally the completion marker on a
     /// chosen pass), touches a file in the worktree so snapshots have content,
     /// and replays a fixed event list.
     struct ScriptedAdapter {
+        taps: Option<TapScript>,
         progress_path: PathBuf,
         /// 1-based pass on which to write `<STATUS>COMPLETE</STATUS>`; `None` = never.
         complete_on: Option<u32>,
@@ -686,6 +776,7 @@ mod tests {
     impl ScriptedAdapter {
         fn new(progress_path: PathBuf, complete_on: Option<u32>) -> Self {
             Self {
+                taps: None,
                 progress_path,
                 complete_on,
                 rate_limit_on: None,
@@ -699,6 +790,10 @@ mod tests {
 
     #[async_trait]
     impl AgentAdapter for ScriptedAdapter {
+        fn can_steer(&self) -> bool {
+            self.taps.as_ref().is_some_and(|taps| taps.can_steer)
+        }
+
         async fn start_run(&self, spec: &RunSpec) -> Result<RunHandle, AdapterError> {
             if self.fail_start {
                 return Err(AdapterError::Spawn(std::io::Error::other("cannot spawn")));
@@ -753,9 +848,13 @@ mod tests {
                     }
                 }
             });
-            Ok(RunHandle {
+            let handle = RunHandle {
                 events: rx,
                 steer: None,
+            };
+            Ok(match &self.taps {
+                Some(taps) => taps.start_run(handle, n),
+                None => handle,
             })
         }
 
