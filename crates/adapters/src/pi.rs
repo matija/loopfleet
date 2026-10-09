@@ -17,7 +17,7 @@
 //!   `ToolResult`, correlated by `toolCallId`. Results of `bash` calls are
 //!   dropped: they were already normalized to `CommandRun`, which the enum
 //!   carries as a single event with no result pairing.
-//! - `{"type":"agent_end",…}` — the run wrapper's terminal line → `Ended`.
+//! - `{"type":"agent_settled",…}` — the session's terminal line → `Ended`.
 //!
 //! Other line types pi emits (`session`, `agent_start`, `message_start`,
 //! streaming `message_update` / `tool_execution_update` deltas, non-assistant
@@ -194,10 +194,14 @@ async fn drive(
                     }
                     _ => return Err(AdapterError::Protocol("unexpected response id".into())),
                 }
+            } else if value["type"] == "extension_ui_request" {
+                if matches!(value["method"].as_str(), Some("select" | "confirm" | "input" | "editor")) {
+                    send(&mut stdin, json!({"type":"extension_ui_response","id":value["id"],"cancelled":true})).await?;
+                }
             } else if value["type"] == "agent_settled" {
                 settled = true;
-            } else if value["type"] != "agent_end" {
-                for event in mapper.map_line(&line)? {
+            } else {
+                for event in mapper.map_event(&value) {
                     if tx.send(event).await.is_err() {
                         return Ok(());
                     }
@@ -262,6 +266,7 @@ impl PiMapper {
 
     /// Maps one line into zero or more normalized events. Blank lines and line
     /// types the enum does not represent yield an empty vec.
+    #[cfg(test)]
     fn map_line(&mut self, line: &str) -> Result<Vec<NormalizedEvent>, AdapterError> {
         let line = line.trim();
         if line.is_empty() {
@@ -270,14 +275,18 @@ impl PiMapper {
         let v: Value = serde_json::from_str(line)
             .map_err(|e| AdapterError::Protocol(format!("invalid agent-event line: {e}")))?;
 
+        Ok(self.map_event(&v))
+    }
+
+    fn map_event(&mut self, v: &Value) -> Vec<NormalizedEvent> {
         match v.get("type").and_then(Value::as_str) {
-            Some("turn_start") => Ok(vec![NormalizedEvent::TurnStarted]),
-            Some("message_end") => Ok(self.map_message_end(&v)),
-            Some("tool_execution_start") => Ok(self.map_tool_start(&v).into_iter().collect()),
-            Some("tool_execution_end") => Ok(self.map_tool_end(&v).into_iter().collect()),
-            Some("turn_end") => Ok(vec![self.map_turn_end(&v)]),
-            Some("agent_end") => Ok(vec![NormalizedEvent::Ended]),
-            _ => Ok(vec![]),
+            Some("turn_start") => vec![NormalizedEvent::TurnStarted],
+            Some("message_end") => self.map_message_end(v),
+            Some("tool_execution_start") => self.map_tool_start(v).into_iter().collect(),
+            Some("tool_execution_end") => self.map_tool_end(v).into_iter().collect(),
+            Some("turn_end") => vec![self.map_turn_end(v)],
+            Some("agent_settled") => vec![NormalizedEvent::Ended],
+            _ => vec![],
         }
     }
 
@@ -356,7 +365,7 @@ impl PiMapper {
 
     /// Maps a `turn_end`: `Failed` when the turn's message errored, else
     /// `TurnCompleted` with the turn's usage. Terminal `Ended` comes separately
-    /// from `agent_end`.
+    /// from `agent_settled`.
     fn map_turn_end(&self, v: &Value) -> NormalizedEvent {
         let message = v.get("message");
         let stop_reason = message
@@ -485,6 +494,11 @@ reply(mode, success=True)
 prompt = read()
 assert prompt == dict(id='1', type='prompt', message='initial\nprompt')
 reply(prompt, success=True, data=dict(disposition='started'))
+for method in ['notify', 'setStatus', 'setWidget', 'setTitle', 'set_editor_text']:
+    emit(dict(type='extension_ui_request', id=method, method=method))
+for method in ['select', 'confirm', 'input', 'editor']:
+    emit(dict(type='extension_ui_request', id=method, method=method))
+    assert read() == dict(type='extension_ui_response', id=method, cancelled=True)
 emit(dict(type='turn_start'))
 ids = {mode['id'], prompt['id']}
 for index, disposition in enumerate(['queued', 'handled', 'rejected', 'invalid']):
@@ -497,7 +511,12 @@ for index, disposition in enumerate(['queued', 'handled', 'rejected', 'invalid']
     else:
         reply(request, success=True, data=dict(disposition=disposition))
 emit(dict(type='agent_end', willRetry=True))
-emit(dict(type='message_end', message=dict(role='assistant', content=[dict(type='text', text='after retry')])))
+emit(dict(type='auto_retry_start'))
+emit(dict(type='auto_retry_end', success=True))
+emit(dict(type='auto_compaction_start'))
+emit(dict(type='auto_compaction_end'))
+emit(dict(type='agent_end', willRetry=False))
+emit(dict(type='message_end', message=dict(role='assistant', content=[dict(type='text', text='after retry, compaction, and queued steering')])))
 emit(dict(type='agent_settled', aborted=False))
 sys.stdin.read()
 "#).unwrap();
@@ -534,7 +553,7 @@ sys.stdin.read()
             assert_eq!(
                 run.events.recv().await,
                 Some(NormalizedEvent::AssistantText {
-                    text: "after retry".into()
+                    text: "after retry, compaction, and queued steering".into()
                 })
             );
             assert_eq!(run.events.recv().await, Some(NormalizedEvent::Ended));
@@ -579,6 +598,40 @@ sys.stdin.read()
         .unwrap();
     }
 
+    #[tokio::test]
+    async fn agent_end_without_settled_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("eof.py");
+        std::fs::write(
+            &script,
+            r#"
+import json, sys
+for disposition in [None, 'started']:
+    request = json.loads(sys.stdin.readline())
+    response = dict(type='response', id=request['id'], command=request['type'], success=True)
+    if disposition:
+        response['data'] = dict(disposition=disposition)
+    print(json.dumps(response), flush=True)
+print(json.dumps(dict(type='agent_end', willRetry=False)), flush=True)
+"#,
+        )
+        .unwrap();
+        let mut run = PiAdapter
+            .start_run(&RunSpec {
+                cwd: dir.path().into(),
+                prompt: "initial".into(),
+                wrapper: vec!["python3".into(), script.into_os_string()],
+                model: None,
+            })
+            .await
+            .unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            assert!(matches!(run.events.recv().await, Some(NormalizedEvent::Failed { reason }) if reason.contains("agent exited without agent_settled")));
+            assert_eq!(run.events.recv().await, Some(NormalizedEvent::Ended));
+            assert_eq!(run.events.recv().await, None);
+        }).await.unwrap();
+    }
+
     fn map_all(text: &str) -> Vec<NormalizedEvent> {
         let mut mapper = PiMapper::new();
         text.lines()
@@ -592,7 +645,7 @@ sys.stdin.read()
     #[test]
     fn maps_captured_stream() {
         let fixture = include_str!("../fixtures/pi_stream.jsonl");
-        let events = map_all(fixture);
+        let events = map_all(&format!("{fixture}\n{{\"type\":\"agent_settled\"}}"));
 
         assert_eq!(events.first(), Some(&NormalizedEvent::TurnStarted));
         assert_eq!(events.last(), Some(&NormalizedEvent::Ended));
@@ -751,9 +804,16 @@ sys.stdin.read()
     }
 
     #[test]
-    fn agent_end_maps_to_ended() {
-        let line = r#"{"type":"agent_end","willRetry":false}"#;
-        assert_eq!(map_all(line), vec![NormalizedEvent::Ended]);
+    fn only_agent_settled_maps_to_ended() {
+        for will_retry in [true, false] {
+            assert!(
+                map_all(&json!({"type":"agent_end","willRetry":will_retry}).to_string()).is_empty()
+            );
+        }
+        assert_eq!(
+            map_all(r#"{"type":"agent_settled","aborted":false}"#),
+            vec![NormalizedEvent::Ended]
+        );
     }
 
     #[test]
