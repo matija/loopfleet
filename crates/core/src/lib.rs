@@ -25,6 +25,7 @@ pub mod progress;
 pub mod report;
 pub mod run_loop;
 pub mod supervisor;
+pub mod tap;
 pub mod task_binding;
 pub mod task_status;
 pub mod timeline;
@@ -52,9 +53,8 @@ pub use report::{
 };
 pub use run_loop::{run_loop, IterationRecord, LoopConfig, LoopOutcome};
 pub use supervisor::{InvalidTransition, RunProcess, RunState};
-pub use task_binding::{
-    is_legacy_form_of, resolve as resolve_task_anchor, MatchKind, Resolution,
-};
+pub use tap::{route, Tap};
+pub use task_binding::{is_legacy_form_of, resolve as resolve_task_anchor, MatchKind, Resolution};
 pub use task_status::{derive_status, TaskRun, TaskStatus};
 pub use timeline::{
     run_timeline, DiffView, FileChangeView, IterationView, RunTimeline, TimelineError,
