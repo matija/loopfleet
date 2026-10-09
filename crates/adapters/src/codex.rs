@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use async_trait::async_trait;
@@ -7,6 +8,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
 use crate::{AdapterError, AgentAdapter, RunHandle, RunSpec, SessionHandle, SessionSeed};
+use loopfleet_core::adapter::SteerRequest;
 
 const EXCERPT_LIMIT: usize = 2000;
 
@@ -14,6 +16,10 @@ pub struct CodexAdapter;
 
 #[async_trait]
 impl AgentAdapter for CodexAdapter {
+    fn can_steer(&self) -> bool {
+        true
+    }
+
     async fn start_run(&self, spec: &RunSpec) -> Result<RunHandle, AdapterError> {
         let mut cmd = crate::base_command(&spec.wrapper, "codex");
         let mut child = cmd
@@ -37,10 +43,19 @@ impl AgentAdapter for CodexAdapter {
             .take()
             .expect("stderr was piped so it is present");
         let (tx, rx) = mpsc::channel(64);
-        tokio::spawn(drive(child, stdin, stdout, stderr, tx, spec.clone()));
+        let (steer, requests) = mpsc::channel(64);
+        tokio::spawn(drive(
+            child,
+            stdin,
+            stdout,
+            stderr,
+            tx,
+            spec.clone(),
+            requests,
+        ));
         Ok(RunHandle {
             events: rx,
-            steer: None,
+            steer: Some(steer),
         })
     }
 
@@ -67,6 +82,7 @@ async fn drive(
     stderr: tokio::process::ChildStderr,
     tx: mpsc::Sender<NormalizedEvent>,
     spec: RunSpec,
+    mut requests: mpsc::Receiver<SteerRequest>,
 ) {
     let mut stderr = tokio::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
@@ -83,9 +99,24 @@ async fn drive(
         let mut lines = BufReader::new(stdout).lines();
         let mut mapper = CodexMapper::default();
         let mut expected = 1;
+        let mut thread_id = String::new();
+        let mut turn_id = None::<String>;
+        let mut pending = HashMap::new();
         loop {
             let line = tokio::select! {
                 _ = tx.closed() => return Ok(()),
+                Some(request) = requests.recv() => {
+                    let Some(turn) = &turn_id else {
+                        let _ = request.ack.send(Err(AdapterError::Protocol("no active Codex turn".into())));
+                        continue;
+                    };
+                    let id = format!("steer:{}", request.tap_id);
+                    send(&mut stdin, json!({"id":id,"method":"turn/steer","params":{
+                        "threadId":thread_id,"expectedTurnId":turn,"input":[{"type":"text","text":request.text}]
+                    }})).await?;
+                    pending.insert(id, (turn.clone(), request));
+                    continue;
+                },
                 line = lines.next_line() => line.map_err(|e| AdapterError::Protocol(format!("reading agent stdout: {e}")))?,
             };
             let Some(line) = line else {
@@ -97,7 +128,17 @@ async fn drive(
                 if value.get("method").is_some() {
                     return Err(AdapterError::Protocol(format!("unexpected server request: {}", value["method"])));
                 }
-                if value["id"].as_u64() != Some(expected) {
+                if let Some((turn, request)) = value["id"].as_str().and_then(|id| pending.remove(id)) {
+                    if let Some(error) = value.get("error").filter(|error| !error.is_null()) {
+                        let _ = request.ack.send(Err(AdapterError::Protocol(error_message(error).into())));
+                    } else if let Some(accepted) = value["result"]["turnId"].as_str() {
+                        let _ = request.ack.send(if accepted == turn { Ok(()) } else {
+                            Err(AdapterError::Protocol("stale Codex turn".into()))
+                        });
+                    }
+                    continue;
+                }
+                if value["id"].as_u64() != Some(expected) || expected > 3 {
                     return Err(AdapterError::Protocol("unexpected response id".into()));
                 }
                 if let Some(error) = value.get("error") {
@@ -113,13 +154,31 @@ async fn drive(
                     2 => {
                         let thread = value["result"]["thread"]["id"].as_str()
                             .ok_or_else(|| AdapterError::Protocol("missing thread id".into()))?;
+                        thread_id = thread.to_owned();
                         send(&mut stdin, json!({"id":3,"method":"turn/start","params":{
                             "threadId":thread,"input":[{"type":"text","text":spec.prompt}]
                         }})).await?;
                     }
+                    3 => {
+                        turn_id = Some(value["result"]["turn"]["id"].as_str()
+                            .ok_or_else(|| AdapterError::Protocol("missing turn id".into()))?.to_owned());
+                    }
                     _ => {}
                 }
                 expected += 1;
+                continue;
+            }
+            if value["params"]["threadId"].as_str().is_some_and(|id| id != thread_id) {
+                continue;
+            }
+            if value["method"] == "turn/started" {
+                if let Some(id) = value["params"]["turn"]["id"].as_str() {
+                    turn_id = Some(id.to_owned());
+                }
+            }
+            if value["params"]["turnId"].as_str().is_some_and(|id| turn_id.as_deref() != Some(id))
+                || (value["method"] == "turn/completed"
+                    && value["params"]["turn"]["id"].as_str().is_some_and(|id| turn_id.as_deref() != Some(id))) {
                 continue;
             }
             for event in mapper.map_line(&line)? {
@@ -130,6 +189,12 @@ async fn drive(
             }
         }
     }.await;
+    requests.close();
+    while let Ok(request) = requests.try_recv() {
+        let _ = request
+            .ack
+            .send(Err(AdapterError::Protocol("no active Codex turn".into())));
+    }
     crate::stop_agent(&mut child);
     drop(stdin);
     if tokio::time::timeout(std::time::Duration::from_secs(2), child.wait())
@@ -163,6 +228,7 @@ async fn drive(
 #[derive(Default)]
 struct CodexMapper {
     usage: Usage,
+    failed: bool,
 }
 
 impl CodexMapper {
@@ -182,16 +248,21 @@ impl CodexMapper {
                 Ok(vec![])
             }
             Some("turn/completed") => match params["turn"]["status"].as_str() {
-                Some("completed") => Ok(vec![
+                Some("completed") if !self.failed => Ok(vec![
                     NormalizedEvent::TurnCompleted {
                         usage: self.usage.clone(),
                     },
                     NormalizedEvent::Ended,
                 ]),
+                Some("interrupted") => Ok(map_error("Codex turn interrupted")),
+                _ if self.failed => Ok(vec![NormalizedEvent::Ended]),
                 _ => Ok(map_error(error_message(&params["turn"]))),
             },
             Some("error") if params["willRetry"].as_bool() != Some(true) => {
-                Ok(map_error(error_message(params)))
+                self.failed = true;
+                let mut events = map_error(error_message(params));
+                events.pop();
+                Ok(events)
             }
             _ => Ok(vec![]),
         }
@@ -252,6 +323,7 @@ fn map_completed_item(item: Option<&Value>) -> Vec<NormalizedEvent> {
                 ),
             output_excerpt: excerpt(&compact(
                 item.get("result")
+                    .filter(|result| !result.is_null())
                     .or_else(|| item.get("error"))
                     .unwrap_or(&Value::Null),
             )),
@@ -415,7 +487,195 @@ mod tests {
             Some(NormalizedEvent::RateLimited { message: Some(message), .. })
                 if message == "Usage limit reached"
         ));
-        assert_eq!(limited.last(), Some(&NormalizedEvent::Ended));
+        assert!(matches!(
+            limited.last(),
+            Some(NormalizedEvent::Failed { .. })
+        ));
+    }
+
+    #[test]
+    fn maps_completed_items_and_tool_failures() {
+        assert_eq!(
+            map_completed_item(Some(
+                &json!({"type":"mcpToolCall","id":"tool","status":"failed","result":null,"error":{"message":"tool failed"}})
+            )),
+            vec![NormalizedEvent::ToolResult {
+                call_id: "tool".into(),
+                ok: false,
+                output_excerpt: r#"{"message":"tool failed"}"#.into()
+            }]
+        );
+        assert_eq!(
+            map_completed_item(Some(
+                &json!({"type":"reasoning","summary":[],"content":["reasoning"]})
+            )),
+            vec![NormalizedEvent::Reasoning {
+                text: "reasoning".into()
+            }]
+        );
+        let search = json!({"type":"webSearch","id":"search","query":"query"});
+        assert_eq!(
+            map_started_item(Some(&search)),
+            vec![NormalizedEvent::ToolCall {
+                call_id: "search".into(),
+                name: "web_search".into(),
+                input_excerpt: "query".into()
+            }]
+        );
+        assert_eq!(
+            map_completed_item(Some(&search)),
+            vec![NormalizedEvent::ToolResult {
+                call_id: "search".into(),
+                ok: true,
+                output_excerpt: "query".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn waits_for_completion_and_preserves_terminal_status() {
+        let mut mapper = CodexMapper::default();
+        assert_eq!(mapper.map_line(r#"{"method":"error","params":{"error":{"message":"failed upstream"},"willRetry":false}}"#).unwrap(), vec![NormalizedEvent::Failed { reason: "failed upstream".into() }]);
+        assert_eq!(
+            mapper
+                .map_line(r#"{"method":"turn/completed","params":{"turn":{"status":"completed"}}}"#)
+                .unwrap(),
+            vec![NormalizedEvent::Ended]
+        );
+        assert_eq!(
+            map_all(r#"{"method":"turn/completed","params":{"turn":{"status":"interrupted"}}}"#),
+            vec![
+                NormalizedEvent::Failed {
+                    reason: "Codex turn interrupted".into()
+                },
+                NormalizedEvent::Ended
+            ]
+        );
+        assert!(map_all(
+            r#"{"method":"error","params":{"error":{"message":"retrying"},"willRetry":true}}"#
+        )
+        .is_empty());
+    }
+
+    #[tokio::test]
+    async fn correlates_steer_replies_and_requires_acknowledgement() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("steer.py");
+        std::fs::write(&script, r#"
+import json, os, sys, time
+def read():
+    return json.loads(sys.stdin.readline())
+def emit(value):
+    print(json.dumps(value), flush=True)
+with open('pid', 'w') as file:
+    file.write(str(os.getpid()))
+read()
+emit({'method': 'item/completed', 'params': {'item': {'type': 'agentMessage', 'text': 'initializing'}}})
+while not os.path.exists('ready'):
+    time.sleep(0.001)
+emit({'id': 1, 'result': {}})
+read()
+read()
+emit({'id': 2, 'result': {'thread': {'id': 'thread'}}})
+read()
+emit({'method': 'turn/started', 'params': {'threadId': 'thread', 'turn': {'id': 'turn'}}})
+requests = [read()]
+emit({'id': 3, 'result': {'turn': {'id': 'turn'}}})
+requests += [read() for _ in range(4)]
+for index, request in enumerate(requests):
+    assert request == {'id': 'steer:tap-' + str(index), 'method': 'turn/steer', 'params': {'threadId': 'thread', 'expectedTurnId': 'turn', 'input': [{'type': 'text', 'text': 'correction ' + str(index)}]}}
+emit({'id': requests[2]['id'], 'result': {'turnId': 'stale'}})
+emit({'id': requests[1]['id'], 'error': {'message': 'explicit rejection'}})
+emit({'id': requests[0]['id'], 'result': {'turnId': 'turn'}})
+emit({'id': requests[3]['id'], 'result': {}})
+emit({'method': 'turn/completed', 'params': {'threadId': 'other', 'turn': {'id': 'turn', 'status': 'completed'}}})
+emit({'method': 'turn/completed', 'params': {'threadId': 'thread', 'turn': {'id': 'stale', 'status': 'completed'}}})
+emit({'method': 'error', 'params': {'threadId': 'thread', 'turnId': 'turn', 'error': {'message': 'turn failed'}, 'willRetry': False}})
+emit({'method': 'item/completed', 'params': {'threadId': 'thread', 'turnId': 'turn', 'item': {'type': 'agentMessage', 'text': 'after error'}}})
+emit({'method': 'turn/completed', 'params': {'threadId': 'thread', 'turn': {'id': 'turn', 'status': 'failed', 'error': {'message': 'turn failed'}}}})
+sys.stdin.read()
+"#).unwrap();
+        let spec = RunSpec {
+            cwd: dir.path().to_path_buf(),
+            prompt: "prompt".into(),
+            wrapper: vec!["python3".into(), script.into_os_string()],
+            model: None,
+        };
+        assert!(CodexAdapter.can_steer());
+        let mut run = CodexAdapter.start_run(&spec).await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            assert_eq!(
+                run.events.recv().await,
+                Some(NormalizedEvent::AssistantText {
+                    text: "initializing".into()
+                })
+            );
+            let (ack, receiver) = tokio::sync::oneshot::channel();
+            run.steer
+                .as_ref()
+                .unwrap()
+                .send(SteerRequest {
+                    tap_id: "early".into(),
+                    text: "early correction".into(),
+                    ack,
+                })
+                .await
+                .unwrap();
+            assert!(receiver.await.unwrap().is_err());
+            std::fs::write(dir.path().join("ready"), "").unwrap();
+            assert_eq!(run.events.recv().await, Some(NormalizedEvent::TurnStarted));
+            let mut acknowledgements = Vec::new();
+            for index in 0..5 {
+                let (ack, receiver) = tokio::sync::oneshot::channel();
+                run.steer
+                    .as_ref()
+                    .unwrap()
+                    .send(SteerRequest {
+                        tap_id: format!("tap-{index}"),
+                        text: format!("correction {index}"),
+                        ack,
+                    })
+                    .await
+                    .unwrap();
+                acknowledgements.push(receiver);
+            }
+            for (index, receiver) in acknowledgements.into_iter().enumerate() {
+                match index {
+                    0 => assert!(receiver.await.unwrap().is_ok()),
+                    1 | 2 => assert!(receiver.await.unwrap().is_err()),
+                    _ => assert!(receiver.await.is_err()),
+                }
+            }
+            assert_eq!(
+                run.events.recv().await,
+                Some(NormalizedEvent::Failed {
+                    reason: "turn failed".into()
+                })
+            );
+            assert_eq!(
+                run.events.recv().await,
+                Some(NormalizedEvent::AssistantText {
+                    text: "after error".into()
+                })
+            );
+            assert_eq!(run.events.recv().await, Some(NormalizedEvent::Ended));
+            assert_eq!(run.events.recv().await, None);
+        })
+        .await
+        .unwrap();
+        #[cfg(unix)]
+        assert_eq!(
+            unsafe {
+                libc::kill(
+                    std::fs::read_to_string(dir.path().join("pid"))
+                        .unwrap()
+                        .parse()
+                        .unwrap(),
+                    0,
+                )
+            },
+            -1
+        );
     }
 
     #[test]
