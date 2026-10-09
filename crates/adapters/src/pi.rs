@@ -148,7 +148,10 @@ async fn drive(
         text
     });
     let mut pending = None::<(String, SteerRequest)>;
-    let result = async {
+    let result = tokio::select! {
+        biased;
+        _ = tx.closed() => Ok(()),
+        result = async {
         send(&mut stdin, json!({"id":"0","type":"set_steering_mode","mode":"one-at-a-time"})).await?;
         let mut lines = BufReader::new(stdout).lines();
         let mut mapper = PiMapper::new();
@@ -212,7 +215,8 @@ async fn drive(
                 return Ok(());
             }
         }
-    }.await;
+        } => result,
+    };
     if let Some((_, request)) = pending {
         let _ = request.ack.send(Err(AdapterError::Protocol(
             "Pi ended before acknowledging steer".into(),
@@ -224,17 +228,15 @@ async fn drive(
             .ack
             .send(Err(AdapterError::Protocol("no active Pi run".into())));
     }
-    crate::stop_agent(&mut child);
     drop(stdin);
-    if tokio::time::timeout(std::time::Duration::from_secs(2), child.wait())
-        .await
-        .is_err()
-    {
-        let _ = child.kill().await;
-    }
-    let stderr = match tokio::time::timeout(std::time::Duration::from_secs(2), &mut stderr).await {
-        Ok(result) => result.unwrap_or_default(),
-        Err(_) => {
+    crate::codex::shutdown(&mut child, &tx).await;
+    let stderr = match tokio::select! {
+        biased;
+        _ = tx.closed() => None,
+        result = tokio::time::timeout(std::time::Duration::from_secs(2), &mut stderr) => Some(result),
+    } {
+        Some(Ok(result)) => result.unwrap_or_default(),
+        _ => {
             stderr.abort();
             let _ = stderr.await;
             String::new()

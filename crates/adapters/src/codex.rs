@@ -92,7 +92,10 @@ async fn drive(
         }
         text
     });
-    let result = async {
+    let result = tokio::select! {
+        biased;
+        _ = tx.closed() => Ok(()),
+        result = async {
         send(&mut stdin, json!({"id":1,"method":"initialize","params":{
             "clientInfo":{"name":"loopfleet","title":"Loopfleet","version":env!("CARGO_PKG_VERSION")}
         }})).await?;
@@ -188,24 +191,23 @@ async fn drive(
                 }
             }
         }
-    }.await;
+        } => result,
+    };
     requests.close();
     while let Ok(request) = requests.try_recv() {
         let _ = request
             .ack
             .send(Err(AdapterError::Protocol("no active Codex turn".into())));
     }
-    crate::stop_agent(&mut child);
     drop(stdin);
-    if tokio::time::timeout(std::time::Duration::from_secs(2), child.wait())
-        .await
-        .is_err()
-    {
-        let _ = child.kill().await;
-    }
-    let stderr = match tokio::time::timeout(std::time::Duration::from_secs(2), &mut stderr).await {
-        Ok(result) => result.unwrap_or_default(),
-        Err(_) => {
+    crate::codex::shutdown(&mut child, &tx).await;
+    let stderr = match tokio::select! {
+        biased;
+        _ = tx.closed() => None,
+        result = tokio::time::timeout(std::time::Duration::from_secs(2), &mut stderr) => Some(result),
+    } {
+        Some(Ok(result)) => result.unwrap_or_default(),
+        _ => {
             stderr.abort();
             let _ = stderr.await;
             String::new()
@@ -223,6 +225,35 @@ async fn drive(
             let _ = tx.send(event).await;
         }
     }
+}
+
+pub(crate) async fn shutdown(
+    child: &mut tokio::process::Child,
+    tx: &mpsc::Sender<NormalizedEvent>,
+) {
+    let pid = child.id();
+    let exited = tokio::select! {
+        biased;
+        _ = tx.closed() => false,
+        result = tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()) => matches!(result, Ok(Ok(_))),
+    };
+    #[cfg(unix)]
+    if let Some(pid) = pid {
+        unsafe {
+            libc::killpg(pid as libc::pid_t, libc::SIGTERM);
+        }
+    }
+    if !exited {
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(200), child.wait()).await;
+    }
+    #[cfg(unix)]
+    if let Some(pid) = pid {
+        unsafe {
+            libc::killpg(pid as libc::pid_t, libc::SIGKILL);
+        }
+    }
+    let _ = child.start_kill();
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()).await;
 }
 
 #[derive(Default)]
@@ -419,6 +450,183 @@ fn excerpt(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn both_transports_stop_and_reap_at_every_wait() {
+        for adapter in [&CodexAdapter as &dyn AgentAdapter, &crate::PiAdapter] {
+            for phase in [
+                "startup",
+                "prompt",
+                "steer",
+                "ack",
+                "backpressure",
+                "shutdown",
+                "untapped",
+                "bounded",
+            ] {
+                let dir = tempfile::tempdir().unwrap();
+                let script = dir.path().join("shutdown.py");
+                std::fs::write(&script, r#"
+import json, os, signal, sys, time
+phase = sys.argv[1]
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+with open('pid', 'w') as f:
+    f.write(str(os.getpid()))
+def mark():
+    with open('ready', 'w') as f:
+        f.write('ready')
+def stall():
+    mark()
+    time.sleep(60)
+def read():
+    return json.loads(sys.stdin.readline())
+def emit(v):
+    print(json.dumps(v), flush=True)
+if phase == 'startup':
+    stall()
+codex = sys.argv[2] == 'codex'
+if codex:
+    assert read()['method'] == 'initialize'
+    emit(dict(id=1, result={}))
+    assert read()['method'] == 'initialized'
+    assert read()['method'] == 'thread/start'
+    emit(dict(id=2, result=dict(thread=dict(id='thread'))))
+else:
+    mode = read()
+    emit(dict(type='response', id='0', command='set_steering_mode', success=True))
+if phase == 'prompt':
+    stall()
+read()
+if codex:
+    emit(dict(id=3, result=dict(turn=dict(id='turn'))))
+    emit(dict(method='turn/started', params={}))
+else:
+    emit(dict(type='response', id='1', command='prompt', success=True, data=dict(disposition='started')))
+    emit(dict(type='turn_start'))
+if phase == 'steer':
+    stall()
+if phase == 'ack':
+    read()
+    stall()
+if phase == 'backpressure':
+    for _ in range(100):
+        if codex:
+            emit(dict(method='item/completed', params=dict(item=dict(type='agentMessage', text='text'))))
+        else:
+            emit(dict(type='message_end', message=dict(role='assistant', content=[dict(type='text', text='text')])) )
+    stall()
+if phase == 'untapped':
+    descendant = os.fork()
+    if descendant == 0:
+        time.sleep(60)
+        os._exit(0)
+    with open('descendant', 'w') as f:
+        f.write(str(descendant))
+if codex:
+    emit(dict(method='turn/completed', params=dict(turn=dict(status='completed'))))
+else:
+    emit(dict(type='agent_settled'))
+mark()
+sys.stdin.read()
+with open('eof', 'w') as f:
+    f.write('closed')
+if phase in ['shutdown', 'bounded']:
+    time.sleep(60)
+"#).unwrap();
+                let mut run = adapter
+                    .start_run(&RunSpec {
+                        cwd: dir.path().into(),
+                        prompt: if phase == "prompt" {
+                            "x".repeat(2_000_000)
+                        } else {
+                            "initial".into()
+                        },
+                        wrapper: vec!["python3".into(), script.into_os_string(), phase.into()],
+                        model: None,
+                    })
+                    .await
+                    .unwrap();
+                let mut ack = None;
+                if matches!(phase, "steer" | "ack") {
+                    assert_eq!(
+                        tokio::time::timeout(std::time::Duration::from_secs(5), run.events.recv())
+                            .await
+                            .unwrap(),
+                        Some(NormalizedEvent::TurnStarted)
+                    );
+                    let (sender, receiver) = tokio::sync::oneshot::channel();
+                    run.steer
+                        .as_ref()
+                        .unwrap()
+                        .send(SteerRequest {
+                            tap_id: "tap".into(),
+                            text: if phase == "steer" {
+                                "x".repeat(2_000_000)
+                            } else {
+                                "steer".into()
+                            },
+                            ack: sender,
+                        })
+                        .await
+                        .unwrap();
+                    ack = Some(receiver);
+                }
+                tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                    while !dir.path().join("ready").exists() {
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    }
+                })
+                .await
+                .unwrap();
+                if matches!(phase, "untapped" | "bounded") {
+                    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                        while run.events.recv().await.is_some() {}
+                    })
+                    .await
+                    .unwrap();
+                    assert!(dir.path().join("eof").exists());
+                } else {
+                    if phase == "shutdown" {
+                        while run.events.recv().await != Some(NormalizedEvent::Ended) {}
+                    }
+                    drop(run);
+                }
+                if let Some(ack) = ack {
+                    assert!(!matches!(
+                        tokio::time::timeout(std::time::Duration::from_secs(1), ack)
+                            .await
+                            .unwrap(),
+                        Ok(Ok(()))
+                    ));
+                }
+                let pid: i32 = std::fs::read_to_string(dir.path().join("pid"))
+                    .unwrap()
+                    .parse()
+                    .unwrap();
+                tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                    while unsafe { libc::kill(pid, 0) } == 0 {
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    }
+                })
+                .await
+                .unwrap();
+                if phase == "untapped" {
+                    let pid: i32 = std::fs::read_to_string(dir.path().join("descendant"))
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+                    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                        while unsafe { libc::kill(pid, 0) } == 0 {
+                            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                        }
+                    })
+                    .await
+                    .unwrap();
+                }
+            }
+        }
+    }
 
     fn map_all(text: &str) -> Vec<NormalizedEvent> {
         let mut mapper = CodexMapper::default();
