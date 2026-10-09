@@ -120,6 +120,10 @@ impl std::error::Error for AdapterError {}
 /// agent name at run time.
 #[async_trait]
 pub trait AgentAdapter: Send + Sync {
+    fn can_steer(&self) -> bool {
+        false
+    }
+
     /// Launch a headless run and return a handle streaming its normalized events.
     async fn start_run(&self, spec: &RunSpec) -> Result<RunHandle, AdapterError>;
 
