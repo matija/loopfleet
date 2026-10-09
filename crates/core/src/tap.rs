@@ -9,6 +9,18 @@ pub struct Tap {
     pub created_at_ms: i64,
 }
 
+pub fn render_notes(taps: &[Tap]) -> Option<String> {
+    (!taps.is_empty()).then(|| {
+        format!(
+            "## Corrections from the human\n\n{}",
+            taps.iter()
+                .map(|tap| tap.text.as_str())
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        )
+    })
+}
+
 pub fn route(can_steer: bool, pass_in_flight: bool, steering_enabled: bool) -> Delivery {
     if can_steer && pass_in_flight && steering_enabled {
         Delivery::Steered
@@ -20,6 +32,32 @@ pub fn route(can_steer: bool, pass_in_flight: bool, steering_enabled: bool) -> D
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_notes_are_absent() {
+        assert_eq!(render_notes(&[]), None);
+    }
+
+    #[test]
+    fn notes_label_human_corrections_and_preserve_order_and_text() {
+        let taps = [
+            "Use the existing API.\nKeep its name.",
+            "Keep the output concise.",
+        ]
+        .map(|text| Tap {
+            id: String::new(),
+            text: text.into(),
+            created_at_ms: 0,
+        });
+        assert_eq!(
+            render_notes(&taps),
+            Some("## Corrections from the human\n\nUse the existing API.\nKeep its name.\n\nKeep the output concise.".into())
+        );
+        assert_eq!(
+            render_notes(&taps[..1]),
+            Some("## Corrections from the human\n\nUse the existing API.\nKeep its name.".into())
+        );
+    }
 
     #[test]
     fn routes_all_boolean_combinations() {
