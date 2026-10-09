@@ -1167,7 +1167,16 @@ fn spawn_run(
             }
         };
 
-        let outcome = run_loop(adapter.as_ref(), &git, &cfg, &mut cancel_rx, &mut on_event).await;
+        let mut taps = tokio::sync::mpsc::channel(1).1;
+        let outcome = run_loop(
+            adapter.as_ref(),
+            &git,
+            &cfg,
+            &mut cancel_rx,
+            &mut taps,
+            &mut on_event,
+        )
+        .await;
         poller.abort();
         stops.lock().unwrap().remove(&cfg.run_id);
 

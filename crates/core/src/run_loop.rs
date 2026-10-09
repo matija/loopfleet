@@ -41,10 +41,10 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use loopfleet_gitx::GitActor;
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 
 use crate::adapter::{AgentAdapter, RunSpec};
-use crate::{NormalizedEvent, RunState};
+use crate::{NormalizedEvent, RunState, Tap};
 
 /// Everything the loop needs to run one task to completion (or failure).
 #[derive(Debug, Clone)]
@@ -113,6 +113,7 @@ pub async fn run_loop(
     git: &GitActor,
     cfg: &LoopConfig,
     cancel: &mut watch::Receiver<bool>,
+    taps: &mut mpsc::Receiver<Tap>,
     on_event: &mut (dyn FnMut(u32, &NormalizedEvent) + Send),
 ) -> LoopOutcome {
     let mut iterations = Vec::new();
@@ -170,6 +171,7 @@ pub async fn run_loop(
                     }
                     None => break,
                 },
+                Some(_) = taps.recv() => {},
                 changed = cancel.changed() => {
                     // A stop request (or all senders dropped, i.e. app shutdown)
                     // ends the pass.
@@ -325,7 +327,6 @@ mod tests {
     use std::io::Write;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::{Arc, Mutex};
-    use tokio::sync::mpsc;
 
     /// A scripted adapter: on each `start_run` it records the prompt, appends a
     /// line to the external progress file (optionally the completion marker on a
@@ -498,10 +499,16 @@ mod tests {
         let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(1));
 
         let (_ctx, mut cancel) = watch::channel(false);
+        let mut taps = mpsc::channel(1).1;
         let mut seen = Vec::new();
-        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut |n, ev| {
-            seen.push((n, ev.clone()))
-        })
+        let outcome = run_loop(
+            &adapter,
+            &git,
+            &cfg,
+            &mut cancel,
+            &mut taps,
+            &mut |n, ev| seen.push((n, ev.clone())),
+        )
         .await;
 
         assert_eq!(outcome.state, RunState::Completed);
@@ -523,7 +530,8 @@ mod tests {
         let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), None);
 
         let (_ctx, mut cancel) = watch::channel(false);
-        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut |_, _| {}).await;
+        let mut taps = mpsc::channel(1).1;
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut taps, &mut |_, _| {}).await;
 
         assert_eq!(outcome.state, RunState::Failed);
         assert_eq!(outcome.iterations.len(), 3);
@@ -554,7 +562,8 @@ mod tests {
         adapter.rate_limit_on = Some((1, Some("2025-01-15T10:30:00Z".into())));
 
         let (_ctx, mut cancel) = watch::channel(false);
-        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut |_, _| {}).await;
+        let mut taps = mpsc::channel(1).1;
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut taps, &mut |_, _| {}).await;
 
         assert_eq!(outcome.state, RunState::LimitReached);
         assert_eq!(outcome.reset_at.as_deref(), Some("2025-01-15T10:30:00Z"));
@@ -575,7 +584,8 @@ mod tests {
         adapter.rate_limit_on = Some((1, None));
 
         let (_ctx, mut cancel) = watch::channel(false);
-        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut |_, _| {}).await;
+        let mut taps = mpsc::channel(1).1;
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut taps, &mut |_, _| {}).await;
 
         assert_eq!(outcome.state, RunState::LimitReached);
         assert_eq!(outcome.reset_at, None);
@@ -589,7 +599,8 @@ mod tests {
         adapter.fail_start = true;
 
         let (_ctx, mut cancel) = watch::channel(false);
-        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut |_, _| {}).await;
+        let mut taps = mpsc::channel(1).1;
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut taps, &mut |_, _| {}).await;
 
         assert_eq!(outcome.state, RunState::Failed);
         assert!(outcome.iterations.is_empty());
@@ -602,7 +613,8 @@ mod tests {
         let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(2));
 
         let (_ctx, mut cancel) = watch::channel(false);
-        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut |_, _| {}).await;
+        let mut taps = mpsc::channel(1).1;
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut taps, &mut |_, _| {}).await;
         assert_eq!(outcome.state, RunState::Completed);
 
         let prompts = adapter.prompts.lock().unwrap();
@@ -644,7 +656,8 @@ mod tests {
         let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(2));
 
         let (_ctx, mut cancel) = watch::channel(false);
-        run_loop(&adapter, &git, &cfg, &mut cancel, &mut |_, _| {}).await;
+        let mut taps = mpsc::channel(1).1;
+        run_loop(&adapter, &git, &cfg, &mut cancel, &mut taps, &mut |_, _| {}).await;
 
         // Every pass's RunSpec carried the wrapper verbatim.
         let wrappers = adapter.wrappers.lock().unwrap();
@@ -661,8 +674,9 @@ mod tests {
         let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), None);
 
         let (ctx, mut cancel) = watch::channel(false);
+        let mut taps = mpsc::channel(1).1;
         ctx.send(true).unwrap();
-        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut |_, _| {}).await;
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut taps, &mut |_, _| {}).await;
 
         assert_eq!(outcome.state, RunState::Stopped);
         assert!(outcome.iterations.is_empty());
@@ -682,7 +696,8 @@ mod tests {
         let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), None);
 
         let (ctx, mut cancel) = watch::channel(false);
-        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut |n, _| {
+        let mut taps = mpsc::channel(1).1;
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut taps, &mut |n, _| {
             // Request the stop while pass 1 is streaming.
             if n == 1 {
                 let _ = ctx.send(true);
