@@ -139,10 +139,7 @@ pub async fn run_loop(
                 pending.push(tap);
             }
         }
-        let mut prompt = build_prompt(cfg, &prior);
-        if let Some(notes) = tap::render_notes(&pending) {
-            prompt.push_str(&format!("\n{notes}\n"));
-        }
+        let prompt = build_prompt(cfg, &prior, &pending);
         let spec = RunSpec {
             cwd: cfg.worktree.clone(),
             prompt,
@@ -284,7 +281,7 @@ fn read_progress(path: &Path) -> String {
 
 /// Assemble a pass's prompt: the bound task, the loop rules, the progress-file
 /// protocol, and the prior progress the fresh context reads back.
-fn build_prompt(cfg: &LoopConfig, prior: &str) -> String {
+fn build_prompt(cfg: &LoopConfig, prior: &str, pending: &[Tap]) -> String {
     let prior = if prior.trim().is_empty() {
         "(no prior progress yet)"
     } else {
@@ -337,12 +334,13 @@ Record the result:\n\
 7. Describe the changes in the summary line.\n\
 8. Start the summary with an imperative verb.\n\
 9. Use fewer than 72 characters for the summary.\n\n\
---- prior progress ---\n{prior}\n",
+--- prior progress ---\n{prior}\n{notes}",
         task = cfg.task_text,
         progress = cfg.progress_path.display(),
         marker = crate::progress::COMPLETION_MARKER,
         summary = crate::progress::SUMMARY_MARKER,
         prior = prior,
+        notes = tap::render_notes(pending).map_or(String::new(), |notes| format!("\n{notes}\n")),
     )
 }
 
