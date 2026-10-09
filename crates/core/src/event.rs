@@ -6,8 +6,7 @@
 //! Events arrive in two lanes (see [`Lane`]):
 //! - **adapter-sourced** — mapped from the agent's stream by an `AgentAdapter`.
 //! - **app-sourced** — emitted by the app itself, never parsed from the agent
-//!   stream. Currently just [`FileChanged`], observed from worktree watching so
-//!   it stays reliable across agents and catches shell-command edits too.
+//!   stream.
 //!
 //! `ToolCall` / `ToolResult` are correlated by `call_id`. `CommandRun` is a
 //! deliberate normalization of every agent's shell-exec tool (each names it
@@ -34,6 +33,15 @@ pub struct Usage {
 pub enum Lane {
     Adapter,
     App,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Delivery {
+    Steered,
+    Queued,
+    Delivered { pass: u32 },
+    Unknown,
 }
 
 /// The normalized event. Serialized to the event log as JSON tagged by `kind`
@@ -86,13 +94,18 @@ pub enum NormalizedEvent {
     /// A worktree file changed, observed by the app (git status / fs events),
     /// never parsed from the agent stream.
     FileChanged { path: PathBuf },
+    UserMessage {
+        id: String,
+        text: String,
+        delivery: Delivery,
+    },
 }
 
 impl NormalizedEvent {
     /// Which lane this event belongs to.
     pub fn lane(&self) -> Lane {
         match self {
-            NormalizedEvent::FileChanged { .. } => Lane::App,
+            NormalizedEvent::FileChanged { .. } | NormalizedEvent::UserMessage { .. } => Lane::App,
             _ => Lane::Adapter,
         }
     }
@@ -155,6 +168,21 @@ mod tests {
             },
         ];
 
+        let events = events.into_iter().chain(
+            [
+                Delivery::Steered,
+                Delivery::Queued,
+                Delivery::Delivered { pass: 1 },
+                Delivery::Unknown,
+            ]
+            .into_iter()
+            .map(|delivery| NormalizedEvent::UserMessage {
+                id: "m1".into(),
+                text: "hello".into(),
+                delivery,
+            }),
+        );
+
         for ev in events {
             let json = serde_json::to_string(&ev).unwrap();
             let back: NormalizedEvent = serde_json::from_str(&json).unwrap();
@@ -207,9 +235,17 @@ mod tests {
         }
     }
 
-    /// Only `FileChanged` is app-sourced; everything else is adapter-sourced.
     #[test]
     fn lanes_classify_correctly() {
+        assert_eq!(
+            NormalizedEvent::UserMessage {
+                id: "m1".into(),
+                text: "hello".into(),
+                delivery: Delivery::Unknown,
+            }
+            .lane(),
+            Lane::App
+        );
         assert_eq!(
             NormalizedEvent::FileChanged {
                 path: PathBuf::from("a")

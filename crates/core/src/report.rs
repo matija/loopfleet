@@ -523,6 +523,7 @@ fn event_style(ev: &NormalizedEvent) -> (&'static str, &'static str, String) {
             .join(" \u{b7} "),
         ),
         NormalizedEvent::Ended => ("st-muted", "ended", String::new()),
+        NormalizedEvent::UserMessage { text, .. } => ("st-text", "user", escape_html(text)),
         NormalizedEvent::FileChanged { path } => (
             "st-accent",
             "file changed",

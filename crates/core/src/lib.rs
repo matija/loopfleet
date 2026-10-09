@@ -37,7 +37,7 @@ pub use archive::{
 pub use autopilot::{should_auto_merge, AutoMergeBlockedReason, AutoMergeDecision};
 pub use commit_message::compose_commit_message;
 pub use compare::{compare_view, CompareError, CompareView, RunCompare};
-pub use event::{Lane, NormalizedEvent, Usage};
+pub use event::{Delivery, Lane, NormalizedEvent, Usage};
 pub use overview::{plan_overview, OverviewError, PlanView, TaskView};
 pub use plan::{
     anchor_for, discover_plans, legacy_anchor_for, parse_plan, parse_plan_file, ParsedPlan,
