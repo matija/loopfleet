@@ -20,7 +20,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use crate::{NormalizedEvent, UsageSnapshot};
 
@@ -57,6 +57,13 @@ pub struct SessionSeed {
     pub plan_file: PathBuf,
 }
 
+#[derive(Debug)]
+pub struct SteerRequest {
+    pub tap_id: String,
+    pub text: String,
+    pub ack: oneshot::Sender<Result<(), AdapterError>>,
+}
+
 /// A live headless run. Consumers receive [`NormalizedEvent`]s in order until
 /// the channel closes; a well-behaved stream is terminated by `Ended` or
 /// `Failed`. The bounded channel is the backpressure — a slow consumer stalls
@@ -67,6 +74,8 @@ pub struct SessionSeed {
 #[derive(Debug)]
 pub struct RunHandle {
     pub events: mpsc::Receiver<NormalizedEvent>,
+    /// `None` means this agent cannot accept a message during a pass.
+    pub steer: Option<mpsc::Sender<SteerRequest>>,
 }
 
 /// A live interactive session (M5). Mirrors [`RunHandle`]; unused in v1.
@@ -160,7 +169,10 @@ mod tests {
     impl AgentAdapter for MinimalAdapter {
         async fn start_run(&self, _spec: &RunSpec) -> Result<RunHandle, AdapterError> {
             let (_tx, rx) = mpsc::channel(1);
-            Ok(RunHandle { events: rx })
+            Ok(RunHandle {
+                events: rx,
+                steer: None,
+            })
         }
 
         async fn open_session(

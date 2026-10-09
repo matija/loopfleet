@@ -417,7 +417,10 @@ mod tests {
                     }
                 }
             });
-            Ok(RunHandle { events: rx })
+            Ok(RunHandle {
+                events: rx,
+                steer: None,
+            })
         }
 
         async fn open_session(

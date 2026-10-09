@@ -74,7 +74,10 @@ impl AgentAdapter for StubAdapter {
                 }
             }
         });
-        Ok(RunHandle { events: rx })
+        Ok(RunHandle {
+            events: rx,
+            steer: None,
+        })
     }
 
     async fn open_session(

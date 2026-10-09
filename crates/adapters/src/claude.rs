@@ -104,7 +104,10 @@ impl AgentAdapter for ClaudeAdapter {
         // reader) matching the stub and the M1 event-log writer.
         let (tx, rx) = mpsc::channel(64);
         tokio::spawn(drive(child, stdout, stderr, tx));
-        Ok(RunHandle { events: rx })
+        Ok(RunHandle {
+            events: rx,
+            steer: None,
+        })
     }
 
     async fn open_session(

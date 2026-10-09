@@ -42,7 +42,10 @@ impl AgentAdapter for CodexAdapter {
             .expect("stderr was piped so it is present");
         let (tx, rx) = mpsc::channel(64);
         tokio::spawn(drive(child, stdout, stderr, tx));
-        Ok(RunHandle { events: rx })
+        Ok(RunHandle {
+            events: rx,
+            steer: None,
+        })
     }
 
     async fn open_session(
