@@ -189,6 +189,10 @@ pub async fn run_loop(
         loop {
             tokio::select! {
                 event = handle.events.recv() => match event {
+                    _ if *cancel.borrow() || cancel.has_changed().is_err() => {
+                        cancelled = true;
+                        break;
+                    }
                     Some(event) => {
                         if let NormalizedEvent::RateLimited { reset_at, .. } = &event {
                             rate_limited = Some(reset_at.clone());
@@ -198,6 +202,10 @@ pub async fn run_loop(
                     None => break,
                 },
                 Some(tap) = taps.recv() => {
+                    if *cancel.borrow() || cancel.has_changed().is_err() {
+                        cancelled = true;
+                        break;
+                    }
                     let mut delivery = tap::route(adapter.can_steer(), true, handle.steer.is_some());
                     if delivery == Delivery::Steered {
                         let (ack, _) = oneshot::channel();
