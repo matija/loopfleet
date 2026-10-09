@@ -108,7 +108,7 @@ mod tests {
     #[test]
     fn notes_label_human_corrections_and_preserve_order_and_text() {
         let taps = [
-            "Use the existing API.\nKeep its name.",
+            "  Use the existing API. 🦀\nKeep its name.\n",
             "Keep the output concise.",
         ]
         .map(|text| Tap {
@@ -118,11 +118,14 @@ mod tests {
         });
         assert_eq!(
             render_notes(&taps),
-            Some("## Corrections from the human\n\nUse the existing API.\nKeep its name.\n\nKeep the output concise.".into())
+            Some("## Corrections from the human\n\n  Use the existing API. 🦀\nKeep its name.\n\n\nKeep the output concise.".into())
         );
         assert_eq!(
             render_notes(&taps[..1]),
-            Some("## Corrections from the human\n\nUse the existing API.\nKeep its name.".into())
+            Some(
+                "## Corrections from the human\n\n  Use the existing API. 🦀\nKeep its name.\n"
+                    .into()
+            )
         );
     }
 
@@ -138,7 +141,11 @@ mod tests {
             (true, true, false, Delivery::Queued),
             (true, true, true, Delivery::Steered),
         ] {
-            assert_eq!(route(can_steer, pass_in_flight, steering_enabled), expected);
+            assert_eq!(
+                route(can_steer, pass_in_flight, steering_enabled),
+                expected,
+                "can_steer={can_steer}, pass_in_flight={pass_in_flight}, steering_enabled={steering_enabled}"
+            );
         }
     }
 }
