@@ -42,6 +42,8 @@ import {
   XIcon,
 } from "./Icon";
 import { Popover } from "./Popover";
+import { Button } from "./Button";
+import { TapComposer } from "./TapComposer";
 
 /// One run tracked by the dock. Seeded at launch, its `status` updated from the
 /// `run_status` stream.
@@ -348,11 +350,21 @@ function RunChip({
     .filter(Boolean)
     .join(" — ");
   const anchorRef = useRef<HTMLButtonElement>(null);
-  // `onClose` deliberately no-ops rather than reusing `useHoverOpen`'s
-  // close(): Popover returns focus to its anchor whenever it closes, which
-  // would steal focus back to this chip on every ordinary mouseleave. Leave
-  // and Escape are already handled by the hover handlers below.
-  const { open, handlers } = useHoverOpen();
+  const cardRef = useRef<HTMLDivElement>(null);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const { open, close, handlers } = useHoverOpen(400, cardRef);
+  const [tapping, setTapping] = useState(false);
+  useEffect(() => () => clearTimeout(leaveTimer.current), []);
+
+  function enterCard() {
+    clearTimeout(leaveTimer.current);
+    handlers.onFocus();
+  }
+
+  function leaveCard() {
+    leaveTimer.current = setTimeout(close, 150);
+  }
+
   // Local to the chip: a merge in flight. The outcome (accepted, or a toast)
   // arrives back as a prop, so only the pending state lives here.
   const [merging, setMerging] = useState(false);
@@ -387,6 +399,8 @@ function RunChip({
         onClick={() => onOpen(r.runId)}
         title={chipTitle}
         {...handlers}
+        onMouseEnter={() => { clearTimeout(leaveTimer.current); handlers.onMouseEnter(); }}
+        onMouseLeave={leaveCard}
       >
         {r.unseen && (
           <span
@@ -429,44 +443,48 @@ function RunChip({
         ) : null}
       </button>
       <Popover
-        open={open}
-        onClose={() => {}}
+        open={open && !tapping}
+        onClose={close}
         anchorRef={anchorRef}
         role="dialog"
         aria-label={`${taskText} details`}
-        className="meta-popover"
+        className="meta-popover run-chip__popover"
       >
-        <MetaRow icon={<FolderIcon size={14} />} value={r.projectName} label="Repo" />
-        <MetaRow
-          icon={<GitBranchIcon size={14} />}
-          value={worktreeBranch(r.runId)}
-          label="Worktree branch"
-        />
-        <MetaRow icon={<AgentIcon size={14} />} value={r.agent} label="Agent" />
-        <MetaRow
-          icon={<BoxIcon size={14} />}
-          value={
-            r.maxIterations !== undefined
-              ? `${r.maxIterations} ${r.maxIterations === 1 ? "pass" : "passes"}`
-              : "—"
-          }
-          label="Pass count"
-        />
-        <MetaRow
-          icon={<ClockIcon size={14} />}
-          value={
-            active ? (
-              <Elapsed startedAt={r.startedAt} />
-            ) : finishedAt !== undefined ? (
-              `Finished in ${formatDuration(finishedAt - r.startedAt)}`
-            ) : (
-              RUN_STATUS_LABEL[r.status]
-            )
-          }
-          label="Elapsed or finished time"
-          tone={active ? undefined : finishedRunTone(r.status)}
-        />
+        <div ref={cardRef} onMouseEnter={enterCard} onMouseLeave={leaveCard} onFocus={enterCard} onBlur={handlers.onBlur}>
+          <MetaRow icon={<FolderIcon size={14} />} value={r.projectName} label="Repo" />
+          <MetaRow
+            icon={<GitBranchIcon size={14} />}
+            value={worktreeBranch(r.runId)}
+            label="Worktree branch"
+          />
+          <MetaRow icon={<AgentIcon size={14} />} value={r.agent} label="Agent" />
+          <MetaRow
+            icon={<BoxIcon size={14} />}
+            value={
+              r.maxIterations !== undefined
+                ? `${r.maxIterations} ${r.maxIterations === 1 ? "pass" : "passes"}`
+                : "—"
+            }
+            label="Pass count"
+          />
+          <MetaRow
+            icon={<ClockIcon size={14} />}
+            value={
+              active ? (
+                <Elapsed startedAt={r.startedAt} />
+              ) : finishedAt !== undefined ? (
+                `Finished in ${formatDuration(finishedAt - r.startedAt)}`
+              ) : (
+                RUN_STATUS_LABEL[r.status]
+              )
+            }
+            label="Elapsed or finished time"
+            tone={active ? undefined : finishedRunTone(r.status)}
+          />
+          {active && <Button className="run-chip__tap" onClick={() => { close(); setTapping(true); }}>Tap</Button>}
+        </div>
       </Popover>
+      {active && tapping && <TapComposer run={r} anchorRef={anchorRef} onClose={() => setTapping(false)} />}
       {isMergedRun(r) ? (
         <span
           className="run-chip__merged"

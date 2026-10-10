@@ -270,3 +270,20 @@
   background: var(--c-ok-tint);
   color: var(--c-ok);
 }
+
+.run-chip__popover {
+  display: block;
+  pointer-events: auto;
+}
+
+.run-chip__popover > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.run-chip__tap {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin-top: var(--space-2);
+}
