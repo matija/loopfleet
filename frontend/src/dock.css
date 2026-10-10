@@ -13,7 +13,7 @@
   padding: var(--space-1) var(--space-4);
   background: var(--c-surface);
   border-top: 1px solid var(--c-border);
-  overflow-x: auto;
+  overflow-x: scroll;
 }
 
 /* Single-row label + tally, matching the one-line chips beside it — the head
