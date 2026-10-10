@@ -13,6 +13,7 @@ use loopfleet_core::{
 use loopfleet_gitx::GitActor;
 use loopfleet_sandbox::{confine_prefix, RenderParams};
 use loopfleet_store::{Connection, NewRun, Project, RunSummary};
+use tauri::ipc::Channel;
 use tauri::menu::{Menu, MenuItem};
 use tauri::{AppHandle, Emitter, Listener, Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -625,6 +626,7 @@ struct PendingEdit {
 async fn plan_edit(
     plan_id: String,
     instruction: String,
+    on_activity: Channel<String>,
     state: State<'_, AppState>,
 ) -> Result<PlanEditProposal, String> {
     let (file_path, repo_path, agent) = {
@@ -650,6 +652,7 @@ async fn plan_edit(
         Some(original),
         agent,
         instruction,
+        on_activity,
         &state,
     )
     .await
@@ -660,6 +663,7 @@ async fn plan_create(
     project_id: String,
     agent: String,
     instruction: String,
+    on_activity: Channel<String>,
     state: State<'_, AppState>,
 ) -> Result<PlanEditProposal, String> {
     if instruction.trim().is_empty() {
@@ -677,7 +681,7 @@ async fn plan_create(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e.to_string()),
     }
-    propose_plan(file_path, repo_path, None, agent, instruction, &state).await
+    propose_plan(file_path, repo_path, None, agent, instruction, on_activity, &state).await
 }
 
 async fn propose_plan(
@@ -686,9 +690,11 @@ async fn propose_plan(
     original: Option<String>,
     agent: String,
     instruction: String,
+    on_activity: Channel<String>,
     state: &AppState,
 ) -> Result<PlanEditProposal, String> {
     let adapter = build_adapter(&agent).ok_or_else(|| format!("unknown agent '{agent}'"))?;
+    let _ = on_activity.send("Checking agent availability…".into());
     if let Some(spec) = loopfleet_adapters::spec_for(&agent) {
         let status = loopfleet_adapters::discover(spec).await;
         if !status.installed {
@@ -697,6 +703,7 @@ async fn propose_plan(
                 .unwrap_or_else(|| format!("{} CLI is not available", spec.display)));
         }
     }
+    let _ = on_activity.send("Preparing the workspace…".into());
     let rel = file_path.strip_prefix(&repo_path).map_err(|_| {
         format!(
             "plan file {} is not inside repo {}",
@@ -745,9 +752,23 @@ async fn propose_plan(
             ),
         };
         let spec = RunSpec { cwd: worktree.path.clone(), prompt, wrapper, model: None };
+        let _ = on_activity.send(format!("Starting {agent}…"));
         let mut handle = adapter.start_run(&spec).await.map_err(|e| e.to_string())?;
         let mut failure = None;
         while let Some(ev) = handle.events.recv().await {
+            let activity = match &ev {
+                NormalizedEvent::TurnStarted => Some("Agent is working…".into()),
+                NormalizedEvent::Reasoning { .. } => Some("Thinking…".into()),
+                NormalizedEvent::AssistantText { text } => Some(text.clone()),
+                NormalizedEvent::ToolCall { name, .. } => Some(format!("Using {name}…")),
+                NormalizedEvent::CommandRun { cmd, .. } => Some(format!("Ran: {cmd}")),
+                NormalizedEvent::RateLimited { .. } => Some("Agent reached its usage limit…".into()),
+                NormalizedEvent::TurnCompleted { .. } | NormalizedEvent::Ended => Some("Checking the draft…".into()),
+                _ => None,
+            };
+            if let Some(activity) = activity {
+                let _ = on_activity.send(activity.chars().take(400).collect());
+            }
             if let NormalizedEvent::Failed { reason } = ev {
                 failure = Some(reason);
             }
@@ -755,6 +776,7 @@ async fn propose_plan(
         if let Some(reason) = failure {
             return Err(format!("the {agent} plan pass failed: {reason}"));
         }
+        let _ = on_activity.send("Reading the draft for review…".into());
         if !target.canonicalize().map_err(|e| e.to_string())?.starts_with(&worktree.path) {
             return Err("proposed plan is outside the worktree".to_string());
         }

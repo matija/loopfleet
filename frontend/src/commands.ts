@@ -3,7 +3,7 @@
 // one function here; nothing else calls `invoke` directly. Argument keys are
 // camelCase — Tauri v2 maps them to the Rust snake_case parameters.
 
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   AgentStatus,
   AgentUsageCheck,
@@ -141,16 +141,18 @@ export function planDocument(planId: string): Promise<string> {
 export function planEdit(
   planId: string,
   instruction: string,
+  onActivity: (message: string) => void,
 ): Promise<PlanEditProposal> {
-  return invoke("plan_edit", { planId, instruction });
+  return invoke("plan_edit", { planId, instruction, onActivity: new Channel<string>(onActivity) });
 }
 
 export function planCreate(
   projectId: string,
   agent: string,
   instruction: string,
+  onActivity: (message: string) => void,
 ): Promise<PlanEditProposal> {
-  return invoke("plan_create", { projectId, agent, instruction });
+  return invoke("plan_create", { projectId, agent, instruction, onActivity: new Channel<string>(onActivity) });
 }
 
 /// Accept a proposed AI plan edit (`edit_id`): write the proposed markdown to the

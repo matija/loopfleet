@@ -45,6 +45,7 @@ import { diffLines } from "../textDiff";
 import { NoPlanEmptyState } from "./EmptyState";
 import { ExportButton } from "./ExportButton";
 import { Patch } from "./RunTimeline";
+import { PrdActivity, type PrdActivityUpdate } from "./PrdActivity";
 import type { ArchivePreview, PlanEditProposal, PlanView as Plan } from "../types";
 
 // The edit flow for the one document being edited. `instruct` collects the
@@ -88,6 +89,7 @@ export function PrdView({
   const [proposal, setProposal] = useState<PlanEditProposal | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [activity, setActivity] = useState<PrdActivityUpdate | null>(null);
 
   // The one document currently in the archive flow (by plan id), its phase,
   // the fetched preview, the editable name field (pre-filled from the
@@ -173,9 +175,10 @@ export function PrdView({
   async function run(planId: string) {
     setBusy(true);
     setPhase("running");
+    setActivity(null);
     setEditError(null);
     try {
-      const p = await planEdit(planId, instruction.trim());
+      const p = await planEdit(planId, instruction.trim(), (message) => setActivity({ message, at: Date.now() }));
       setProposal(p);
       setPhase("review");
     } catch (e) {
@@ -474,6 +477,7 @@ export function PrdView({
               </div>
             ) : editing && phase === "running" ? (
               <div className="prd-doc__review prd-doc__review--running">
+                <PrdActivity title={`Editing with ${agent?.label ?? "agent"}`} activity={activity} />
                 <p className="prd-doc__running-note">
                   Running one pass in an isolated worktree. The document is
                   untouched until you accept.
