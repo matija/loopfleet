@@ -2,6 +2,7 @@
  * all values come from tokens.css. */
 
 .app-shell {
+  position: relative;
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
   grid-template-rows: minmax(0, 1fr) auto;
@@ -93,6 +94,14 @@
   background: transparent;
   color: var(--c-text-muted);
   border-radius: var(--radius-sm);
+}
+
+.sidebar__restore-btn {
+  position: absolute;
+  left: 76px;
+  top: calc(var(--titlebar-h) / 2);
+  transform: translateY(-50%);
+  z-index: 1;
 }
 
 .sidebar__collapse-btn:hover {
@@ -667,12 +676,8 @@
   overflow-y: auto;
 }
 
-/* With the sidebar collapsed the main pane starts at the window's left edge,
- * so its toolbar runs under the native traffic lights. Inset it by the same
- * 76px `.sidebar__top` uses, so the breadcrumb clears them; the toggle that
- * brings the sidebar back is the toolbar's own trailing panel-left button. */
 .app-shell--sidebar-hidden .toolbar {
-  padding-left: 76px;
+  padding-left: calc(76px + var(--space-6) + var(--space-3));
 }
 
 /* The run/task/compare views fill the pane so their internal event streams
