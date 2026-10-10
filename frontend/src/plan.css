@@ -152,6 +152,7 @@
 .task-row__text[aria-expanded="true"] {
   overflow: visible;
   white-space: normal;
+  overflow-wrap: anywhere;
   text-overflow: clip;
 }
 
@@ -217,12 +218,6 @@
 
 .task-status {
   flex: none;
-  /* Fixed-width status cell within the metadata column: wide enough for the
-   * longest label ("Needs review") so the cell occupies the same width on
-   * every row and the launch control beside it stays at a stable x — the
-   * DataGrid's aligned-columns discipline applied to the plan/task grid. The
-   * width is held even at rest, where only the glyph shows, so revealing the
-   * label on hover doesn't shift the launch control. */
   box-sizing: border-box;
   min-width: 92px;
   /* Align within the shared control-height band so it lines up with the
@@ -239,22 +234,6 @@
   flex: none;
 }
 
-/* The always-present accessible copy of the status word. `visibility: hidden`
- * on the visible label (above) also drops it from the a11y tree, so this span
- * — clipped, never hidden — is what a screen reader reads on every row. */
-.task-status__sr {
-  position: absolute;
-  width: 1px;
-  height: 1px; /* tokens-allow: sr-only clip box, not a visual size */
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* Needs-review rows: the amber glyph is the per-row signal — no row wash. */
 .task-status--completed-unaccepted .task-status__icon {
   color: var(--c-warn);
 }
