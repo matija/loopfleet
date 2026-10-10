@@ -7,6 +7,8 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { planOverview } from "../commands";
+import { CreatePrd } from "./CreatePrd";
 import { PlanView, type CompareTarget, type LaunchedRun } from "./PlanView";
 import { PrdView } from "./PrdView";
 import { SandboxOverrides } from "./SandboxOverrides";
@@ -46,6 +48,32 @@ export function PlanSurface({
   onPendingArchiveHandled?: () => void;
 }) {
   const [mode, setMode] = useState<Mode>("tasks");
+  const [refresh, setRefresh] = useState(0);
+  const [availability, setAvailability] = useState<{
+    projectId: string;
+    planNonce: number;
+    refresh: number;
+    hasPlan?: boolean;
+    error?: string;
+  } | null>(null);
+  const current = availability?.projectId === projectId && availability.planNonce === planNonce && availability.refresh === refresh ? availability : null;
+
+  useEffect(() => {
+    setMode("tasks");
+  }, [projectId]);
+
+  useEffect(() => {
+    let obsolete = false;
+    setAvailability(null);
+    planOverview(projectId)
+      .then((plans) => {
+        if (!obsolete) setAvailability({ projectId, planNonce, refresh, hasPlan: plans.length > 0 });
+      })
+      .catch((error) => {
+        if (!obsolete) setAvailability({ projectId, planNonce, refresh, error: String(error) });
+      });
+    return () => { obsolete = true; };
+  }, [projectId, planNonce, refresh]);
 
   useEffect(() => {
     if (pendingArchivePlanId) setMode("prd");
@@ -82,9 +110,25 @@ export function PlanSurface({
 
   return (
     <>
-      {toolbarActions ? createPortal(toggle, toolbarActions) : toggle}
+      {current?.hasPlan && (toolbarActions ? createPortal(toggle, toolbarActions) : toggle)}
       <div className="plan-surface">
-        {mode === "tasks" ? (
+        {!current ? (
+          <p className="plan__loading">Loading plan…</p>
+        ) : current.error !== undefined ? (
+          <div role="alert">
+            <p className="panel__error">{current.error}</p>
+            <button type="button" className="btn btn--secondary" onClick={() => setRefresh((value) => value + 1)}>Retry</button>
+          </div>
+        ) : !current.hasPlan ? (
+          <>
+            <CreatePrd key={projectId} projectId={projectId} onCreated={() => {
+              setMode("tasks");
+              setRefresh((value) => value + 1);
+              onPlanChanged();
+            }} />
+            <SandboxOverrides projectId={projectId} />
+          </>
+        ) : mode === "tasks" ? (
           <>
             <PlanView
               key={`${projectId}:${planNonce}`}
@@ -92,7 +136,6 @@ export function PlanSurface({
               onLaunch={onLaunch}
               onCompare={onCompare}
               onError={onError}
-              onPlanChanged={onPlanChanged}
               onOpenPrd={() => setMode("prd")}
             />
             <SandboxOverrides projectId={projectId} />

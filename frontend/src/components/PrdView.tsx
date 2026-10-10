@@ -42,7 +42,6 @@ import {
 } from "../commands";
 import { renderMarkdown } from "../markdown";
 import { diffLines } from "../textDiff";
-import { NoPlanEmptyState } from "./EmptyState";
 import { ExportButton } from "./ExportButton";
 import { Patch } from "./RunTimeline";
 import { PrdActivity, type PrdActivityUpdate } from "./PrdActivity";
@@ -281,7 +280,7 @@ export function PrdView({
 
   if (error) return <p className="panel__error">{error}</p>;
   if (!plans) return <p className="plan__loading">Loading document…</p>;
-  if (plans.length === 0) return <NoPlanEmptyState projectId={projectId} onCreated={onPlanChanged} />;
+  if (plans.length === 0) return null;
 
   const editLabel = agent ? `Edit with ${agent.label}` : "Edit";
   // The affordances are enabled only when nothing else is being edited or

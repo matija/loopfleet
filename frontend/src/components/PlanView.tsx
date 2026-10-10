@@ -25,7 +25,7 @@ import {
 import { SplitButton } from "./Button";
 import { formatDuration } from "./DataGrid";
 import { Elapsed } from "./Elapsed";
-import { NoPlanEmptyState, NoTasksEmptyState } from "./EmptyState";
+import { NoTasksEmptyState } from "./EmptyState";
 import { ExportButton } from "./ExportButton";
 import {
   AgentIcon,
@@ -98,11 +98,9 @@ export function PlanView({
   onLaunch,
   onCompare,
   onError,
-  onPlanChanged,
   onOpenPrd,
 }: {
   projectId: string;
-  onPlanChanged: () => void;
   onOpenPrd: () => void;
   onLaunch: (run: LaunchedRun) => void;
   onCompare: (target: CompareTarget) => void;
@@ -156,7 +154,7 @@ export function PlanView({
 
   if (error) return <p className="panel__error">{error}</p>;
   if (!plans) return <p className="plan__loading">Loading plan…</p>;
-  if (plans.length === 0) return <NoPlanEmptyState projectId={projectId} onCreated={onPlanChanged} />;
+  if (plans.length === 0) return null;
 
   return (
     <div className="plans">
