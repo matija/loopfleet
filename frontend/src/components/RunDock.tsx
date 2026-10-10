@@ -17,7 +17,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import type { RunStatus } from "../types";
+import type { Delivery, RunStatus } from "../types";
 import { taskSummary } from "../displayText";
 import {
   RETRIES_EXHAUSTED_LABEL,
@@ -48,6 +48,7 @@ import { TapComposer } from "./TapComposer";
 /// One run tracked by the dock. Seeded at launch, its `status` updated from the
 /// `run_status` stream.
 export type ActiveRun = {
+  taps?: Record<string, Delivery>;
   runId: string;
   projectName: string;
   taskText: string;
@@ -331,6 +332,9 @@ function RunChip({
   /// Resolves once the attempt settles, same contract as `onMerge`.
   onMergeNow?: (runId: string) => Promise<void>;
 }) {
+  const taps = Object.values(r.taps ?? {});
+  const pendingNote = taps.some((tap) => tap.kind === "queued");
+  const unknownDelivery = taps.some((tap) => tap.kind === "unknown");
   const active = isActiveRun(r.status);
   const taskText = taskSummary(r.taskText);
   const StatusIcon = RUN_STATUS_ICON[r.status];
@@ -415,6 +419,11 @@ function RunChip({
           <StatusIcon size={14} />
         </span>
         <span className="run-chip__task">{taskText}</span>
+        {taps.length > 0 && (
+          <span className={`run-chip__taps${pendingNote ? " run-chip__taps--pending" : ""}`}>
+            {taps.length} {taps.length === 1 ? "tap" : "taps"}{pendingNote ? " · Note queued" : ""}{unknownDelivery ? " · Delivery unknown" : ""}
+          </span>
+        )}
         {r.autoMerge ? (
           <span className="run-chip__meta run-chip__meta--warn">
             {r.autoMerge.targetBranch || "current branch"} ·{" "}

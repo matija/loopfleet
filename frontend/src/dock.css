@@ -287,3 +287,15 @@
   width: 100%;
   margin-top: var(--space-2);
 }
+
+.run-chip__taps {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.run-chip__taps--pending {
+  color: var(--c-warn);
+}

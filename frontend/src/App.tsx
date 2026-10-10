@@ -32,6 +32,7 @@ import {
   onAutopilotResumePrompt,
   onMenuAbout,
   onMenuCheckUpdates,
+  onRunEvent,
   onRunStatus,
   onScheduledLaunch,
   onScheduledLaunchCancelled,
@@ -354,6 +355,20 @@ export default function App() {
     },
     [pushError],
   );
+
+  useEffect(() => {
+    const un = onRunEvent((p) => {
+      const event = p.event;
+      if (event.kind !== "user_message") return;
+      setRuns((prev) => prev.map((r) => {
+        if (r.runId !== p.run_id) return r;
+        const previous = r.taps?.[event.id];
+        const delivery = previous?.kind === "delivered" || (previous?.kind === "queued" && event.delivery.kind !== "delivered") ? previous : event.delivery;
+        return { ...r, taps: { ...r.taps, [event.id]: delivery } };
+      }));
+    });
+    return () => { void un.then((f) => f()); };
+  }, []);
 
   // Terminal-state updates for any run flow through the dock's registry. A run
   // reaching a terminal status while it is not the open view is flagged
