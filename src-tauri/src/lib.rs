@@ -7,7 +7,7 @@ use loopfleet_adapters::{ClaudeAdapter, CodexAdapter, CursorAdapter, PiAdapter};
 use loopfleet_core::{
     fold_rate_limit, launch_decision, resolve_display, run_loop, should_auto_merge, AgentAdapter,
     AutoMergeBlockedReason, AutoMergeDecision, CompareView, LaunchDecision, LoopConfig,
-    NormalizedEvent, PlanView, RateLimitNotice, RunSpec, RunState, RunTimeline, TaskStatus,
+    NormalizedEvent, PlanView, RateLimitNotice, RunSpec, RunState, RunTimeline, Tap, TaskStatus,
     UsageDisplay, UsageSnapshot, UsageSource, UsageThresholds,
 };
 use loopfleet_gitx::GitActor;
@@ -19,7 +19,7 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 
 mod orphans;
 mod path_env;
@@ -43,6 +43,7 @@ struct AppState {
     git: GitActor,
     data_dir: PathBuf,
     stops: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
+    taps: Arc<Mutex<HashMap<String, mpsc::Sender<Tap>>>>,
     edits: Arc<Mutex<HashMap<String, PendingEdit>>>,
     /// Runs that reached a terminal state while the main window was unfocused
     /// and haven't been seen since — mirrored onto the dock badge, cleared when
@@ -856,6 +857,7 @@ async fn launch_run(
         state.git.clone(),
         state.data_dir.clone(),
         state.stops.clone(),
+        state.taps.clone(),
         state.unacknowledged_runs.clone(),
         state.scheduled_resumes.clone(),
         state.scheduled_auto_merges.clone(),
@@ -925,6 +927,7 @@ async fn continue_plan(
         state.git.clone(),
         state.data_dir.clone(),
         state.stops.clone(),
+        state.taps.clone(),
         state.unacknowledged_runs.clone(),
         state.scheduled_resumes.clone(),
         state.scheduled_auto_merges.clone(),
@@ -959,6 +962,7 @@ fn spawn_run(
     git: GitActor,
     data_dir: PathBuf,
     stops: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
+    taps: Arc<Mutex<HashMap<String, mpsc::Sender<Tap>>>>,
     unacknowledged: Arc<AtomicI64>,
     scheduled_resumes: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
     scheduled_auto_merges: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
@@ -1089,7 +1093,9 @@ fn spawn_run(
 
     // Register a cancel channel so the live-run Stop button can signal this run.
     let (cancel_tx, mut cancel_rx) = watch::channel(false);
+    let (tap_tx, mut tap_rx) = mpsc::channel(1);
     stops.lock().unwrap().insert(run_id.clone(), cancel_tx);
+    taps.lock().unwrap().insert(run_id.clone(), tap_tx);
 
     // Drive the loop off the command's response: it may run for minutes. Progress
     // is persisted on the shared single-writer connection and streamed to the UI.
@@ -1098,6 +1104,7 @@ fn spawn_run(
     let db = db.clone();
     let git = git.clone();
     let stops = stops.clone();
+    let taps = taps.clone();
     let unacknowledged = unacknowledged.clone();
     let scheduled_resumes = scheduled_resumes.clone();
     let scheduled_auto_merges = scheduled_auto_merges.clone();
@@ -1107,6 +1114,7 @@ fn spawn_run(
         git.clone(),
         data_dir.clone(),
         stops.clone(),
+        taps.clone(),
         unacknowledged.clone(),
         scheduled_resumes.clone(),
         scheduled_auto_merges.clone(),
@@ -1167,18 +1175,18 @@ fn spawn_run(
             }
         };
 
-        let mut taps = tokio::sync::mpsc::channel(1).1;
         let outcome = run_loop(
             adapter.as_ref(),
             &git,
             &cfg,
             &mut cancel_rx,
-            &mut taps,
+            &mut tap_rx,
             &mut on_event,
         )
         .await;
         poller.abort();
         stops.lock().unwrap().remove(&cfg.run_id);
+        taps.lock().unwrap().remove(&cfg.run_id);
 
         if let Ok(conn) = db.lock() {
             let offsets = offsets.lock().unwrap();
@@ -1440,7 +1448,7 @@ fn spawn_run(
         if outcome.state == RunState::LimitReached && next_attempt <= MAX_RESUME_ATTEMPTS {
             let buffer = resume_buffer(next_attempt);
             if let Some(delay) = delay_until(outcome.reset_at.as_deref(), OffsetDateTime::now_utc(), buffer) {
-                let (app, db, git, data_dir, stops, unacknowledged, scheduled_resumes, scheduled_auto_merges) =
+                let (app, db, git, data_dir, stops, taps, unacknowledged, scheduled_resumes, scheduled_auto_merges) =
                     sched;
                 let (project_id, task_anchor, agent, model, max_iterations) = rerun;
                 let resume_run_id = cfg.run_id.clone();
@@ -1475,7 +1483,7 @@ fn spawn_run(
                     tokio::time::sleep(delay).await;
                     let _ = spawn_run(
                         project_id, task_anchor, agent, model, max_iterations,
-                        app, db, git, data_dir, stops, unacknowledged, resumes_for_task.clone(),
+                        app, db, git, data_dir, stops, taps, unacknowledged, resumes_for_task.clone(),
                         scheduled_auto_merges, next_attempt,
                     )
                     .await;
@@ -1551,6 +1559,7 @@ fn rearm_pending_resumes(app: &AppHandle) {
         let git = state.git.clone();
         let data_dir = state.data_dir.clone();
         let stops = state.stops.clone();
+        let taps = state.taps.clone();
         let unacknowledged = state.unacknowledged_runs.clone();
         let scheduled_resumes = state.scheduled_resumes.clone();
         let resumes_for_task = scheduled_resumes.clone();
@@ -1570,7 +1579,7 @@ fn rearm_pending_resumes(app: &AppHandle) {
             }
             let _ = spawn_run(
                 project_id, task_anchor, agent, model, max_iterations,
-                app, db, git, data_dir, stops, unacknowledged, resumes_for_task.clone(),
+                app, db, git, data_dir, stops, taps, unacknowledged, resumes_for_task.clone(),
                 scheduled_auto_merges, attempt,
             )
             .await;
@@ -2145,6 +2154,7 @@ fn schedule_launch(
         state.git.clone(),
         state.data_dir.clone(),
         state.stops.clone(),
+        state.taps.clone(),
         state.unacknowledged_runs.clone(),
         state.scheduled_resumes.clone(),
         state.scheduled_launches.clone(),
@@ -2310,6 +2320,7 @@ fn answer_autopilot_prompt(
         state.git.clone(),
         state.data_dir.clone(),
         state.stops.clone(),
+        state.taps.clone(),
         state.unacknowledged_runs.clone(),
         state.scheduled_resumes.clone(),
         state.scheduled_launches.clone(),
@@ -2366,6 +2377,7 @@ fn arm_scheduled_launch(
     git: GitActor,
     data_dir: PathBuf,
     stops: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
+    taps: Arc<Mutex<HashMap<String, mpsc::Sender<Tap>>>>,
     unacknowledged: Arc<AtomicI64>,
     scheduled_resumes: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
     scheduled_launches: Arc<Mutex<HashMap<i64, tauri::async_runtime::JoinHandle<()>>>>,
@@ -2431,6 +2443,7 @@ fn arm_scheduled_launch(
                         git,
                         data_dir,
                         stops,
+                        taps,
                         unacknowledged,
                         scheduled_resumes,
                         launches_for_task,
@@ -2491,6 +2504,7 @@ fn arm_scheduled_launch(
                 git,
                 data_dir,
                 stops,
+                taps,
                 unacknowledged,
                 scheduled_resumes,
                 scheduled_auto_merges,
@@ -2602,6 +2616,7 @@ fn rearm_scheduled_launches(app: &AppHandle) {
             state.git.clone(),
             state.data_dir.clone(),
             state.stops.clone(),
+            state.taps.clone(),
             state.unacknowledged_runs.clone(),
             state.scheduled_resumes.clone(),
             state.scheduled_launches.clone(),
@@ -3266,6 +3281,7 @@ pub fn run() {
                 git: git.clone(),
                 data_dir: dir.clone(),
                 stops: Arc::new(Mutex::new(HashMap::new())),
+                taps: Arc::new(Mutex::new(HashMap::new())),
                 edits: Arc::new(Mutex::new(HashMap::new())),
                 unacknowledged_runs: Arc::new(AtomicI64::new(0)),
                 scheduled_resumes: Arc::new(Mutex::new(HashMap::new())),
