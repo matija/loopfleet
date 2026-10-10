@@ -20,6 +20,14 @@ Context is kept deliberately small per run, so each agent stays focused on its c
 
 ## Live steering
 
+While a run is active, click **Tap** in the run view or press **⌘⇧T**
+(**Ctrl+Shift+T**) to open the composer and send guidance. Capable agents
+can receive live steering during a pass; other agents queue notes for the
+next pass. Notes do not start an extra pass if the run ends. Check the run's
+tap status for delivery: sending alone does not confirm delivery. Guidance
+can also be queued when live steering is unavailable, or delivery can be
+reported as unknown.
+
 Live steering requires **Codex 0.154.0 or later** (app-server) or
 **pi 0.80.3 or later** (RPC). Older, unrecognized, or unavailable versions
 use notes instead of live steering. Discovery and run handles use the same

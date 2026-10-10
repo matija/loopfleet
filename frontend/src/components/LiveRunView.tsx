@@ -221,7 +221,7 @@ export function LiveRunView({
             {events.length === 0 ? (
               <p className="run-view__empty">
                 {active
-                  ? "Waiting for events… they stream in as the agent works."
+                  ? "Waiting for events… they stream in as the agent works. Click Tap or press ⌘⇧T / Ctrl+Shift+T to open the composer. Capable agents can receive live steering during a pass; other agents queue notes for the next pass. Check the tap status for delivery."
                   : "No events streamed while this view was open."}
               </p>
             ) : (
