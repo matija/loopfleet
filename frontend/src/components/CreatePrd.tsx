@@ -23,11 +23,14 @@ export function CreatePrd({
   const [instruction, setInstruction] = useState("");
   const [proposal, setProposal] = useState<PlanEditProposal | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<"save" | "discard" | null>(null);
   const [activity, setActivity] = useState<PrdActivityUpdate | null>(null);
   const [error, setError] = useState<string | null>(null);
   const active = useRef(false);
   const submitting = useRef(false);
   const reviewHeading = useRef<HTMLHeadingElement>(null);
+  const brief = useRef<HTMLTextAreaElement>(null);
+  const restoreBriefFocus = useRef(false);
   const selectedAgent = agents?.find((status) => status.key === agent);
   const editId = useRef<string | null>(null);
 
@@ -60,6 +63,13 @@ export function CreatePrd({
     if (proposal) reviewHeading.current?.focus();
   }, [proposal]);
 
+  useEffect(() => {
+    if (!proposal && !busy && restoreBriefFocus.current) {
+      brief.current?.focus();
+      restoreBriefFocus.current = false;
+    }
+  }, [proposal, busy]);
+
   async function generate() {
     if (submitting.current || proposal || !selectedAgent || !instruction.trim()) return;
     submitting.current = true;
@@ -88,6 +98,7 @@ export function CreatePrd({
     if (submitting.current || !proposal) return;
     submitting.current = true;
     setBusy(true);
+    setPending("save");
     setError(null);
     try {
       await planEditApply(proposal.edit_id);
@@ -97,7 +108,10 @@ export function CreatePrd({
       if (active.current) setError(String(e));
     } finally {
       submitting.current = false;
-      if (active.current) setBusy(false);
+      if (active.current) {
+        setBusy(false);
+        setPending(null);
+      }
     }
   }
 
@@ -105,16 +119,23 @@ export function CreatePrd({
     if (submitting.current || !proposal) return;
     submitting.current = true;
     setBusy(true);
+    setPending("discard");
     setError(null);
     try {
       await planEditDiscard(proposal.edit_id);
       editId.current = null;
-      if (active.current) setProposal(null);
+      if (active.current) {
+        restoreBriefFocus.current = true;
+        setProposal(null);
+      }
     } catch (e) {
       if (active.current) setError(String(e));
     } finally {
       submitting.current = false;
-      if (active.current) setBusy(false);
+      if (active.current) {
+        setBusy(false);
+        setPending(null);
+      }
     }
   }
 
@@ -133,11 +154,12 @@ export function CreatePrd({
       {error && <p className="panel__error" role="alert">{error}</p>}
       {proposal ? (
         <>
-          <p className="prd-doc__running-note" title={proposal.path}>Draft by {agents?.find((status) => status.key === proposal.agent)?.display ?? proposal.agent}. Save to create the new plan.</p>
+          <p className="prd-doc__running-note">Draft by {agents?.find((status) => status.key === proposal.agent)?.display ?? proposal.agent}. Save to create the new plan.</p>
+          <p className="prd-create__destination">Destination: <code>{proposal.path}</code></p>
           <div className="prd-doc__body">{renderMarkdown(proposal.proposed)}</div>
-          <div className="prd-doc__actions">
-            <button type="button" className="btn btn--primary" disabled={busy} onClick={accept}>Save PRD.md</button>
-            <button type="button" className="btn" disabled={busy} onClick={discard}>Discard draft</button>
+          <div className="prd-doc__actions prd-create__actions" aria-busy={pending !== null}>
+            <button type="button" className="btn btn--primary" disabled={busy} onClick={accept}>{pending === "save" ? "Saving…" : "Save PRD.md"}</button>
+            <button type="button" className="btn" disabled={busy} onClick={discard}>{pending === "discard" ? "Discarding…" : "Discard draft"}</button>
           </div>
         </>
       ) : (
@@ -145,6 +167,7 @@ export function CreatePrd({
           {busy && <PrdActivity title={`Drafting with ${agents?.find((status) => status.key === agent)?.display ?? agent}`} activity={activity} />}
           <label htmlFor="prd-create-instruction">Project brief</label>
           <textarea
+            ref={brief}
             id="prd-create-instruction"
             className="prd-doc__instruction"
             placeholder="Describe what you want to build, who it’s for, and what a good result looks like…"

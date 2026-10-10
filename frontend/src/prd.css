@@ -438,6 +438,19 @@
   margin: var(--space-4) 0;
 }
 
+.prd-create__destination {
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.prd-create__actions {
+  position: sticky;
+  bottom: 0;
+  padding-block: var(--space-3);
+  border-top: 1px solid var(--c-border);
+  background: var(--c-surface);
+}
+
 .plan-surface {
   width: 100%;
   max-width: var(--content-w);
