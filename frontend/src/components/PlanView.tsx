@@ -47,6 +47,7 @@ import {
   PlayIcon,
 } from "./Icon";
 import { Popover } from "./Popover";
+import { TapComposer } from "./TapComposer";
 import { finishedRunTone, MetaRow, useHoverOpen, worktreeBranch } from "./RunDock";
 import type {
   AgentStatus,
@@ -392,7 +393,27 @@ function TaskRow({
   const StatusIcon = STATUS_ICON[task.status];
   const [lastRun, setLastRun] = useState<RowLastRun | null>(null);
   const rowRef = useRef<HTMLLIElement>(null);
-  const { open, handlers } = useHoverOpen(400, rowRef);
+  const { open, handlers, close } = useHoverOpen(400, rowRef);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const tapRef = useRef<HTMLButtonElement>(null);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [composerRunId, setComposerRunId] = useState<string | null>(null);
+  const active = lastRun !== null && isActiveRun(lastRun.status);
+
+  function keepCardOpen() {
+    clearTimeout(leaveTimer.current);
+    handlers.onFocus();
+  }
+
+  function leaveCard() {
+    clearTimeout(leaveTimer.current);
+    leaveTimer.current = setTimeout(() => {
+      if (!rowRef.current?.contains(document.activeElement) && !cardRef.current?.contains(document.activeElement)) close();
+    }, 200);
+  }
+
+  useEffect(() => () => clearTimeout(leaveTimer.current), []);
+  useEffect(() => setComposerRunId(null), [lastRun?.runId, active]);
   const [expanded, toggleExpanded] = useTaskExpanded(`${planId}:${task.anchor}`);
 
   // Track the launched run's terminal transition so the hover card can show
@@ -428,7 +449,23 @@ function TaskRow({
       className="task-row"
       tabIndex={0}
       ref={rowRef}
-      {...(lastRun ? handlers : {})}
+      {...(lastRun ? {
+        ...handlers,
+        onMouseEnter: () => { clearTimeout(leaveTimer.current); handlers.onMouseEnter(); },
+        onMouseLeave: leaveCard,
+        onFocus: keepCardOpen,
+        onBlur: (e: React.FocusEvent) => {
+          if (cardRef.current?.contains(e.relatedTarget) || rowRef.current?.contains(e.relatedTarget)) return;
+          close();
+        },
+        onKeyDown: (e: React.KeyboardEvent) => {
+          const buttons = rowRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+          if (e.key === "Tab" && !e.shiftKey && active && open && e.target === buttons?.[buttons.length - 1]) {
+            e.preventDefault();
+            tapRef.current?.focus();
+          }
+        },
+      } : {})}
     >
       {/* The title leads, truncating to the single --row-h line; the rest of
         * the row — the run count, derived status, launch control — is the
@@ -521,61 +558,89 @@ function TaskRow({
       </span>
       {lastRun && (
         <Popover
-          open={open}
-          onClose={() => {}}
+          open={open && composerRunId === null}
+          onClose={close}
           anchorRef={rowRef}
           role="dialog"
           aria-label={`${taskSummary(task.text)} details`}
-          className="meta-popover"
+          className="meta-popover task-row__popover"
         >
-          <MetaRow
-            icon={<FolderIcon size={14} />}
-            value={repoName ?? "—"}
-            label="Repo"
-          />
-          <MetaRow
-            icon={<GitBranchIcon size={14} />}
-            value={worktreeBranch(lastRun.runId)}
-            label="Worktree branch"
-          />
-          <MetaRow
-            icon={<AgentIcon size={14} />}
-            value={lastRun.agent}
-            label="Agent"
-          />
-          {lastRun.model && (
+          <div ref={cardRef} className="task-row__card" onMouseEnter={keepCardOpen} onMouseLeave={leaveCard}>
+            <MetaRow
+              icon={<FolderIcon size={14} />}
+              value={repoName ?? "—"}
+              label="Repo"
+            />
+            <MetaRow
+              icon={<GitBranchIcon size={14} />}
+              value={worktreeBranch(lastRun.runId)}
+              label="Worktree branch"
+            />
             <MetaRow
               icon={<AgentIcon size={14} />}
-              value={lastRun.model}
-              label="Model"
+              value={lastRun.agent}
+              label="Agent"
             />
-          )}
-          <MetaRow
-            icon={<BoxIcon size={14} />}
-            value={`${lastRun.maxIterations} ${lastRun.maxIterations === 1 ? "pass" : "passes"}`}
-            label="Pass count"
-          />
-          <MetaRow
-            icon={<ClockIcon size={14} />}
-            value={
-              isActiveRun(lastRun.status) ? (
-                <Elapsed startedAt={lastRun.startedAt} />
-              ) : lastRun.finishedAt !== undefined ? (
-                `Finished in ${formatDuration(lastRun.finishedAt - lastRun.startedAt)}`
-              ) : (
-                RUN_STATUS_LABEL[lastRun.status]
-              )
-            }
-            label="Elapsed or finished time"
-            tone={
-              isActiveRun(lastRun.status)
-                ? task.status === "completed-unaccepted"
-                  ? "warn"
-                  : undefined
-                : finishedRunTone(lastRun.status)
-            }
-          />
+            {lastRun.model && (
+              <MetaRow
+                icon={<AgentIcon size={14} />}
+                value={lastRun.model}
+                label="Model"
+              />
+            )}
+            <MetaRow
+              icon={<BoxIcon size={14} />}
+              value={`${lastRun.maxIterations} ${lastRun.maxIterations === 1 ? "pass" : "passes"}`}
+              label="Pass count"
+            />
+            <MetaRow
+              icon={<ClockIcon size={14} />}
+              value={
+                isActiveRun(lastRun.status) ? (
+                  <Elapsed startedAt={lastRun.startedAt} />
+                ) : lastRun.finishedAt !== undefined ? (
+                  `Finished in ${formatDuration(lastRun.finishedAt - lastRun.startedAt)}`
+                ) : (
+                  RUN_STATUS_LABEL[lastRun.status]
+                )
+              }
+              label="Elapsed or finished time"
+              tone={
+                isActiveRun(lastRun.status)
+                  ? task.status === "completed-unaccepted"
+                    ? "warn"
+                    : undefined
+                  : finishedRunTone(lastRun.status)
+              }
+            />
+            {active && (
+              <button
+                type="button"
+                ref={tapRef}
+                className="btn btn--secondary task-row__tap"
+                aria-haspopup="dialog"
+                onClick={() => { close(); setComposerRunId(lastRun.runId); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Tab" && e.shiftKey) {
+                    e.preventDefault();
+                    const buttons = rowRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+                    buttons?.[buttons.length - 1]?.focus();
+                  }
+                }}
+              >
+                Tap
+              </button>
+            )}
+          </div>
         </Popover>
+      )}
+      {lastRun && active && composerRunId === lastRun.runId && (
+        <TapComposer
+          key={lastRun.runId}
+          run={{ runId: lastRun.runId, taskText: task.text, projectName: repoName ?? projectId }}
+          anchorRef={rowRef}
+          onClose={() => setComposerRunId(null)}
+        />
       )}
     </li>
   );

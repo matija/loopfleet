@@ -766,3 +766,20 @@
   gap: var(--space-4);
   flex-wrap: wrap;
 }
+
+.task-row__popover {
+  display: block;
+  padding: 0;
+  pointer-events: auto;
+}
+
+.task-row__card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.task-row__tap {
+  grid-column: 1 / -1;
+}
