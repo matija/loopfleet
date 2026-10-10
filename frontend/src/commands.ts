@@ -186,6 +186,16 @@ export function stopRun(runId: string): Promise<void> {
   return invoke("stop_run", { runId });
 }
 
+export function tapRun(
+  runId: string,
+  text: string,
+): Promise<
+  | { kind: "steered" | "queued" | "unknown" }
+  | { kind: "delivered"; pass: number }
+> {
+  return invoke("tap_run", { runId, text });
+}
+
 /// Abort a pending rate-limit re-run before it fires, keyed by the original
 /// run's id.
 export function cancelScheduledResume(runId: string): Promise<void> {

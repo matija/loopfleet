@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use loopfleet_adapters::{ClaudeAdapter, CodexAdapter, CursorAdapter, PiAdapter};
 use loopfleet_core::{
     fold_rate_limit, launch_decision, resolve_display, run_loop, should_auto_merge, AgentAdapter,
-    AutoMergeBlockedReason, AutoMergeDecision, CompareView, LaunchDecision, LoopConfig,
+    AutoMergeBlockedReason, AutoMergeDecision, CompareView, Delivery, LaunchDecision, LoopConfig,
     NormalizedEvent, PlanView, RateLimitNotice, RunSpec, RunState, RunTimeline, Tap, TaskStatus,
     UsageDisplay, UsageSnapshot, UsageSource, UsageThresholds,
 };
@@ -1796,6 +1796,30 @@ fn stop_run(run_id: String, state: State<'_, AppState>) -> Result<(), String> {
     }
 }
 
+#[tauri::command]
+async fn tap_run(
+    run_id: String,
+    text: String,
+    state: State<'_, AppState>,
+) -> Result<Delivery, String> {
+    let tx = state
+        .taps
+        .lock()
+        .unwrap()
+        .get(&run_id)
+        .cloned()
+        .ok_or_else(|| format!("run is not active: {run_id}"))?;
+    let tap = Tap {
+        id: uuid::Uuid::new_v4().to_string(),
+        text: text.try_into().map_err(str::to_owned)?,
+        created_at_ms: now_ms(),
+    };
+    tx.send(tap)
+        .await
+        .map_err(|_| format!("run is not active: {run_id}"))?;
+    Ok(Delivery::Unknown)
+}
+
 /// Delete a finished run's on-disk footprint: its worktree (via the gitx
 /// `reap`, through the serialized `GitActor`), its sandbox profile
 /// (`profiles/<run_id>.sb`), and its progress directory
@@ -3420,6 +3444,7 @@ pub fn run() {
             plan_runs,
             run_timeline,
             stop_run,
+            tap_run,
             sweep_worktrees_now,
             cancel_scheduled_resume,
             schedule_launch,
