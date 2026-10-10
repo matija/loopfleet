@@ -22,6 +22,7 @@ export function PlanSurface({
   onCompare,
   onError,
   onPlanChanged,
+  onOpenAgentSettings,
   toolbarActions,
   prdFocusNonce,
   pendingArchivePlanId,
@@ -30,6 +31,7 @@ export function PlanSurface({
   projectId: string;
   planNonce: number;
   onPlanChanged: () => void;
+  onOpenAgentSettings: () => void;
   onLaunch: (run: LaunchedRun) => void;
   onCompare: (target: CompareTarget) => void;
   /// Surfaces command failures (a failed export) through the app's toasts.
@@ -121,7 +123,7 @@ export function PlanSurface({
           </div>
         ) : !current.hasPlan ? (
           <>
-            <CreatePrd key={projectId} projectId={projectId} onCreated={() => {
+            <CreatePrd key={projectId} projectId={projectId} onOpenAgentSettings={onOpenAgentSettings} onCreated={() => {
               setMode("tasks");
               setRefresh((value) => value + 1);
               onPlanChanged();

@@ -1381,6 +1381,7 @@ export default function App() {
           />
         ) : view.kind === "plan" ? (
           <PlanSurface
+            onOpenAgentSettings={() => paletteOpenOverview("agents")}
             projectId={view.projectId}
             planNonce={planNonce}
             onPlanChanged={() => setPlanNonce((nonce) => nonce + 1)}
