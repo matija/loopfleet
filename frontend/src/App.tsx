@@ -1101,7 +1101,7 @@ export default function App() {
                           className="project-item__flag"
                           title={planHealthTitle(h) ?? undefined}
                         >
-                          no tasks
+                          {h === "no-plan" ? "No plan" : "No tasks"}
                         </span>
                       );
                     })()}

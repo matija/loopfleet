@@ -33,7 +33,7 @@ export function NoPlanEmptyState(props: { projectId: string; onCreated: () => vo
 // runnable in it. The example line is deliberately literal — the parser only
 // picks up `- [ ]` checklist items, and a plan written as prose or as `*`
 // bullets is the likeliest reason a real plan lands here.
-export function NoTasksEmptyState() {
+export function NoTasksEmptyState({ onOpenPrd }: { onOpenPrd: () => void }) {
   return (
     <EmptyState icon={<ChecklistIcon size={26} />} title="No tasks in this plan">
       <p>
@@ -42,6 +42,9 @@ export function NoTasksEmptyState() {
       </p>
       <pre className="empty-state__example">- [ ] Add a health check endpoint</pre>
       <p>Add a line like that to this plan file to launch a run against it.</p>
+      <button type="button" className="btn btn--primary" onClick={onOpenPrd}>
+        Open PRD
+      </button>
     </EmptyState>
   );
 }

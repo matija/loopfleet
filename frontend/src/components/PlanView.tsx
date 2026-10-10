@@ -99,9 +99,11 @@ export function PlanView({
   onCompare,
   onError,
   onPlanChanged,
+  onOpenPrd,
 }: {
   projectId: string;
   onPlanChanged: () => void;
+  onOpenPrd: () => void;
   onLaunch: (run: LaunchedRun) => void;
   onCompare: (target: CompareTarget) => void;
   /// Surfaces command failures (a failed export) through the app's toasts.
@@ -170,6 +172,7 @@ export function PlanView({
           onLaunch={onLaunch}
           onCompare={onCompare}
           onError={onError}
+          onOpenPrd={onOpenPrd}
         />
       ))}
     </div>
@@ -186,8 +189,10 @@ function PlanCard({
   onLaunch,
   onCompare,
   onError,
+  onOpenPrd,
 }: {
   plan: Plan;
+  onOpenPrd: () => void;
   projectId: string;
   repoName: string | undefined;
   installed: string[];
@@ -240,7 +245,7 @@ function PlanCard({
           title="Save this plan’s tasks, runs, events, and diffs as an HTML report"
         />
       </header>
-      {plan.tasks.length === 0 ? <NoTasksEmptyState /> : (
+      {plan.tasks.length === 0 ? <NoTasksEmptyState onOpenPrd={onOpenPrd} /> : (
         <>
           {review.length > 0 && (
             <section className="plan-card__review" aria-label="Ready for review">

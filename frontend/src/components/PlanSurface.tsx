@@ -93,6 +93,7 @@ export function PlanSurface({
               onCompare={onCompare}
               onError={onError}
               onPlanChanged={onPlanChanged}
+              onOpenPrd={() => setMode("prd")}
             />
             <SandboxOverrides projectId={projectId} />
           </>
