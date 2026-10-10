@@ -1137,9 +1137,6 @@ export default function App() {
                       );
                     })()}
                     <span className="project-item__trail">
-                      <span className="project-item__meta">
-                        {parentPath(p.repo_path)}
-                      </span>
                       <IconButton
                         icon={TrashIcon}
                         aria-label={`Remove ${repoName(p.repo_path)}`}

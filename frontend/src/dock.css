@@ -9,16 +9,12 @@
   align-items: stretch;
   gap: var(--space-2);
   min-height: 0;
-  /* Chips are a single line now, so the bar needs only a hairline of air
-   * above and below them to sit one row tall. */
   padding: var(--space-2) var(--space-4);
   background: var(--c-surface);
   border-top: 1px solid var(--c-border);
   overflow: hidden;
 }
 
-/* Single-row label + tally, matching the one-line chips beside it — the head
- * never stacks, expanded or collapsed. */
 .run-dock__head {
   display: flex;
   flex-direction: row;
@@ -59,9 +55,9 @@
   display: flex;
   gap: var(--space-3);
   overflow-x: auto;
-  padding-bottom: var(--space-1);
   margin: 0;
-  padding: 0;
+  padding: 0 0 var(--space-1);
+  flex: none;
   list-style: none;
 }
 
@@ -78,9 +74,6 @@
   overflow: hidden;
   transition: border-color var(--motion-fast) var(--ease-out),
     background-color var(--motion-fast) var(--ease-out);
-  /* Launching a run appends a chip here; ease it in so the dock grows rather
-   * than jumping. Chips are keyed by run id, so this fires once, on arrival. */
-  animation: run-chip-in var(--motion-base) var(--ease-out);
 }
 
 .run-chip--selected {
@@ -88,9 +81,6 @@
   background: var(--c-accent-quiet);
 }
 
-/* Attention marker: a finished run the user hasn't seen since it ended. The
- * accent border lifts the chip; the corner dot is the at-a-glance signal.
- * Acknowledge-on-focus (or opening the run) clears both. */
 .run-chip--unseen {
   border-color: var(--c-accent);
 }
@@ -108,19 +98,6 @@
   box-shadow: 0 0 0 2px var(--c-surface);
 }
 
-@keyframes run-chip-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* One line: status glyph, task text, and a single trailing meta slot. Agent
- * and project name live in the chip's `title` (and its hover card) instead. */
 .run-chip__open {
   display: flex;
   align-items: center;
@@ -235,8 +212,8 @@
    button is disabled and dimmed — the chip's only pending signal. */
 .run-chip__action--merge:hover,
 .run-chip__action--merge:focus-visible {
-  background: var(--c-accent);
-  color: var(--c-text);
+  background: var(--c-accent-quiet-hover);
+  color: var(--c-accent-text-hover);
 }
 
 /* The chip clips its contents (overflow: hidden, for the rounded row of
@@ -258,11 +235,6 @@
   background: transparent;
 }
 
-/* Merged marker: an accepted run has already landed, so the chip's affirmative
-   slot turns into a static, ok-hued check instead of the merge button — same
-   width and divider as an action so the chip's shape doesn't shift when a merge
-   settles, but no hover and nothing to press, which is what keeps a landed run
-   from being merged twice from here. */
 .run-chip__merged {
   flex: 0 0 auto;
   display: inline-flex;

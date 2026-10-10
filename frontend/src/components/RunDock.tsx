@@ -67,8 +67,6 @@ export type ActiveRun = {
   /// long it has been going (session-scoped — runs don't survive a restart).
   startedAt: number;
   status: RunStatus;
-  /// Set when the run finished while it wasn't the open view — the dock's
-  /// attention marker. Cleared by acknowledge-on-focus or opening the run.
   unseen?: boolean;
   /// Set on a `limit-reached` run when the backend has scheduled an automatic
   /// re-run for it (`scheduled_resume`), carrying the epoch ms it fires at.

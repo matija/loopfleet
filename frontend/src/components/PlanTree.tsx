@@ -107,44 +107,43 @@ function PlanTreeGroup({
   const label = plan.title ?? plan.file_path;
   const done = tasks.filter((task) => task.status === "accepted");
   const renderTask = (task: Plan["tasks"][number]) => {
-          const id = `task:${plan.plan_id}:${task.anchor}`;
-          const StatusIcon = STATUS_ICON[task.status];
-          return (
-            <button
-              key={task.anchor}
-              className={`tree-item tree-item--${task.status}`}
-              aria-current={id === activeTaskId}
-              onClick={() =>
-                onOpenTask({
-                  planId: plan.plan_id,
-                  taskAnchor: task.anchor,
-                  taskText: task.text,
-                })
-              }
-            >
-              <span
-                className={`tree-item__status tree-item__status--${task.status}`}
-                role="img"
-                aria-label={STATUS_LABEL[task.status]}
-                title={STATUS_LABEL[task.status]}
-              >
-                <StatusIcon size={16} />
-              </span>
-              <span className="tree-item__text">
-                {taskSummary(task.text)}
-              </span>
-              {task.run_count > 0 && (
-                <span
-                  className="tree-item__count"
-                  title={`${task.run_count} run(s)`}
-                >
-                  {task.run_count}
-                </span>
-              )}
-            </button>
-          );
+    const id = `task:${plan.plan_id}:${task.anchor}`;
+    const StatusIcon = STATUS_ICON[task.status];
+    return (
+      <button
+        key={task.anchor}
+        className={`tree-item tree-item--${task.status}`}
+        aria-current={id === activeTaskId}
+        onClick={() =>
+          onOpenTask({
+            planId: plan.plan_id,
+            taskAnchor: task.anchor,
+            taskText: task.text,
+          })
+        }
+      >
+        <span
+          className={`tree-item__status tree-item__status--${task.status}`}
+          role="img"
+          aria-label={STATUS_LABEL[task.status]}
+          title={STATUS_LABEL[task.status]}
+        >
+          <StatusIcon size={16} />
+        </span>
+        <span className="tree-item__text">
+          {taskSummary(task.text)}
+        </span>
+        {task.run_count > 0 && (
+          <span
+            className="tree-item__count"
+            title={`${task.run_count} run(s)`}
+          >
+            {task.run_count}
+          </span>
+        )}
+      </button>
+    );
   };
-
 
   return (
     <div className="plan-tree__group">

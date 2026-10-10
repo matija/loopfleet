@@ -233,11 +233,6 @@
   padding: 0 var(--space-2);
 }
 
-/* Connection row: leading folder icon + status dot + repo name, with the
- * short-path metadata right-aligned and muted. Fixed to --row-h so rows sit
- * on the same rhythm as tree-item below. Its remove affordance sits right
- * after the name, only showing up on hover/focus so the list doesn't carry
- * a permanent trash icon on every row. */
 .project-item {
   display: flex;
   align-items: center;
@@ -254,10 +249,6 @@
   cursor: pointer;
 }
 
-/* Trailing slot: the path and the remove button share one fixed-width cell
- * so revealing the remove button on hover can't reflow anything before it —
- * the same discipline `.task-status` applies to its glyph/label swap. Both
- * children stack in the slot and only one paints at a time. */
 .project-item__trail {
   position: relative;
   flex: none;
@@ -266,7 +257,6 @@
   margin-left: auto;
 }
 
-.project-item__trail .project-item__meta,
 .project-row__remove {
   position: absolute;
   top: 50%;
@@ -279,10 +269,6 @@
   opacity: 1;
   pointer-events: auto;
   color: var(--c-text-faint);
-}
-
-.project-item:is(:hover, :focus-within) .project-item__trail .project-item__meta {
-  opacity: 0;
 }
 
 .project-item:is(:hover, :focus-within) .project-row__remove,
@@ -352,17 +338,6 @@
   border-radius: var(--radius-sm);
   padding: 0 var(--space-1);
   white-space: nowrap;
-}
-
-.project-item__meta {
-  max-width: 100%;
-  font-size: var(--text-xs);
-  color: var(--c-text-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  direction: rtl; /* keep the tail visible when the parent path is long */
-  text-align: left;
 }
 
 /* Remove-project confirmation: a real interactive dialog (unlike the
@@ -551,12 +526,6 @@
   color: var(--c-text-faint);
 }
 
-/* Group header: a real row on the same --row-h rhythm as the task rows below
- * it, not an uppercase caption. Uppercasing a document title ("PRD: Duplicate
- * detection") mangles it, so the title keeps its own casing and reads as the
- * object it is. Three slots: the chevron toggles the group, the title opens
- * the plan as a document, and the trailing archive button appears on
- * hover/focus — the same reveal as the connection row's trash icon. */
 .plan-tree__group-head {
   display: flex;
   align-items: center;
@@ -605,8 +574,6 @@
   white-space: nowrap;
 }
 
-/* Reserved slot: the button is always laid out, only its paint is toggled, so
- * revealing it on hover can't reflow the title beside it. */
 .plan-tree__archive {
   flex: none;
   opacity: 1;
@@ -915,10 +882,6 @@
   margin: var(--space-1) 0 0;
   font-size: var(--text-sm);
   color: var(--c-text-muted);
-}
-
-.project-item__meta {
-  display: none;
 }
 
 .plan-tree__history > summary {
