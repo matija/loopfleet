@@ -5,7 +5,7 @@
 // a document (PrdView). The toggle is local to the pane; switching views never
 // refetches projects or changes the app-level route.
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { planOverview } from "../commands";
 import { CreatePrd } from "./CreatePrd";
@@ -50,6 +50,8 @@ export function PlanSurface({
   onPendingArchiveHandled?: () => void;
 }) {
   const [mode, setMode] = useState<Mode>("tasks");
+  const tabId = useId();
+  const tabs = useRef<Partial<Record<Mode, HTMLButtonElement | null>>>({});
   const [refresh, setRefresh] = useState(0);
   const [availability, setAvailability] = useState<{
     projectId: string;
@@ -87,26 +89,30 @@ export function PlanSurface({
 
   const toggle = (
     <div className="plan-toggle" role="tablist" aria-label="Plan views">
-      <button
-        role="tab"
-        aria-selected={mode === "tasks"}
-        className={`plan-toggle__tab${
-          mode === "tasks" ? " plan-toggle__tab--active" : ""
-        }`}
-        onClick={() => setMode("tasks")}
-      >
-        Tasks
-      </button>
-      <button
-        role="tab"
-        aria-selected={mode === "prd"}
-        className={`plan-toggle__tab${
-          mode === "prd" ? " plan-toggle__tab--active" : ""
-        }`}
-        onClick={() => setMode("prd")}
-      >
-        PRD
-      </button>
+      {(["tasks", "prd"] as const).map((tab) => (
+        <button
+          key={tab}
+          ref={(node) => { tabs.current[tab] = node; }}
+          type="button"
+          role="tab"
+          id={`${tabId}-${tab}-tab`}
+          aria-controls={`${tabId}-${tab}-panel`}
+          aria-selected={mode === tab}
+          tabIndex={mode === tab ? 0 : -1}
+          className={`plan-toggle__tab${mode === tab ? " plan-toggle__tab--active" : ""}`}
+          onClick={() => setMode(tab)}
+          onKeyDown={(event) => {
+            if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) return;
+            const destination = event.key === "Home" ? "tasks" : event.key === "End" ? "prd" : event.key === "ArrowLeft" || event.key === "ArrowRight" ? (tab === "tasks" ? "prd" : "tasks") : null;
+            if (!destination) return;
+            event.preventDefault();
+            setMode(destination);
+            tabs.current[destination]?.focus();
+          }}
+        >
+          {tab === "tasks" ? "Tasks" : "PRD"}
+        </button>
+      ))}
     </div>
   );
 
@@ -130,27 +136,36 @@ export function PlanSurface({
             }} />
             <SandboxOverrides projectId={projectId} />
           </>
-        ) : mode === "tasks" ? (
-          <>
-            <PlanView
-              key={`${projectId}:${planNonce}`}
-              projectId={projectId}
-              onLaunch={onLaunch}
-              onCompare={onCompare}
-              onError={onError}
-              onOpenPrd={() => setMode("prd")}
-            />
-            <SandboxOverrides projectId={projectId} />
-          </>
         ) : (
-          <PrdView
-            key={`${projectId}:${planNonce}`}
-            projectId={projectId}
-            onError={onError}
-            onPlanChanged={onPlanChanged}
-            autoArchivePlanId={pendingArchivePlanId}
-            onAutoArchiveHandled={onPendingArchiveHandled}
-          />
+          <>
+            <div role="tabpanel" id={`${tabId}-tasks-panel`} aria-labelledby={`${tabId}-tasks-tab`} hidden={mode !== "tasks"}>
+              {mode === "tasks" && (
+                <>
+                  <PlanView
+                    key={`${projectId}:${planNonce}`}
+                    projectId={projectId}
+                    onLaunch={onLaunch}
+                    onCompare={onCompare}
+                    onError={onError}
+                    onOpenPrd={() => { setMode("prd"); tabs.current.prd?.focus(); }}
+                  />
+                  <SandboxOverrides projectId={projectId} />
+                </>
+              )}
+            </div>
+            <div role="tabpanel" id={`${tabId}-prd-panel`} aria-labelledby={`${tabId}-prd-tab`} hidden={mode !== "prd"}>
+              {mode === "prd" && (
+                <PrdView
+                  key={`${projectId}:${planNonce}`}
+                  projectId={projectId}
+                  onError={onError}
+                  onPlanChanged={onPlanChanged}
+                  autoArchivePlanId={pendingArchivePlanId}
+                  onAutoArchiveHandled={onPendingArchiveHandled}
+                />
+              )}
+            </div>
+          </>
         )}
       </div>
     </>
