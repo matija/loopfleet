@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { agentCatalog, appSettings } from "../appData";
 import { planCreate, planEditApply, planEditDiscard } from "../commands";
 import { renderMarkdown } from "../markdown";
+import { Select } from "./Select";
+import { ChevronRightIcon } from "./Icon";
 import type { AgentStatus, PlanEditProposal } from "../types";
 
 export function CreatePrd({
@@ -92,9 +94,16 @@ export function CreatePrd({
 
   return (
     <section className="prd-doc prd-create" aria-labelledby="prd-create-title" aria-busy={busy}>
-      <div className="prd-doc__head">
-        <h3 id="prd-create-title">{proposal ? "Review your PRD" : "Create PRD.md"}</h3>
-      </div>
+      <header className="prd-create__head">
+        <span className="prd-create__eyebrow">{proposal ? "Your draft is ready" : "Start a new plan"}</span>
+        <h1 id="prd-create-title">{proposal ? "Review your plan" : "What should we build next?"}</h1>
+        <p>Turn your brief into a plan you can review and run.</p>
+        <ol className="prd-create__steps" aria-label="Planning steps">
+          <li aria-current={proposal ? undefined : "step"}><span>1</span>Describe</li>
+          <li aria-current={proposal ? "step" : undefined}><span>2</span>Review</li>
+          <li><span>3</span>Run tasks</li>
+        </ol>
+      </header>
       {error && <p className="panel__error" role="alert">{error}</p>}
       {proposal ? (
         <>
@@ -107,43 +116,41 @@ export function CreatePrd({
         </>
       ) : (
         <form className="prd-doc__instruct" onSubmit={(event) => { event.preventDefault(); void generate(); }}>
-          <label htmlFor="prd-create-instruction">What should we build next?</label>
+          <label htmlFor="prd-create-instruction">Project brief</label>
           <textarea
             id="prd-create-instruction"
             className="prd-doc__instruction"
-            placeholder="Describe the goals, requirements, and constraints…"
+            placeholder="Describe what you want to build, who it’s for, and what a good result looks like…"
+            aria-describedby="prd-create-hint"
             value={instruction}
             onChange={(event) => setInstruction(event.target.value)}
             disabled={busy}
             required
           />
+          <p id="prd-create-hint" className="prd-create__hint">Include any requirements or constraints your agent should know.</p>
           <div className="prd-create__controls">
-            <div className="launch__agents" role="group" aria-label="PRD harness">
-              {agents?.map((status) => (
-                <button
-                  key={status.key}
-                  type="button"
-                  className={`launch__agent${agent === status.key ? " launch__agent--on" : ""}`}
-                  data-label={status.display}
-                  aria-pressed={agent === status.key}
-                  disabled={busy}
-                  onClick={() => setAgent(status.key)}
-                >
-                  {status.display}
-                </button>
-              ))}
-              {!agents?.length && <span>{agents === null ? "Loading harnesses…" : "No installed harness"}</span>}
-            </div>
+            <label className="field prd-create__agent">
+              <span>Draft with</span>
+              <Select
+                aria-label="Draft with"
+                value={agent}
+                onChange={setAgent}
+                disabled={busy || !agents?.length}
+                placeholder={agents === null ? "Loading agents…" : "No installed agent"}
+                options={(agents ?? []).map((status) => ({ value: status.key, label: status.display }))}
+              />
+            </label>
             <button type="submit" className="btn btn--primary" disabled={busy || !agent || !instruction.trim()}>
-              {busy ? "Drafting…" : "Generate PRD"}
+              {busy ? "Drafting…" : "Draft plan"}
+              <ChevronRightIcon size={16} />
             </button>
           </div>
           {busy ? (
             <p className="prd-doc__running-note" role="status">Drafting with {agents?.find((status) => status.key === agent)?.display ?? agent}… You can review it before saving.</p>
           ) : agents?.length === 0 ? (
-            <p className="prd-doc__running-note">Install a harness and check its availability in Settings.</p>
+            <p className="prd-doc__running-note">Install a coding agent and check its availability in Settings.</p>
           ) : (
-            <p className="prd-doc__running-note">Your harness turns this into a plan with runnable tasks.</p>
+            <p className="prd-doc__running-note">You’ll review the draft before saving it as PRD.md.</p>
           )}
         </form>
       )}

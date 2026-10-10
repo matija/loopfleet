@@ -83,28 +83,30 @@ export function PlanSurface({
   return (
     <>
       {toolbarActions ? createPortal(toggle, toolbarActions) : toggle}
-      {mode === "tasks" ? (
-        <>
-          <PlanView
+      <div className="plan-surface">
+        {mode === "tasks" ? (
+          <>
+            <PlanView
+              key={`${projectId}:${planNonce}`}
+              projectId={projectId}
+              onLaunch={onLaunch}
+              onCompare={onCompare}
+              onError={onError}
+              onPlanChanged={onPlanChanged}
+            />
+            <SandboxOverrides projectId={projectId} />
+          </>
+        ) : (
+          <PrdView
             key={`${projectId}:${planNonce}`}
             projectId={projectId}
-            onLaunch={onLaunch}
-            onCompare={onCompare}
             onError={onError}
             onPlanChanged={onPlanChanged}
+            autoArchivePlanId={pendingArchivePlanId}
+            onAutoArchiveHandled={onPendingArchiveHandled}
           />
-          <SandboxOverrides projectId={projectId} />
-        </>
-      ) : (
-        <PrdView
-          key={`${projectId}:${planNonce}`}
-          projectId={projectId}
-          onError={onError}
-          onPlanChanged={onPlanChanged}
-          autoArchivePlanId={pendingArchivePlanId}
-          onAutoArchiveHandled={onPendingArchiveHandled}
-        />
-      )}
+        )}
+      </div>
     </>
   );
 }

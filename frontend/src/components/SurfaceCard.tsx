@@ -15,6 +15,7 @@ export function SurfaceCard({
   description,
   onClick,
   disabled = false,
+  selected = false,
   disabledReason,
 }: {
   icon: ReactNode;
@@ -22,6 +23,7 @@ export function SurfaceCard({
   description: string;
   onClick?: () => void;
   disabled?: boolean;
+  selected?: boolean;
   /** Shown in place of the action when the card is disabled. */
   disabledReason?: string;
 }) {
@@ -50,7 +52,7 @@ export function SurfaceCard({
   }
 
   return (
-    <button type="button" className="surface-card" onClick={onClick}>
+    <button type="button" className="surface-card" aria-pressed={selected} onClick={onClick}>
       {body}
     </button>
   );

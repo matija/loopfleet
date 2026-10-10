@@ -244,6 +244,9 @@
  * keyboard shortcut is discoverable without a tooltip. */
 
 .titlebar__k {
+  min-height: var(--control-h);
+  min-width: var(--control-h);
+  justify-content: center;
   position: absolute;
   right: var(--space-4);
   top: 50%;

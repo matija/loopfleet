@@ -129,6 +129,7 @@
 }
 
 .panel__actions {
+  flex-wrap: wrap;
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -144,6 +145,14 @@
  * disabled handling. */
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-h);
+  font: inherit;
+  line-height: var(--leading-tight);
+  white-space: nowrap;
   border: 1px solid var(--c-border-strong);
   background: var(--c-surface-2);
   color: var(--c-text);
@@ -159,7 +168,7 @@
   cursor: default;
 }
 
-.btn--secondary:hover:not(:disabled) {
+.btn:not(.btn--primary):not(.btn--quiet):hover:not(:disabled) {
   background: var(--c-surface-3);
 }
 
@@ -225,8 +234,8 @@
  * panel rather than for Settings, because Settings is only the panel with the
  * most of them. */
 .panel-section + .panel-section {
-  margin-top: var(--space-4);
-  padding-top: var(--space-3);
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
   border-top: 1px solid var(--c-border);
 }
 
@@ -251,7 +260,7 @@
 
 .panel-section__title {
   margin: 0;
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--c-text);
 }
@@ -293,8 +302,8 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  font-size: var(--text-sm);
+  gap: var(--space-2);
+  font-size: var(--text-base);
   color: var(--c-text-muted);
 }
 
@@ -361,6 +370,9 @@
 .field--checkbox input {
   all: revert;
   margin: 0;
+  accent-color: var(--c-accent);
+  width: var(--space-4);
+  height: var(--space-4);
 }
 
 /* Sits under the toggle it explains, at hint weight, without needing the
@@ -628,7 +640,51 @@ button.surface-card:hover {
 /* --- overview stack --- */
 
 .overview {
+  max-width: var(--content-w);
+  margin-inline: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-6);
+}
+
+.overview__head h1 {
+  font-size: var(--text-xl);
+}
+
+.overview__head p {
+  margin: var(--space-2) 0 0;
+  color: var(--c-text-muted);
+}
+
+.surface-card[aria-pressed="true"] {
+  border-color: var(--c-accent);
+  background: var(--c-accent-quiet);
+}
+
+.settings-panel {
+  max-width: var(--form-w);
+}
+
+.settings-panel .panel__head h3 {
+  font-size: var(--text-lg);
+}
+
+.settings-panel .panel__head {
+  margin-bottom: var(--space-5);
+}
+
+.settings-panel .field-note {
+  max-width: var(--form-w);
+  margin-top: var(--space-2);
+  font-size: var(--text-base);
+}
+
+.settings-panel .panel__actions {
+  position: sticky;
+  bottom: 0;
+  padding-block: var(--space-4);
+  margin-top: var(--space-5);
+  background: var(--c-surface);
+  border-top: 1px solid var(--c-border);
+  z-index: 1;
 }

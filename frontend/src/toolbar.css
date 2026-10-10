@@ -3,6 +3,10 @@
  * values come from tokens.css. */
 
 .toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--c-surface);
   flex: none;
   display: flex;
   align-items: center;

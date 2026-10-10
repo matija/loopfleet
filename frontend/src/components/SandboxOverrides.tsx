@@ -109,7 +109,7 @@ export function SandboxOverrides({ projectId }: { projectId: string }) {
   const summary = overrideSummary(paths, loaded && !loadError, nativeAutomation);
 
   return (
-    <section className={`panel${collapsed ? " panel--collapsed" : ""}`}>
+    <section className={`panel sandbox-overrides${collapsed ? " panel--collapsed" : ""}`}>
       <div className="panel__head">
         <h3 className="panel__head-title">
           <button

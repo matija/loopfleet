@@ -88,8 +88,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px; /* tokens-allow: fixed icon-button hit target, off the space/row scale */
+  width: var(--control-h);
+  height: var(--control-h);
   border: none;
   background: transparent;
   color: var(--c-text-muted);
@@ -166,7 +166,8 @@
   margin: 0 var(--space-3) var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
-  border: 1px solid transparent;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
 }
 
 .sidebar__search:hover {
@@ -275,7 +276,7 @@
 }
 
 .project-row__remove {
-  opacity: 1;
+  opacity: 0;
   pointer-events: auto;
   color: var(--c-text-faint);
 }
@@ -297,7 +298,8 @@
 
 /* Quiet fill for the current row — the accent is reserved for the status dot. */
 .project-item[aria-current="true"] {
-  background: var(--c-surface-3);
+  background: var(--c-accent-quiet);
+  border-color: var(--c-accent-border);
   color: var(--c-text);
 }
 
@@ -684,7 +686,7 @@
  * scroll on their own rather than the whole main pane. */
 
 .main__body {
-  padding: var(--space-5);
+  padding: var(--space-6);
 }
 
 /* Hosting the live run view: fill the pane so the view's internal event stream
@@ -915,4 +917,24 @@
 
 .plan-tree__history > summary:hover {
   background: var(--c-surface-hover);
+}
+
+.project-item[aria-current="true"] .project-item__icon {
+  color: var(--c-accent-text);
+}
+
+@media (hover: none) {
+  .project-row__remove {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 900px) {
+  .main__body {
+    padding: var(--space-5);
+  }
+
+  .main__body--run {
+    padding: var(--space-3) var(--space-4);
+  }
 }

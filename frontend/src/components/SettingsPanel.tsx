@@ -286,7 +286,7 @@ export function SettingsPanel({
   }
 
   return (
-    <section className="panel">
+    <section className="panel settings-panel">
       <div className="panel__head">
         <SettingsIcon size={16} className="icon panel__icon" />
         <h3>Settings</h3>

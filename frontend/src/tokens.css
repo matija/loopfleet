@@ -112,135 +112,45 @@
  * inherits. */
 
 :root {
-  /* --- type scale (1.25 ratio off a 12px base) ---
-   * Readex Pro Variable (self-hosted via @fontsource) is the UI face; system
-   * fonts remain as the fallback stack.
-   *
-   * The scale is one step tighter than the original 13px-base cut: base and
-   * everything above it each came down a step (13->12, 15->14, 18->16,
-   * 22->20). The steps at and below --text-sm did *not* move, because 11px is
-   * the rendered floor for text in this app and they are already sitting on
-   * it: --text-xs is 11px exactly, and --text-sm backs the inline-code rule
-   * (`font-size: 0.92em` in empty.css/prd.css), which renders 11.04px off a
-   * 12px parent and would fall to 10.12px if --text-sm dropped to 11px. That
-   * leaves --text-sm and --text-base rendering at the same 12px — intended
-   * for a density pass, where body copy converges on the dense label size
-   * rather than the small labels shrinking below legibility. */
-  --font-sans: "Readex Pro Variable", "Readex Pro", -apple-system,
-    BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Readex Pro Variable", system-ui, sans-serif;
   --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
-
-  /* --text-2xs is below the 1.25 ratio and the only step under the 11px text
-   * floor, reserved for keycaps (⌘K hints) where a micro label reads as a
-   * glyph, not body text. It is deliberately left at 10px rather than
-   * tightened further. */
   --text-2xs: 10px;
-  /* Floor-bound: --text-xs and --text-sm hold at the 11px rendered minimum
-   * (see the note above) and do not step down with the rest of the scale. */
   --text-xs: 11px;
   --text-sm: 12px;
-  --text-base: 12px;
-  --text-md: 14px;
-  --text-lg: 16px;
-  --text-xl: 20px;
-
+  --text-base: 13px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --text-xl: 26px;
   --leading-tight: 1.3;
-  --leading-normal: 1.5;
-
-  /* Tracking scale: tight pulls in headings and large text so they don't read
-   * loose at size; normal nudges body copy a hair tighter than the browser
-   * default; wide is reserved for uppercase micro-labels, where letterforms
-   * need the extra air to stay legible at text-xs/text-sm. */
-  --tracking-tight: -0.02em;
-  --tracking-normal: -0.006em;
-  --tracking-wide: 0.06em;
-
-  /* --- spacing (4px base) ---
-   * Steps 1-3 are the dense inline rhythm — icon/label gaps, control padding,
-   * row insets — and stay on the raw 4px grid; they are already as tight as
-   * the type they surround allows, and a step down would collide with the
-   * step below.
-   *
-   * Steps 4 and up are the panel-padding band (panel and card insets, the
-   * palette's frame, empty-state cards) and each came down one step in this
-   * density pass: 16->14, 24->20, 32->28, 48->40. That puts them on a 2px
-   * grid rather than a strict 4px one, which is what keeps --space-4 from
-   * collapsing onto --space-3. The measured reference confirms the band: its
-   * insets run 8-13 CSS px, which --space-2/3 (8/12) already cover, and the
-   * steps above sit at the reference's next inset and strip values —
-   * --space-4 at its 13px toolbar inset, --space-5 at its 20px pagination
-   * inset, --space-6 at the 28px compact-strip rhythm --control-h shares —
-   * with no card-padding analogue above that (settings cards are the Phase 3
-   * target). */
+  --leading-normal: 1.55;
+  --tracking-tight: -0.025em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.08em;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
-  --space-4: 14px;
-  --space-5: 20px;
-  --space-6: 28px;
-  --space-8: 40px;
-
-  /* --- radii (softer, Esploro-style rounding) --- */
-  --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  /* Fully-rounded: the circular backing disc behind a glyph (status pill's
-   * terminal states, the danger toast icon). Not a scale step — it's the
-   * "round this completely" sentinel, so padding decides the disc's size. */
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 48px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
   --radius-pill: 999px;
-
-  /* --- layout ---
-   * Measured rhythm, taken from the esploro reference capture
-   * (docs/esploro-density-measurements.md): every height here is that
-   * reference's strip height in CSS px, so the shell reads as instrument
-   * strips sharing one baseline rather than as regions with independent
-   * padding (Story 18). --titlebar-h and --control-h were exact matches as
-   * measured and stay; --toolbar-h came down 44 -> 36 and --control-h-lg
-   * 30 -> 24, the reference's toolbar buttons sitting in its 36px strip with
-   * ~6px of margin either side — the breathing room the toolbar comment
-   * below mentions. --row-h sits at the reference's 32px row content, so
-   * the 1px hairline each plan row carries below makes the reference's
-   * 33px pitch. */
-  --sidebar-w: 318px;
-  --titlebar-h: 38px;
-  /* The per-view toolbar strip below the titlebar, at the reference's 36px.
-   * Taller than a control row because it frames --control-h-lg buttons with
-   * ~6px of breathing room either side. */
-  --toolbar-h: 36px;
-  /* Shared height for compact control strips (steppers, tab bars) so they share
-   * one baseline instead of drifting a pixel apart. Matches the reference's
-   * 28px filter bar exactly. */
-  --control-h: 28px;
-  /* Toolbar-class controls — buttons in the toolbar strip, square icon
-   * targets in the dock — at the reference's 24px button height. Tighter
-   * than --control-h because it sizes a control inside a strip, not the
-   * strip itself. */
-  --control-h-lg: 24px;
-  /* Shared height for navigation and list rows: the reference's 32px row
-   * content, with the hairline each row carries making its 33px pitch. */
-  --row-h: 32px;
-
-  /* --- motion ---
-   * Restrained by design: two short durations and one standard ease. A cockpit
-   * tool shouldn't feel animated, just un-jarring — hovers settle, surfaces that
-   * appear (toasts, the palette, run chips) ease in rather than pop. Everything
-   * that references these is neutralized by the prefers-reduced-motion guard at
-   * the foot of this file. --motion-fast is for state/hover, --motion-base for
-   * entrances that travel a short distance. */
+  --sidebar-w: 272px;
+  --titlebar-h: 44px;
+  --toolbar-h: 44px;
+  --control-h: 32px;
+  --control-h-lg: 32px;
+  --row-h: 36px;
+  --content-w: 960px;
+  --form-w: 720px;
   --motion-fast: 0.12s;
   --motion-base: 0.18s;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
-
-  /* --- shadows ---
-   * Geometry only; the ink comes from the per-theme --c-shadow-* tokens. */
   --shadow-1: 0 4px 16px var(--c-shadow-1);
-  /* Deeper lift for surfaces that float above overlays themselves (e.g. a
-   * menu opened from within a palette). */
   --shadow-2: 0 8px 32px var(--c-shadow-2a), 0 2px 8px var(--c-shadow-2b);
-  /* Faint top highlight for raised cards, distinct from the chip's. */
   --shadow-card: inset 0 1px 0 var(--c-shadow-card);
-  /* Chip depth: a one-pixel top highlight at rest, swapped for an inner
-   * shadow while held, so the primary action reads as a physical press. */
   --shadow-chip-hi: inset 0 1px 0 var(--c-shadow-chip-hi);
   --shadow-chip-pressed: inset 0 1px 2px var(--c-shadow-chip-pressed);
 }

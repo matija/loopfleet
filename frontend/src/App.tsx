@@ -958,7 +958,6 @@ export default function App() {
             title="Command palette"
             aria-label="Open command palette"
           >
-            <span>Search</span>
             <kbd>⌘K</kbd>
           </button>
           {resumePrompt && (
@@ -1410,23 +1409,30 @@ function Overview({
 }) {
   return (
     <div className="overview">
+      <header className="overview__head">
+        <h1>Workspace settings</h1>
+        <p>Set up your agents, run preferences, and sandbox.</p>
+      </header>
       <SurfaceCardGrid>
         <SurfaceCard
           icon={<AgentIcon />}
           title="Agents"
           description="Agent CLIs on this machine, with version drift"
+          selected={expanded === "agents"}
           onClick={() => onToggle("agents")}
         />
         <SurfaceCard
           icon={<SettingsIcon />}
-          title="Run defaults"
-          description="Default agent, iteration count, concurrency cap, theme"
+          title="Preferences"
+          description="Run defaults, automation, and appearance"
+          selected={expanded === "defaults"}
           onClick={() => onToggle("defaults")}
         />
         <SurfaceCard
           icon={<BoxIcon />}
           title="Sandbox boundary"
           description="What every run's OS sandbox does and doesn't confine"
+          selected={expanded === "sandbox"}
           onClick={() => onToggle("sandbox")}
         />
       </SurfaceCardGrid>
