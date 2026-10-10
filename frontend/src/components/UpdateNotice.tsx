@@ -1,15 +1,4 @@
-// Update affordance (PRD M7: in-app update). Checks once on mount, and again
-// whenever the app menu's "Check for Updates…" fires. If the updater endpoint
-// reports a newer build, offers to download, install and relaunch. Failures at
-// any step (check, download, install) are reported through the caller's toast
-// surface rather than a blocking dialog — a stale build is not worth
-// interrupting the user's work over.
-//
-// The two entry points differ in what silence means. The launch check is
-// unsolicited, so "you are up to date" stays invisible; a menu check was asked
-// for, so it answers either way.
-
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 
@@ -22,20 +11,24 @@ type UpdateState =
 
 export function useAppUpdater(onError: (message: string) => void) {
   const [state, setState] = useState<UpdateState>({ phase: "idle" });
+  const checking = useRef(false);
 
   useEffect(() => {
+    if (import.meta.env.DEV) return;
     let cancelled = false;
-    check()
+    check({ timeout: 15_000 })
       .then((update) => {
         if (!cancelled && update?.available) {
           setState({ phase: "available", update });
         }
       })
-      .catch((err) => onError(`Update check failed: ${errorMessage(err)}`));
+      .catch((err) => {
+        if (!cancelled) console.warn("Background update check failed", err);
+      });
     return () => {
       cancelled = true;
     };
-  }, [onError]);
+  }, []);
 
   const install = useCallback(async () => {
     if (state.phase !== "available") return;
@@ -50,25 +43,23 @@ export function useAppUpdater(onError: (message: string) => void) {
     }
   }, [state, onError]);
 
-  // The menu-driven check. Unlike the launch one it narrates itself: the user
-  // asked, so "checking…" and "you are on the latest version" are both answers
-  // worth showing. A check already in flight is left alone.
   const checkNow = useCallback(async () => {
-    setState((prev) =>
-      prev.phase === "checking" || prev.phase === "installing"
-        ? prev
-        : { phase: "checking" },
-    );
+    if (checking.current || state.phase === "installing") return;
+    checking.current = true;
+    setState({ phase: "checking" });
     try {
-      const update = await check();
+      const update = await check({ timeout: 15_000 });
       setState(
         update?.available ? { phase: "available", update } : { phase: "current" },
       );
     } catch (err) {
       setState({ phase: "idle" });
-      onError(`Update check failed: ${errorMessage(err)}`);
+      console.warn("Manual update check failed", err);
+      onError("Could not check for updates. Check your connection and try again.");
+    } finally {
+      checking.current = false;
     }
-  }, [onError]);
+  }, [onError, state.phase]);
 
   const dismiss = useCallback(() => setState({ phase: "idle" }), []);
 
