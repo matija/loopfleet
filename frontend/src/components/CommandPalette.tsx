@@ -23,6 +23,7 @@ import { SHORTCUTS, shortcutKeyGlyphs } from "../shortcuts";
 import type { PlanView as Plan, Project } from "../types";
 import { isActiveRun, RUN_STATUS_LABEL } from "../status";
 import type { ActiveRun } from "./RunDock";
+import { TapComposer } from "./TapComposer";
 import { ChecklistIcon, ComposeIcon, FolderIcon, PlayIcon, SearchIcon, TrashIcon } from "./Icon";
 
 /// One glyph per result group, so a row's type reads at a glance before its
@@ -78,6 +79,7 @@ type Item = {
   /// still renders and is readable, but Enter/click no-op and the reason
   /// shows in place of the hint.
   disabledReason?: string;
+  keepOpen?: boolean;
 };
 
 /// Footer hint rows for the palette's own (non-global) keys — arrow
@@ -110,6 +112,9 @@ export function CommandPalette({
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
+  const [tapMode, setTapMode] = useState(false);
+  const [composerRunId, setComposerRunId] = useState<string | null>(null);
+  const composerRun = runs.find((r) => r.runId === composerRunId && isActiveRun(r.status));
   const [tasks, setTasks] = useState<
     { projectId: string; planId: string; planLabel: string; anchor: string; text: string }[]
   >([]);
@@ -131,6 +136,8 @@ export function CommandPalette({
     if (!open) return;
     setQuery("");
     setSelected(0);
+    setTapMode(false);
+    setComposerRunId(null);
     setTasksLoading(true);
     let cancelled = false;
     Promise.all(
@@ -200,7 +207,27 @@ export function CommandPalette({
   }, [currentProjectId, plansByProject, tasks, runs]);
 
   const items = useMemo<Item[]>(() => {
+    const activeRuns = runs.filter((r) => isActiveRun(r.status));
+    if (tapMode) return activeRuns.map((r) => ({
+      id: `tap:${r.runId}`,
+      group: "Runs",
+      title: taskSummary(r.taskText),
+      subtitle: `${RUN_STATUS_LABEL[r.status]} · ${r.agent} · ${r.projectName}`,
+      hint: "tap",
+      keepOpen: true,
+      run: () => setComposerRunId(r.runId),
+    }));
     const actions: Item[] = [
+      {
+        id: "act:tap",
+        group: "Actions",
+        title: "Tap into run…",
+        subtitle: "Send guidance to an active run across projects",
+        hint: activeRuns.length ? "choose run" : "No active runs",
+        disabledReason: activeRuns.length ? undefined : "No active runs",
+        keepOpen: true,
+        run: () => { setTapMode(true); setQuery(""); setSelected(0); },
+      },
       {
         id: "act:add",
         group: "Actions",
@@ -274,6 +301,7 @@ export function CommandPalette({
     projects,
     tasks,
     runs,
+    tapMode,
     archiveTarget,
     currentProjectId,
     onAddProject,
@@ -336,7 +364,7 @@ export function CommandPalette({
       const item = results[selected];
       if (item && !item.disabledReason) {
         item.run();
-        onClose();
+        if (!item.keepOpen) onClose();
       }
     }
   }
@@ -371,7 +399,7 @@ export function CommandPalette({
             ref={inputRef}
             className="palette__input"
             type="text"
-            placeholder="Search projects, tasks, runs, actions…"
+            placeholder={tapMode ? "Search active runs across projects…" : "Search projects, tasks, runs, actions…"}
             aria-label="Command palette query"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -381,7 +409,7 @@ export function CommandPalette({
         <div className="palette__list" ref={listRef}>
           {ranked.length === 0 ? (
             <div className="palette__empty">
-              No matches for “{query.trim()}”.
+              {tapMode && !runs.some((r) => isActiveRun(r.status)) ? "No active runs." : `No matches for “${query.trim()}”.`}
             </div>
           ) : (
             grouped.map((g) => (
@@ -406,7 +434,7 @@ export function CommandPalette({
                       onClick={() => {
                         if (disabled) return;
                         item.run();
-                        onClose();
+                        if (!item.keepOpen) onClose();
                       }}
                     >
                       <GroupIcon className="palette__row-icon" />
@@ -448,6 +476,7 @@ export function CommandPalette({
           ))}
         </div>
       </div>
+      {composerRun && <TapComposer key={composerRun.runId} run={composerRun} anchorRef={inputRef} onClose={() => setComposerRunId(null)} />}
     </div>
   );
 }
