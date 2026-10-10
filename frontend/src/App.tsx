@@ -183,10 +183,7 @@ export default function App() {
   // the inline script in index.html has already set data-theme to this same
   // value, so the first React paint agrees with the first browser paint.
   const [themeId, setThemeId] = useState<ThemeId>(readStoredThemeId);
-  // Live "filter tables…"-style narrowing of the connections list.
   const [projectFilter, setProjectFilter] = useState("");
-  // The sidebar search row shows a "Search" label until clicked/focused, then
-  // swaps to the live input; it reverts once blurred with no text entered.
   const [projectSearchActive, setProjectSearchActive] = useState(false);
   // The project a removal confirmation is open for — null when no row's
   // remove affordance has been clicked. Only one row's confirmation can be
@@ -233,7 +230,6 @@ export default function App() {
   // affordance for it, which is where macOS users look for it anyway.
   const [aboutOpen, setAboutOpen] = useState(false);
   // Whole-sidebar visibility — separate from the "Projects" disclosure above.
-  // Toggled by the panel-left button in the sidebar top strip or ⌘B, and
   // persisted so the collapsed layout survives a reload.
   const [sidebarHidden, setSidebarHidden] = useState(readSidebarHidden);
   // Collapsed state of the run dock — separate from the sidebar toggle above.
@@ -952,54 +948,7 @@ export default function App() {
     <AppShell
       onOpenSettings={paletteOpenOverview}
       sidebarHidden={sidebarHidden}
-      onToggleSidebar={toggleSidebarHidden}
       notice={null}
-      titlebarTrailing={
-        <>
-          <button
-            ref={resumePromptAnchorRef}
-            className="titlebar__k"
-            onClick={() => setPaletteOpen(true)}
-            title="Command palette"
-            aria-label="Open command palette"
-          >
-            <kbd>⌘K</kbd>
-          </button>
-          {resumePrompt && (
-            <Popover
-              open
-              onClose={() => answerResumePrompt(false)}
-              anchorRef={resumePromptAnchorRef}
-              role="dialog"
-              placement="bottom-end"
-              aria-label="Resume autopilot?"
-              className="resume-prompt"
-            >
-              <p className="resume-prompt__title">
-                Resume auto-advance on{" "}
-                {resumePrompt.plan_title ?? resumePrompt.plan_id}?
-              </p>
-              <p className="resume-prompt__task">
-                {taskSummary(resumePrompt.task_text)}
-              </p>
-              <div className="resume-prompt__actions">
-                <Button
-                  variant="quiet"
-                  onClick={() => answerResumePrompt(false)}
-                >
-                  Not now
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={() => answerResumePrompt(true)}
-                >
-                  Start
-                </Button>
-              </div>
-            </Popover>
-          )}
-        </>
-      }
       dock={
         <RunDock
           runs={runs}
@@ -1068,6 +1017,13 @@ export default function App() {
                   aria-label="Filter projects"
                   value={projectFilter}
                   onChange={(e) => setProjectFilter(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape" && projectFilter) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setProjectFilter("");
+                    }
+                  }}
                   onBlur={() => {
                     if (!projectFilter) setProjectSearchActive(false);
                   }}
@@ -1079,10 +1035,19 @@ export default function App() {
                   onClick={() => setProjectSearchActive(true)}
                   onFocus={() => setProjectSearchActive(true)}
                 >
-                  Search
+                  Filter projects
                 </button>
               )}
-              <kbd className="sidebar__search-kbd">⌘K</kbd>
+              {projectFilter && (
+                <button
+                  type="button"
+                  className="sidebar__search-clear"
+                  aria-label="Clear filter"
+                  onClick={() => setProjectFilter("")}
+                >
+                  ×
+                </button>
+              )}
             </div>
           )}
           {projectsCollapsed ? null : !projectsLoaded ? (
@@ -1278,6 +1243,50 @@ export default function App() {
         breadcrumb={<Breadcrumb crumbs={crumbsFor(view, projects, runs, selectProject)} />}
         trailing={
           <>
+            <button
+              ref={resumePromptAnchorRef}
+              type="button"
+              className="toolbar__palette"
+              data-tauri-drag-region="false"
+              onClick={() => setPaletteOpen(true)}
+              title="Command palette"
+              aria-label="Open command palette"
+            >
+              <kbd>⌘K</kbd>
+            </button>
+            {resumePrompt && (
+              <Popover
+                open
+                onClose={() => answerResumePrompt(false)}
+                anchorRef={resumePromptAnchorRef}
+                role="dialog"
+                placement="bottom-end"
+                aria-label="Resume autopilot?"
+                className="resume-prompt"
+              >
+                <p className="resume-prompt__title">
+                  Resume auto-advance on{" "}
+                  {resumePrompt.plan_title ?? resumePrompt.plan_id}?
+                </p>
+                <p className="resume-prompt__task">
+                  {taskSummary(resumePrompt.task_text)}
+                </p>
+                <div className="resume-prompt__actions">
+                  <Button
+                    variant="quiet"
+                    onClick={() => answerResumePrompt(false)}
+                  >
+                    Not now
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={() => answerResumePrompt(true)}
+                  >
+                    Start
+                  </Button>
+                </div>
+              </Popover>
+            )}
             <IconButton
               icon={PanelLeftIcon}
               aria-label="Sidebar"

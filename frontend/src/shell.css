@@ -9,10 +9,6 @@
   height: 100%;
 }
 
-/* Collapses the sidebar column to zero width (toggled by the panel-left
- * button in the strip below, the toolbar's trailing panel-left button, or ⌘B
- * — see App.tsx). The sidebar itself stays mounted so its scroll position and
- * disclosure state survive the round trip; `.sidebar--hidden` just clips it. */
 .app-shell--sidebar-hidden {
   grid-template-columns: 0 1fr;
 }
@@ -34,23 +30,6 @@
   background: var(--c-surface);
   border-bottom: 1px solid var(--c-border);
   user-select: none;
-}
-
-/* Groups the brand with the collapse toggle so both sit at the strip's start
- * edge — keeps the toggle clear of `.titlebar__k`, which is absolutely
- * positioned against the strip's right edge. */
-.titlebar__brand-group {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-width: 0;
-}
-
-/* Box-less slot for the strip's trailing content (the ⌘K trigger): it must
- * not add a flex item — `display: contents` keeps `.titlebar__k` positioned
- * against the strip itself. */
-.titlebar__trailing {
-  display: contents;
 }
 
 .titlebar__name {
@@ -80,33 +59,6 @@
 .main {
   grid-column: 2;
   grid-row: 1;
-}
-
-/* Bare panel-left icon button that lives in the sidebar top strip. */
-.sidebar__collapse-btn {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--control-h);
-  height: var(--control-h);
-  border: none;
-  background: transparent;
-  color: var(--c-text-muted);
-  border-radius: var(--radius-sm);
-}
-
-.sidebar__restore-btn {
-  position: absolute;
-  left: 76px;
-  top: calc(var(--titlebar-h) / 2);
-  transform: translateY(-50%);
-  z-index: 1;
-}
-
-.sidebar__collapse-btn:hover {
-  background: var(--c-surface-hover);
-  color: var(--c-text);
 }
 
 .sidebar__section-head {
@@ -155,9 +107,6 @@
   transform: rotate(90deg);
 }
 
-/* "filter tables…"-style live narrowing over the connections list, styled as
- * a borderless list row (icon + muted label + trailing ⌘K) that swaps its
- * label for a live text input on click/focus without changing row height. */
 .sidebar__search {
   display: flex;
   align-items: center;
@@ -223,17 +172,29 @@
   color: var(--c-text-muted);
 }
 
-.sidebar__search-kbd {
+.sidebar__search-clear {
   flex: none;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--c-text-faint);
-  background: var(--c-surface-3);
+  border: none;
+  background: transparent;
+  color: var(--c-text-muted);
+  cursor: pointer;
+}
+
+.toolbar__palette {
+  flex: none;
+  min-height: var(--control-h);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-sm);
-  padding: 0 var(--space-1);
-  min-width: 18px;
-  text-align: center;
+  background: var(--c-surface-2);
+  color: var(--c-text-muted);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.toolbar__palette:hover,
+.sidebar__search-clear:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
 }
 
 .sidebar__list {
@@ -679,7 +640,7 @@
 }
 
 .app-shell--sidebar-hidden .toolbar {
-  padding-left: calc(76px + var(--space-6) + var(--space-3));
+  padding-left: 76px;
 }
 
 /* The run/task/compare views fill the pane so their internal event streams

@@ -29,25 +29,19 @@
 // the slot, so whatever gets rendered into it stays clickable.
 
 import type { ReactNode } from "react";
-import { PanelLeftIcon, SettingsIcon, XIcon } from "./Icon";
+import { SettingsIcon, XIcon } from "./Icon";
 
 export function AppShell({
   sidebar,
   children,
   dock,
-  titlebarTrailing,
   notice,
   onOpenSettings,
   sidebarHidden,
-  onToggleSidebar,
 }: {
   sidebar: ReactNode;
   children: ReactNode;
   dock: ReactNode;
-  /// Right-aligned content in the top window bar (the ⌘K entry point). Sits
-  /// over the drag region, inside a slot that opts out of dragging, so the
-  /// trigger stays clickable.
-  titlebarTrailing?: ReactNode;
   /// Optional dismissible accent notice shown above the Settings row. App.tsx
   /// owns whether there's anything to announce and how dismissal is tracked —
   /// AppShell just renders whatever it's given.
@@ -55,47 +49,16 @@ export function AppShell({
   /// Opens the overview view. Backs the pinned Settings row.
   onOpenSettings: () => void;
   sidebarHidden: boolean;
-  onToggleSidebar: () => void;
 }) {
   return (
     <div className={`app-shell${sidebarHidden ? " app-shell--sidebar-hidden" : ""}`}>
-      {sidebarHidden && (
-        <button
-          type="button"
-          className="sidebar__collapse-btn sidebar__restore-btn"
-          data-tauri-drag-region="false"
-          onClick={onToggleSidebar}
-          title="Show sidebar (⌘B)"
-          aria-label="Show sidebar"
-        >
-          <PanelLeftIcon size={15} />
-        </button>
-      )}
       <aside
         className={`sidebar${sidebarHidden ? " sidebar--hidden" : ""}`}
         aria-hidden={sidebarHidden}
         inert={sidebarHidden ? true : undefined}
       >
         <div className="sidebar__top" data-tauri-drag-region="deep">
-          <div className="titlebar__brand-group">
-            <span className="titlebar__name">Loopfleet</span>
-            <button
-              type="button"
-              className="sidebar__collapse-btn"
-              data-tauri-drag-region="false"
-              onClick={onToggleSidebar}
-              title="Hide sidebar (⌘B)"
-              aria-label="Hide sidebar"
-              tabIndex={sidebarHidden ? -1 : 0}
-            >
-              <PanelLeftIcon size={15} />
-            </button>
-          </div>
-          {/* Box-less wrapper (`display: contents`), so the opt-out covers the
-              caller's trailing content without changing the strip's layout. */}
-          <div className="titlebar__trailing" data-tauri-drag-region="false">
-            {titlebarTrailing}
-          </div>
+          <span className="titlebar__name">Loopfleet</span>
         </div>
         {sidebar}
         <div className="sidebar__footer">
