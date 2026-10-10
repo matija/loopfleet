@@ -38,6 +38,11 @@ pub use stub::StubAdapter;
 /// the adapter never learns the backend is Seatbelt, keeping `Sandbox` details
 /// out of the adapters (PRD: Sandbox).
 ///
+/// The Seatbelt wrapper (`sandbox-exec`) execs the agent and passes stdin
+/// through, including the piped stdin used by Pi and Codex for steering JSON.
+/// Supervision uses this inherited channel without weakening the boundary:
+/// the rendered Seatbelt profile still confines the agent and its descendants.
+///
 /// The child is put in its own process group (`process_group(0)`, so its pgid
 /// equals its pid) so a stop can SIGTERM the whole group via [`stop_agent`],
 /// catching shells and tools the agent forked — the PRD's stop semantics.

@@ -7,6 +7,10 @@
 //! for a headless run: writes are confined to the run's worktree, the per-run
 //! progress dir, agent config/cache dirs, and temp dirs; reads and network stay
 //! open. See PRD "Sandbox".
+//!
+//! `sandbox-exec` is an exec wrapper: the agent inherits stdin, including the
+//! supervisor's steering pipe. Supervision does not grant additional writes;
+//! the rendered profile still confines the agent and its descendants.
 
 use std::ffi::{OsStr, OsString};
 use std::fmt;
