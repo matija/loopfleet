@@ -1,11 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
+  DELIVERY_LABEL,
   canMergeFromDock,
   isActiveRun,
   isMergedRun,
   type MergeCandidate,
 } from "./status";
 import type { RunStatus } from "./types";
+
+describe("delivery labels", () => {
+  it.each([
+    ["queued", "Queued"],
+    ["steered", "Steered"],
+    ["delivered", "Delivered"],
+    ["unknown", "Unknown"],
+  ] as const)("labels %s as %s", (kind, label) => {
+    expect(DELIVERY_LABEL[kind]).toBe(label);
+  });
+});
 
 const ALL_STATUSES: RunStatus[] = [
   "queued",

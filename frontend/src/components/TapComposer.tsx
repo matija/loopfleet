@@ -4,6 +4,8 @@ import { Button } from "./Button";
 import { Popover } from "./Popover";
 import type { ActiveRun } from "./RunDock";
 
+export const isValidTapMessage = (text: string): boolean => text.trim() !== "";
+
 export function TapComposer({ run, anchorRef, onClose }: {
   run: Pick<ActiveRun, "runId" | "taskText" | "projectName">;
   anchorRef: RefObject<HTMLElement | null>;
@@ -15,7 +17,7 @@ export function TapComposer({ run, anchorRef, onClose }: {
   const sending = useRef(false);
 
   async function send() {
-    if (!text.trim() || sending.current) return;
+    if (!isValidTapMessage(text) || sending.current) return;
     sending.current = true;
     setBusy(true);
     setError(null);
@@ -54,7 +56,7 @@ export function TapComposer({ run, anchorRef, onClose }: {
         />
         <span>Enter to send · Shift+Enter for a new line</span>
         {error && <p role="alert" style={{ color: "var(--c-danger)", margin: 0 }}>{error}</p>}
-        <Button variant="primary" type="submit" disabled={busy || !text.trim()}>{busy ? "Sending…" : "Send"}</Button>
+        <Button variant="primary" type="submit" disabled={busy || !isValidTapMessage(text)}>{busy ? "Sending…" : "Send"}</Button>
       </form>
     </Popover>
   );
