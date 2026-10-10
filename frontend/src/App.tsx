@@ -49,6 +49,7 @@ import type {
 import { isActiveRun } from "./status";
 import { AppShell } from "./components/AppShell";
 import { AddProject, pickAndRegisterProject } from "./components/AddProject";
+import { PromptEmptyState } from "./components/EmptyState";
 import { AgentStatusPanel } from "./components/AgentStatusPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SandboxBoundaryPanel } from "./components/SandboxBoundaryPanel";
@@ -136,6 +137,7 @@ function readDockCollapsed(): boolean {
 type OverviewSection = "agents" | "defaults" | "sandbox";
 
 type View =
+  | { kind: "start" }
   | { kind: "overview" }
   | { kind: "plan"; projectId: string }
   | {
@@ -161,7 +163,7 @@ export default function App() {
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [view, setView] = useState<View>({ kind: "overview" });
+  const [view, setView] = useState<View>({ kind: "start" });
   // Which overview card is expanded — lifted out of the Overview component so
   // the ⌘,/Ctrl-, shortcut can force "Run defaults" open (see
   // `paletteOpenOverview`) without a click.
@@ -255,8 +257,10 @@ export default function App() {
   const [toolbarFilterEl, setToolbarFilterEl] =
     useState<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    listProjects()
+  const loadProjects = useCallback(() => {
+    setProjectsLoaded(false);
+    setProjectsError(null);
+    return listProjects()
       .then((ps) => {
         setProjects(ps);
         setProjectsLoaded(true);
@@ -264,10 +268,9 @@ export default function App() {
         const restored = lastId ? ps.find((p) => p.id === lastId) : undefined;
         if (restored) {
           setSelectedId(restored.id);
-          setView({ kind: "plan", projectId: restored.id });
+          setView((cur) => cur.kind === "start" ? { kind: "plan", projectId: restored.id } : cur);
         } else {
           setSelectedId(null);
-          setView({ kind: "overview" });
           clearLastProject();
         }
       })
@@ -277,15 +280,17 @@ export default function App() {
       });
   }, []);
 
+  useEffect(() => { void loadProjects(); }, [loadProjects]);
+
   // Mirrors the sidebar selection into localStorage so a reload can restore
   // it (see the `listProjects` effect above) — gated on `projectsLoaded` so
   // the initial `selectedId === null` before the first load doesn't clear a
   // previously stored id out from under the restore read.
   useEffect(() => {
-    if (!projectsLoaded) return;
+    if (!projectsLoaded || projectsError) return;
     if (selectedId) writeLastProject(selectedId);
     else clearLastProject();
-  }, [selectedId, projectsLoaded]);
+  }, [selectedId, projectsLoaded, projectsError]);
 
   // Classify every project's plans so a repo with no plan file — or a plan
   // with no tasks — is visible in the list without clicking into it. Each
@@ -755,10 +760,10 @@ export default function App() {
   const goBack = useCallback(() => {
     setView((cur) => {
       // Already on a plan/overview — nothing to go back to.
-      if (cur.kind === "plan" || cur.kind === "overview") return cur;
+      if (cur.kind === "plan" || cur.kind === "overview" || cur.kind === "start") return cur;
       return selectedId
         ? { kind: "plan", projectId: selectedId }
-        : { kind: "overview" };
+        : { kind: "start" };
     });
   }, [selectedId]);
 
@@ -863,7 +868,7 @@ export default function App() {
       setProjects((prev) => prev.filter((p) => p.id !== removedId));
       setSelectedId((cur) => (cur === removedId ? null : cur));
       if (readLastProject() === removedId) clearLastProject();
-      setView({ kind: "overview" });
+      setView({ kind: "start" });
       closeRemoveProject();
     } catch (e) {
       setRemoveError(String(e));
@@ -1297,7 +1302,32 @@ export default function App() {
             : ""
         }`}
       >
-        {view.kind === "run" ? (
+        {view.kind === "start" ? (
+          !projectsLoaded ? (
+            <PromptEmptyState title="Loading projects…" />
+          ) : projectsError ? (
+            <PromptEmptyState
+              title="Couldn’t load projects"
+              subtitle={projectsError}
+              action={<Button onClick={() => void loadProjects()}>Retry</Button>}
+            />
+          ) : (
+            <PromptEmptyState
+              title={projects.length === 0 ? "Add a project to get started" : "Open a project"}
+              subtitle={projects.length === 0 ? "Choose a git repository to get started." : "Choose a registered project to open its plan."}
+              action={
+                <>
+                  {projects.map((p) => (
+                    <Button key={p.id} icon={FolderIcon} title={p.repo_path} onClick={() => selectProject(p.id)}>
+                      {repoName(p.repo_path)}
+                    </Button>
+                  ))}
+                  <AddProject onAdded={onAdded} />
+                </>
+              }
+            />
+          )
+        ) : view.kind === "run" ? (
           <RunPane
             runId={view.runId}
             runs={runs}
@@ -1563,6 +1593,8 @@ export function crumbsFor(
   }
 
   switch (view.kind) {
+    case "start":
+      return [{ label: "Projects" }];
     case "overview":
       return [{ label: "Overview" }];
     case "plan": {
