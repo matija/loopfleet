@@ -381,3 +381,33 @@
 .md-link:hover {
   color: var(--c-text);
 }
+
+.prd-create {
+  margin: var(--space-6) auto;
+}
+
+.prd-create__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.prd-create .prd-doc__body {
+  margin: var(--space-4) 0;
+}
+
+.prd-create__controls .launch__agents {
+  flex-wrap: wrap;
+  min-width: 0;
+  height: auto;
+}
+
+.prd-create__controls .launch__agent,
+.prd-create__controls .launch__agents > span {
+  min-height: var(--control-h);
+}
+
+.prd-create__controls .launch__agents > span {
+  padding: var(--space-2);
+}

@@ -19,6 +19,7 @@ export function PlanSurface({
   onLaunch,
   onCompare,
   onError,
+  onPlanChanged,
   toolbarActions,
   prdFocusNonce,
   pendingArchivePlanId,
@@ -26,6 +27,7 @@ export function PlanSurface({
 }: {
   projectId: string;
   planNonce: number;
+  onPlanChanged: () => void;
   onLaunch: (run: LaunchedRun) => void;
   onCompare: (target: CompareTarget) => void;
   /// Surfaces command failures (a failed export) through the app's toasts.
@@ -89,14 +91,16 @@ export function PlanSurface({
             onLaunch={onLaunch}
             onCompare={onCompare}
             onError={onError}
+            onPlanChanged={onPlanChanged}
           />
           <SandboxOverrides projectId={projectId} />
         </>
       ) : (
         <PrdView
-          key={projectId}
+          key={`${projectId}:${planNonce}`}
           projectId={projectId}
           onError={onError}
+          onPlanChanged={onPlanChanged}
           autoArchivePlanId={pendingArchivePlanId}
           onAutoArchiveHandled={onPendingArchiveHandled}
         />

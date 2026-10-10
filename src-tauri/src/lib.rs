@@ -604,11 +604,6 @@ fn plan_document(plan_id: String, state: State<'_, AppState>) -> Result<String, 
     std::fs::read_to_string(&file_path).map_err(|e| format!("reading plan {file_path}: {e}"))
 }
 
-/// A proposed AI edit to a plan document, returned by `plan_edit`. The default
-/// agent ran a single pass in an isolated worktree against the PRD; the UI
-/// renders `original` vs `proposed` as a reviewable diff and lands or drops it
-/// through `plan_edit_apply` / `plan_edit_discard`. `edit_id` keys the pending
-/// scratch worktree so those follow-ups can find it.
 #[derive(serde::Serialize)]
 struct PlanEditProposal {
     edit_id: String,
@@ -618,37 +613,20 @@ struct PlanEditProposal {
     proposed: String,
 }
 
-/// An AI plan edit proposed but not yet accepted/discarded: the scratch worktree
-/// to clean up, and what to write where on accept. `original` is the real file's
-/// content at proposal time, so accept can refuse to clobber a since-changed
-/// source.
 struct PendingEdit {
     repo_path: PathBuf,
     worktree_path: PathBuf,
     file_path: PathBuf,
-    original: String,
+    original: Option<String>,
     proposed: String,
 }
 
-/// Run one AI pass over a plan document and return the proposed edit for review.
-/// Given `plan_id` and a free-text `instruction`, this resolves the plan file,
-/// its owning repo, and the project's default agent; cuts a fresh isolated
-/// worktree (sandboxed exactly as a normal run); seeds the agent with the
-/// instruction plus the current PRD, asking it to edit the file in place; waits
-/// for the single pass to finish; and returns `{ edit_id, agent, path, original,
-/// proposed }`. No looping, no progress file. Nothing is written to the real PRD
-/// here — the edit lands only through `plan_edit_apply`; until then the worktree
-/// stays alive, keyed by `edit_id`.
-///
-/// Explicit failures (never panics): no default agent installed, the agent
-/// process failing, or an unreadable result all surface as `Err`.
 #[tauri::command]
 async fn plan_edit(
     plan_id: String,
     instruction: String,
     state: State<'_, AppState>,
 ) -> Result<PlanEditProposal, String> {
-    // Resolve the plan file, its owning repo, and the configured default agent.
     let (file_path, repo_path, agent) = {
         let conn = state.db.lock().unwrap();
         let (project_id, file_path): (String, String) = conn
@@ -662,15 +640,55 @@ async fn plan_edit(
         let agent = loopfleet_store::load_settings(&conn)
             .map_err(|e| e.to_string())?
             .default_agent;
-        (file_path, repo_path, agent)
+        (PathBuf::from(file_path), PathBuf::from(repo_path), agent)
     };
+    let original = std::fs::read_to_string(&file_path)
+        .map_err(|e| format!("reading plan {}: {e}", file_path.display()))?;
+    propose_plan(
+        file_path,
+        repo_path,
+        Some(original),
+        agent,
+        instruction,
+        &state,
+    )
+    .await
+}
 
-    let adapter = build_adapter(&agent)
-        .ok_or_else(|| format!("no default agent to edit with: unknown agent '{agent}'"))?;
+#[tauri::command]
+async fn plan_create(
+    project_id: String,
+    agent: String,
+    instruction: String,
+    state: State<'_, AppState>,
+) -> Result<PlanEditProposal, String> {
+    if instruction.trim().is_empty() {
+        return Err("describe what the new PRD should cover".into());
+    }
+    let project = get_project(&state.db.lock().unwrap(), &project_id)?;
+    let repo_path = PathBuf::from(project.repo_path);
+    let file_path = repo_path.join(match project.plan_convention.as_str() {
+        "prd" => "PRD.md",
+        "folder" => "plans/PRD.md",
+        convention => return Err(format!("unknown plan convention: {convention}")),
+    });
+    match std::fs::symlink_metadata(&file_path) {
+        Ok(_) => return Err("PRD.md already exists — archive it before creating another".into()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.to_string()),
+    }
+    propose_plan(file_path, repo_path, None, agent, instruction, &state).await
+}
 
-    // Fail fast if the default agent's CLI isn't installed, before cutting a
-    // worktree (mirrors `launch_run`; the affordance is meant to be disabled in
-    // this case, but never trust the UI to have gated it).
+async fn propose_plan(
+    file_path: PathBuf,
+    repo_path: PathBuf,
+    original: Option<String>,
+    agent: String,
+    instruction: String,
+    state: &AppState,
+) -> Result<PlanEditProposal, String> {
+    let adapter = build_adapter(&agent).ok_or_else(|| format!("unknown agent '{agent}'"))?;
     if let Some(spec) = loopfleet_adapters::spec_for(&agent) {
         let status = loopfleet_adapters::discover(spec).await;
         if !status.installed {
@@ -679,135 +697,148 @@ async fn plan_edit(
                 .unwrap_or_else(|| format!("{} CLI is not available", spec.display)));
         }
     }
-
-    // The plan file's path relative to its repo — where it lives in the worktree.
-    let rel = std::path::Path::new(&file_path)
-        .strip_prefix(&repo_path)
-        .map_err(|_| format!("plan file {file_path} is not inside repo {repo_path}"))?
-        .to_path_buf();
-
-    let original = std::fs::read_to_string(&file_path)
-        .map_err(|e| format!("reading plan {file_path}: {e}"))?;
-
-    // App-managed scratch, keyed by edit id (outside the repo). The worktree is a
-    // fresh checkout the agent edits in isolation; the profile dir is the sandbox
-    // write grant the pass needs beyond the worktree.
+    let rel = file_path.strip_prefix(&repo_path).map_err(|_| {
+        format!(
+            "plan file {} is not inside repo {}",
+            file_path.display(),
+            repo_path.display()
+        )
+    })?;
     let edit_id = uuid::Uuid::new_v4().to_string();
     let worktrees_root = state.data_dir.join("worktrees");
     let edit_dir = state.data_dir.join("edits").join(&edit_id);
-    let profile_path = state.data_dir.join("profiles").join(format!("{edit_id}.sb"));
+    let profile_path = state
+        .data_dir
+        .join("profiles")
+        .join(format!("{edit_id}.sb"));
     std::fs::create_dir_all(&worktrees_root).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&edit_dir).map_err(|e| e.to_string())?;
-
     let worktree = state
         .git
-        .worktree_add(
-            PathBuf::from(&repo_path),
-            worktrees_root,
-            edit_id.clone(),
-        )
+        .worktree_add(repo_path.clone(), worktrees_root, edit_id.clone())
         .await
         .map_err(|e| e.to_string())?;
-
-    // Confine writes to the worktree (+ edit dir, agent config, temp), exactly as
-    // a normal run is confined.
-    let mut params = RenderParams::new(&worktree.path, &edit_dir);
-    params.agent_dirs = agent_dirs();
-    let wrapper = confine_prefix(&params, &profile_path).map_err(|e| e.to_string())?;
-
-    let prompt = format!(
-        "{instruction}\n\nEdit the plan document at `{rel}` in this repository so it \
-satisfies the instruction above, writing the full edited document back to that \
-file. Change only that file.\n\n--- current {rel} ---\n{original}",
-        rel = rel.display(),
-    );
-
-    let spec = RunSpec {
-        cwd: worktree.path.clone(),
-        prompt,
-        wrapper,
-        model: None,
-    };
-
-    // Drive the single pass to completion, watching for an explicit failure. On
-    // any failure the scratch worktree is dropped before returning so a failed
-    // edit leaves nothing behind.
-    let mut handle = match adapter.start_run(&spec).await {
-        Ok(h) => h,
-        Err(e) => {
-            let _ = state
-                .git
-                .worktree_remove(PathBuf::from(&repo_path), worktree.path.clone())
-                .await;
-            return Err(e.to_string());
+    let result = async {
+        let target = worktree.path.join(rel);
+        let parent = target.parent().ok_or("plan has no parent directory")?;
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        if !parent.canonicalize().map_err(|e| e.to_string())?.starts_with(&worktree.path) {
+            return Err("plan directory is outside the worktree".to_string());
+        }
+        match std::fs::remove_file(&target) {
+            Ok(()) => {},
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+            Err(e) => return Err(e.to_string()),
+        }
+        std::fs::write(&target, original.as_deref().unwrap_or_default()).map_err(|e| e.to_string())?;
+        let mut params = RenderParams::new(&worktree.path, &edit_dir);
+        params.agent_dirs = agent_dirs();
+        let wrapper = confine_prefix(&params, &profile_path).map_err(|e| e.to_string())?;
+        let prompt = match &original {
+            Some(original) => format!(
+                "{instruction}\n\nEdit the plan document at `{rel}` so it satisfies the instruction above. Write the full edited document back to that file. Change only that file.\n\n--- current {rel} ---\n{original}",
+                rel = rel.display(),
+            ),
+            None => format!(
+                "{instruction}\n\nCreate a fresh PRD at `{rel}` for this repository. Inspect the repository for context. Include goals, scope, acceptance criteria, and actionable unchecked tasks using `- [ ]` checklist items. Write the full Markdown document to that file. Change only that file; do not implement the tasks.",
+                rel = rel.display(),
+            ),
+        };
+        let spec = RunSpec { cwd: worktree.path.clone(), prompt, wrapper, model: None };
+        let mut handle = adapter.start_run(&spec).await.map_err(|e| e.to_string())?;
+        let mut failure = None;
+        while let Some(ev) = handle.events.recv().await {
+            if let NormalizedEvent::Failed { reason } = ev {
+                failure = Some(reason);
+            }
+        }
+        if let Some(reason) = failure {
+            return Err(format!("the {agent} plan pass failed: {reason}"));
+        }
+        if !target.canonicalize().map_err(|e| e.to_string())?.starts_with(&worktree.path) {
+            return Err("proposed plan is outside the worktree".to_string());
+        }
+        let proposed = std::fs::read_to_string(target).map_err(|e| format!("reading the proposed plan: {e}"))?;
+        if proposed.trim().is_empty() {
+            return Err("the agent returned an empty PRD — adjust the instruction and retry".to_string());
+        }
+        Ok(proposed)
+    }.await;
+    let proposed = match result {
+        Ok(proposed) => proposed,
+        Err(error) => {
+            let _ = state.git.worktree_remove(repo_path, worktree.path).await;
+            return Err(error);
         }
     };
-    let mut failure: Option<String> = None;
-    while let Some(ev) = handle.events.recv().await {
-        if let NormalizedEvent::Failed { reason } = ev {
-            failure = Some(reason);
-        }
-    }
-    if let Some(reason) = failure {
-        let _ = state
-            .git
-            .worktree_remove(PathBuf::from(&repo_path), worktree.path.clone())
-            .await;
-        return Err(format!("the {agent} edit pass failed: {reason}"));
-    }
-
-    // Read what the agent produced. Same relative path, inside the worktree.
-    let proposed = std::fs::read_to_string(worktree.path.join(&rel))
-        .map_err(|e| format!("reading the edited plan: {e}"))?;
-
     state.edits.lock().unwrap().insert(
         edit_id.clone(),
         PendingEdit {
-            repo_path: PathBuf::from(&repo_path),
-            worktree_path: worktree.path.clone(),
-            file_path: PathBuf::from(&file_path),
+            repo_path,
+            worktree_path: worktree.path,
+            file_path: file_path.clone(),
             original: original.clone(),
             proposed: proposed.clone(),
         },
     );
-
     Ok(PlanEditProposal {
         edit_id,
         agent,
-        path: file_path,
-        original,
+        path: file_path.to_string_lossy().into_owned(),
+        original: original.unwrap_or_default(),
         proposed,
     })
 }
 
-/// Accept a proposed AI plan edit: write the proposed markdown to the real PRD
-/// file and drop the scratch worktree. Idempotent against double-accept (an
-/// unknown/already-resolved `edit_id` is an error, not a panic) and safe against
-/// a since-changed source — if the file on disk no longer matches what was
-/// proposed against, it refuses rather than clobbering, keeping the edit pending
-/// so the user can discard and retry.
 #[tauri::command]
 async fn plan_edit_apply(edit_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    use std::io::Write;
     let pending = state
         .edits
         .lock()
         .unwrap()
         .remove(&edit_id)
         .ok_or_else(|| format!("unknown or already-resolved edit: {edit_id}"))?;
-
-    let current = std::fs::read_to_string(&pending.file_path)
-        .map_err(|e| format!("reading plan {}: {e}", pending.file_path.display()))?;
-    if current != pending.original {
-        // Someone changed the file since the edit was proposed. Keep it pending
-        // so the user can discard and re-run rather than lose their scratch.
+    let result = (|| -> Result<(), String> {
+        if let Some(original) = &pending.original {
+            let current = std::fs::read_to_string(&pending.file_path).map_err(|e| e.to_string())?;
+            if &current != original {
+                return Err(
+                    "the plan changed on disk since this edit was proposed — discard and re-run"
+                        .into(),
+                );
+            }
+            std::fs::write(&pending.file_path, &pending.proposed).map_err(|e| e.to_string())
+        } else {
+            let parent = pending
+                .file_path
+                .parent()
+                .ok_or("plan has no parent directory")?;
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            if !parent
+                .canonicalize()
+                .map_err(|e| e.to_string())?
+                .starts_with(&pending.repo_path)
+            {
+                return Err("plan directory is outside the repository".into());
+            }
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&pending.file_path)
+                .map_err(|e| if e.kind() == std::io::ErrorKind::AlreadyExists {
+                    "PRD.md appeared on disk — discard this draft or archive that file first".to_string()
+                } else {
+                    format!("creating PRD: {e}")
+                })?;
+            file.write_all(pending.proposed.as_bytes())
+                .map_err(|e| e.to_string())
+        }
+    })();
+    if let Err(error) = result {
         state.edits.lock().unwrap().insert(edit_id, pending);
-        return Err(
-            "the plan changed on disk since this edit was proposed — discard and re-run".into(),
-        );
+        return Err(error);
     }
-
-    std::fs::write(&pending.file_path, &pending.proposed)
-        .map_err(|e| format!("writing plan {}: {e}", pending.file_path.display()))?;
     let _ = state
         .git
         .worktree_remove(pending.repo_path, pending.worktree_path)
@@ -3437,6 +3468,7 @@ pub fn run() {
             plan_overview,
             plan_document,
             plan_edit,
+            plan_create,
             plan_edit_apply,
             plan_edit_discard,
             launch_run,

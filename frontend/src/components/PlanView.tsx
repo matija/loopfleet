@@ -98,8 +98,10 @@ export function PlanView({
   onLaunch,
   onCompare,
   onError,
+  onPlanChanged,
 }: {
   projectId: string;
+  onPlanChanged: () => void;
   onLaunch: (run: LaunchedRun) => void;
   onCompare: (target: CompareTarget) => void;
   /// Surfaces command failures (a failed export) through the app's toasts.
@@ -152,7 +154,7 @@ export function PlanView({
 
   if (error) return <p className="panel__error">{error}</p>;
   if (!plans) return <p className="plan__loading">Loading plan…</p>;
-  if (plans.length === 0) return <NoPlanEmptyState />;
+  if (plans.length === 0) return <NoPlanEmptyState projectId={projectId} onCreated={onPlanChanged} />;
 
   return (
     <div className="plans">

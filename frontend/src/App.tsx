@@ -1345,6 +1345,7 @@ export default function App() {
           <PlanSurface
             projectId={view.projectId}
             planNonce={planNonce}
+            onPlanChanged={() => setPlanNonce((nonce) => nonce + 1)}
             onLaunch={onLaunch}
             onError={pushError}
             onCompare={(target: CompareTarget) =>
