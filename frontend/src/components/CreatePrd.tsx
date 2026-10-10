@@ -100,7 +100,6 @@ export function CreatePrd({
   return (
     <section className="prd-doc prd-create" aria-labelledby="prd-create-title" aria-busy={busy}>
       <header className="prd-create__head">
-        <span className="prd-create__eyebrow">{proposal ? "Your draft is ready" : busy ? "Agent is working" : "Start a new plan"}</span>
         <h1 id="prd-create-title">{proposal ? "Review your plan" : busy ? "Drafting your plan" : "What should we build next?"}</h1>
         <p>Turn your brief into a plan you can review and run.</p>
         <ol className="prd-create__steps" aria-label="Planning steps">
