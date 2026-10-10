@@ -1,11 +1,3 @@
-// Plan view: the frozen PRD's task list with a derived `TaskStatus` overlay and
-// a launch control on EVERY task (PRD M7). The launch control is deliberately
-// decoupled from the authored `checked` flag — `checked` only gates the derived
-// status, never the ability to start a run — so a "done" plan (every box checked)
-// still shows a Run button per task. Completed-unaccepted tasks are summarized
-// in one quiet banner above the list; each affected row carries the amber
-// status glyph as its own signal (the compare/accept backlog).
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAgentUsage } from "../agentUsage";
@@ -40,6 +32,7 @@ import {
   AlertIcon,
   BoxIcon,
   CheckIcon,
+  ChevronRightIcon,
   ClockIcon,
   DotIcon,
   FolderIcon,
@@ -105,8 +98,10 @@ export function PlanView({
   onLaunch,
   onCompare,
   onError,
+  onPlanChanged,
 }: {
   projectId: string;
+  onPlanChanged: () => void;
   onLaunch: (run: LaunchedRun) => void;
   onCompare: (target: CompareTarget) => void;
   /// Surfaces command failures (a failed export) through the app's toasts.
@@ -159,7 +154,7 @@ export function PlanView({
 
   if (error) return <p className="panel__error">{error}</p>;
   if (!plans) return <p className="plan__loading">Loading plan…</p>;
-  if (plans.length === 0) return <NoPlanEmptyState />;
+  if (plans.length === 0) return <NoPlanEmptyState projectId={projectId} onCreated={onPlanChanged} />;
 
   return (
     <div className="plans">
@@ -203,20 +198,33 @@ function PlanCard({
   onError: (message: string) => void;
 }) {
   const review = plan.tasks.filter((t) => t.status === "completed-unaccepted");
-  // Accepted tasks fall out of the working set: they render in their own
-  // "Done" section below the open tasks (authored order preserved within each
-  // group), so the index leads with what's left to do.
-  const open = plan.tasks.filter((t) => t.status !== "accepted");
+  const open = plan.tasks.filter((t) => t.status === "not-started" || t.status === "in-progress");
   const done = plan.tasks.filter((t) => t.status === "accepted");
-  // Same rule the backend's `next_task` uses to pick what "Continue plan"
-  // would start — mirrored here just to decide whether to show the button.
   const hasNextTask = plan.tasks.some((t) => t.status === "not-started");
+  const renderTask = (task: TaskView) => (
+    <TaskRow
+      key={task.anchor}
+      task={task}
+      planId={plan.plan_id}
+      projectId={projectId}
+      repoName={repoName}
+      installed={installed}
+      agentsLoading={agentsLoading}
+      onLaunched={onLaunched}
+      onLaunch={onLaunch}
+      onCompare={onCompare}
+    />
+  );
 
   return (
     <section className="plan-card">
       <header className="plan-card__head">
-        <h3>{plan.title ?? plan.file_path}</h3>
-        <span className="plan-card__path">{plan.file_path}</span>
+        <div className="plan-card__identity">
+          <h3 title={plan.file_path}>{plan.title ?? plan.file_path.split("/").pop()}</h3>
+          <span className="plan-card__path">
+            {done.length} of {plan.tasks.length} accepted
+          </span>
+        </div>
         {hasNextTask && (
           <ContinuePlanButton
             projectId={projectId}
@@ -229,69 +237,31 @@ function PlanCard({
         <ExportButton
           onExport={() => exportPlanReport(plan.plan_id)}
           onError={onError}
-          title="Save every task in this plan — its runs, events, and diffs — as an HTML report"
+          title="Save this plan’s tasks, runs, events, and diffs as an HTML report"
         />
       </header>
-
-      {review.length > 0 && (
-        <div className="review-banner" role="status">
-          <AlertIcon size={16} className="review-banner__icon" />
-          <span>
-            <strong>{review.length}</strong>{" "}
-            {review.length === 1 ? "run is" : "runs are"} awaiting review —
-            compare the produced diffs and use one, or keep iterating.
-          </span>
-        </div>
-      )}
-
-      {plan.tasks.length === 0 ? (
-        <NoTasksEmptyState />
-      ) : (
+      {plan.tasks.length === 0 ? <NoTasksEmptyState /> : (
         <>
-          {open.length > 0 && (
-            <ul className="task-list">
-              {open.map((task) => (
-                <TaskRow
-                  key={task.anchor}
-                  task={task}
-                  planId={plan.plan_id}
-                  projectId={projectId}
-                  repoName={repoName}
-                  installed={installed}
-                  agentsLoading={agentsLoading}
-                  onLaunched={onLaunched}
-                  onLaunch={onLaunch}
-                  onCompare={onCompare}
-                />
-              ))}
-            </ul>
-          )}
-          {done.length > 0 && (
-            <>
-              <div className="task-list__done-head">
-                <CheckIcon size={14} className="task-list__done-icon" />
-                <span>
-                  Done · {done.length} accepted
-                  {open.length === 0 ? " — all tasks accepted" : ""}
-                </span>
+          {review.length > 0 && (
+            <section className="plan-card__review" aria-label="Ready for review">
+              <div className="review-banner" role="status">
+                <AlertIcon size={16} className="review-banner__icon" />
+                <strong>{review.length} ready for review</strong>
+                <span>Choose a run to merge.</span>
               </div>
-              <ul className="task-list task-list--done">
-                {done.map((task) => (
-                  <TaskRow
-                    key={task.anchor}
-                    task={task}
-                    planId={plan.plan_id}
-                    projectId={projectId}
-                    repoName={repoName}
-                    installed={installed}
-                    agentsLoading={agentsLoading}
-                    onLaunched={onLaunched}
-                    onLaunch={onLaunch}
-                    onCompare={onCompare}
-                  />
-                ))}
-              </ul>
-            </>
+              <ul className="task-list">{review.map(renderTask)}</ul>
+            </section>
+          )}
+          {open.length > 0 && <ul className="task-list">{open.map(renderTask)}</ul>}
+          {done.length > 0 && (
+            <details className="task-history">
+              <summary className="task-list__done-head">
+                <ChevronRightIcon size={14} className="disclosure__chevron" />
+                <CheckIcon size={14} className="task-list__done-icon" />
+                <span>{done.length} accepted{open.length === 0 && review.length === 0 ? " · Plan complete" : ""}</span>
+              </summary>
+              <ul className="task-list task-list--done">{done.map(renderTask)}</ul>
+            </details>
           )}
         </>
       )}
@@ -415,6 +385,7 @@ function TaskRow({
   useEffect(() => () => clearTimeout(leaveTimer.current), []);
   useEffect(() => setComposerRunId(null), [lastRun?.runId, active]);
   const [expanded, toggleExpanded] = useTaskExpanded(`${planId}:${task.anchor}`);
+  const preview = taskSummary(task.text);
 
   // Track the launched run's terminal transition so the hover card can show
   // a finished duration instead of freezing on "running".
@@ -446,7 +417,7 @@ function TaskRow({
     // metadata card but em dashes, so the hover handlers stay off the row and
     // the Popover stays out of the tree.
     <li
-      className="task-row"
+      className={`task-row task-row--${task.status}`}
       tabIndex={0}
       ref={rowRef}
       {...(lastRun ? {
@@ -479,7 +450,8 @@ function TaskRow({
         onClick={toggleExpanded}
         title={normalizeDisplayText(task.text)}
       >
-        {normalizeDisplayText(task.text)}
+        <span className="task-row__preview">{preview}</span>
+        <span className="task-row__full">{normalizeDisplayText(task.text)}</span>
       </button>
       {task.checked && (
         <span

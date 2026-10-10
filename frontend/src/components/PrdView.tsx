@@ -59,10 +59,12 @@ type ArchivePhase = "loading" | "confirm";
 export function PrdView({
   projectId,
   onError,
+  onPlanChanged,
   autoArchivePlanId,
   onAutoArchiveHandled,
 }: {
   projectId: string;
+  onPlanChanged: () => void;
   /// The app's toast surface. Used for command failures (a failed export)
   /// and, for archive, the success outcome too — the archived path.
   onError: (message: string) => void;
@@ -191,7 +193,7 @@ export function PrdView({
     setEditError(null);
     try {
       await planEditApply(proposal.edit_id);
-      load();
+      onPlanChanged();
     } catch (e) {
       setEditError(String(e));
     } finally {
@@ -255,6 +257,7 @@ export function PrdView({
     try {
       const path = await archivePlan(archivePlanId, archiveNameField.trim());
       onError(`Archived to ${path}`);
+      onPlanChanged();
     } catch (e) {
       onError(String(e));
     } finally {
@@ -275,7 +278,7 @@ export function PrdView({
 
   if (error) return <p className="panel__error">{error}</p>;
   if (!plans) return <p className="plan__loading">Loading document…</p>;
-  if (plans.length === 0) return <NoPlanEmptyState />;
+  if (plans.length === 0) return <NoPlanEmptyState projectId={projectId} onCreated={onPlanChanged} />;
 
   const editLabel = agent ? `Edit with ${agent.label}` : "Edit";
   // The affordances are enabled only when nothing else is being edited or

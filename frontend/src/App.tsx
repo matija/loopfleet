@@ -645,20 +645,8 @@ export default function App() {
     [pushError],
   );
 
-  // Acknowledge on focus: returning to the app (its window regaining focus)
-  // means the user is looking again, so clear every finished run's attention
-  // marker. Opening a specific finished run acknowledges just that one (below).
-  // The `some` guard keeps focus events that change nothing from re-rendering.
-  // Also clears the OS-level dock badge/attention signal, since a JS `focus`
-  // event doesn't necessarily coincide with the native window-focus transition
-  // the backend otherwise relies on to clear it.
   useEffect(() => {
     function onFocus() {
-      setRuns((prev) =>
-        prev.some((r) => r.unseen)
-          ? prev.map((r) => (r.unseen ? { ...r, unseen: false } : r))
-          : prev,
-      );
       acknowledgeRuns().catch(() => {});
     }
     window.addEventListener("focus", onFocus);
@@ -1115,10 +1103,11 @@ export default function App() {
                     className="project-item"
                     role="button"
                     tabIndex={0}
+                    title={p.repo_path}
                     aria-current={p.id === selectedId}
                     onClick={() => selectProject(p.id)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
+                      if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
                         e.preventDefault();
                         selectProject(p.id);
                       }
@@ -1148,9 +1137,6 @@ export default function App() {
                       );
                     })()}
                     <span className="project-item__trail">
-                      <span className="project-item__meta">
-                        {parentPath(p.repo_path)}
-                      </span>
                       <IconButton
                         icon={TrashIcon}
                         aria-label={`Remove ${repoName(p.repo_path)}`}
@@ -1359,6 +1345,7 @@ export default function App() {
           <PlanSurface
             projectId={view.projectId}
             planNonce={planNonce}
+            onPlanChanged={() => setPlanNonce((nonce) => nonce + 1)}
             onLaunch={onLaunch}
             onError={pushError}
             onCompare={(target: CompareTarget) =>

@@ -145,6 +145,14 @@ export function planEdit(
   return invoke("plan_edit", { planId, instruction });
 }
 
+export function planCreate(
+  projectId: string,
+  agent: string,
+  instruction: string,
+): Promise<PlanEditProposal> {
+  return invoke("plan_create", { projectId, agent, instruction });
+}
+
 /// Accept a proposed AI plan edit (`edit_id`): write the proposed markdown to the
 /// real PRD file and drop the scratch worktree.
 export function planEditApply(editId: string): Promise<void> {

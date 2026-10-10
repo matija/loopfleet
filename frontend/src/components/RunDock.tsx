@@ -67,8 +67,6 @@ export type ActiveRun = {
   /// long it has been going (session-scoped — runs don't survive a restart).
   startedAt: number;
   status: RunStatus;
-  /// Set when the run finished while it wasn't the open view — the dock's
-  /// attention marker. Cleared by acknowledge-on-focus or opening the run.
   unseen?: boolean;
   /// Set on a `limit-reached` run when the backend has scheduled an automatic
   /// re-run for it (`scheduled_resume`), carrying the epoch ms it fires at.
@@ -336,6 +334,8 @@ function RunChip({
   const pendingNote = taps.some((tap) => tap.kind === "queued");
   const unknownDelivery = taps.some((tap) => tap.kind === "unknown");
   const active = isActiveRun(r.status);
+  const merged = isMergedRun(r);
+  const ready = r.status === "completed" && !merged && !r.pendingResume;
   const taskText = taskSummary(r.taskText);
   const StatusIcon = RUN_STATUS_ICON[r.status];
   // The chip itself carries only the task text, so agent and project — the
@@ -394,7 +394,7 @@ function RunChip({
 
   return (
     <li
-      className={`run-chip${selected ? " run-chip--selected" : ""}${r.unseen ? " run-chip--unseen" : ""}`}
+      className={`run-chip${selected ? " run-chip--selected" : ""}${r.unseen && !merged ? " run-chip--unseen" : ""}${ready ? " run-chip--ready" : ""}${merged ? " run-chip--merged" : ""}`}
     >
       <button
         ref={anchorRef}
@@ -406,7 +406,7 @@ function RunChip({
         onMouseEnter={() => { clearTimeout(leaveTimer.current); handlers.onMouseEnter(); }}
         onMouseLeave={leaveCard}
       >
-        {r.unseen && (
+        {r.unseen && !merged && (
           <span
             className="run-chip__unseen"
             aria-label="Finished, not yet seen"
@@ -414,11 +414,16 @@ function RunChip({
         )}
         <span
           className={`run-chip__status run-chip__status--${r.status}`}
-          aria-label={RUN_STATUS_LABEL[r.status]}
+          aria-label={merged ? "Merged" : RUN_STATUS_LABEL[r.status]}
         >
           <StatusIcon size={14} />
         </span>
-        <span className="run-chip__task">{taskText}</span>
+        <span className="run-chip__identity">
+          <span className="run-chip__task">{taskText}</span>
+          <span className="run-chip__context">
+            {r.projectName} · {merged ? "Merged" : ready ? "Ready for review" : RUN_STATUS_LABEL[r.status]}
+          </span>
+        </span>
         {taps.length > 0 && (
           <span className={`run-chip__taps${pendingNote ? " run-chip__taps--pending" : ""}`}>
             {taps.length} {taps.length === 1 ? "tap" : "taps"}{pendingNote ? " · Note queued" : ""}{unknownDelivery ? " · Delivery unknown" : ""}
@@ -516,6 +521,7 @@ function RunChip({
           aria-label={merging ? "Merging run" : "Use this run"}
         >
           <CheckIcon size={14} />
+          {merging ? "Merging…" : "Merge"}
         </button>
       )}
       {r.autoMerge ? (
@@ -614,10 +620,14 @@ export function RunDock({
   collapsed?: boolean;
 }) {
   const activeCount = runs.filter((r) => isActiveRun(r.status)).length;
-  const unseenCount = runs.filter((r) => r.unseen).length;
-  // Idle (no run launched this session yet, and nothing booked for later)
-  // collapses the dock to the head strip the same way the manual toggle
-  // does — there is nothing to show.
+  const merged = runs.filter(isMergedRun);
+  const ready = runs.filter((r) => r.status === "completed" && !isMergedRun(r) && !r.pendingResume);
+  const unseenCount = runs.filter((r) => r.unseen && !isMergedRun(r)).length;
+  const nextReview = ready[0] ?? runs.find((r) => r.unseen && !isMergedRun(r));
+  const ordered = [...runs].sort((a, b) => {
+    const priority = (r: ActiveRun) => isMergedRun(r) ? 2 : isActiveRun(r.status) || r.pendingResume ? 1 : 0;
+    return priority(a) - priority(b);
+  });
   const idle = runs.length === 0 && pendingLaunches.length === 0;
   const effectiveCollapsed = collapsed || idle;
 
@@ -637,22 +647,34 @@ export function RunDock({
   return (
     <section
       className={`run-dock${effectiveCollapsed ? " run-dock--collapsed" : ""}`}
-      aria-label="Active runs"
+      aria-label="Runs"
     >
       <div className="run-dock__head">
         <span className="run-dock__title">Runs</span>
         <span className="run-dock__count">
-          {activeCount} active{runs.length > activeCount ? ` · ${runs.length - activeCount} done` : ""}
+          {activeCount} active
           {pendingLaunches.length > 0 ? ` · ${pendingLaunches.length} scheduled` : ""}
-          {unseenCount > 0 ? ` · ${unseenCount} new` : ""}
         </span>
+        <span className="run-dock__attention" role="status" aria-live="polite">
+          {ready.length > 0 ? `${ready.length} ready for review` : unseenCount > 0 ? `${unseenCount} finished` : ""}
+        </span>
+        {nextReview && (
+          <Button variant="quiet" className="run-dock__review" onClick={() => onOpen(nextReview.runId)}>
+            Review
+          </Button>
+        )}
+        {merged.length > 0 && (
+          <Button variant="quiet" className="run-dock__clear" onClick={() => merged.forEach((r) => onDismiss(r.runId))} title="Remove merged runs from the dock. Their history stays in the plan.">
+            Clear merged · {merged.length}
+          </Button>
+        )}
       </div>
       {effectiveCollapsed ? null : (
         <ul className="run-dock__list">
           {pendingLaunches.map((p) => (
             <PendingLaunchChip key={`launch-${p.id}`} launch={p} onCancel={onCancelLaunch} />
           ))}
-          {runs.map((r) => (
+          {ordered.map((r) => (
             <RunChip
               key={r.runId}
               run={r}

@@ -1,15 +1,3 @@
-// Plan tree: the selected connection's plan rendered as the sidebar's object
-// list (the DB client's filterable table tree). Tasks group under their plan
-// file, each row leading with the derived `TaskStatus` glyph (muted, amber only
-// for needs-review) and a right-aligned run-count badge from `plan_overview`.
-// Clicking a task opens or focuses its tab.
-//
-// A group header is a row like any other, not a caption: the chevron toggles
-// the group, the title itself opens that plan as a document (the pane's PRD
-// view), and a trailing archive button — hover/focus-revealed, the same
-// discipline as the connection row's trash icon — starts the existing archive
-// flow that moves the file into the project's prds/ directory.
-
 import { useEffect, useState } from "react";
 import { planOverview } from "../commands";
 import { taskSummary } from "../displayText";
@@ -87,6 +75,7 @@ export function PlanTree({
           key={plan.plan_id}
           plan={plan}
           tasks={tasks}
+          filtering={!!q}
           activeTaskId={activeTaskId}
           onOpenTask={onOpenTask}
           onOpenPrd={onOpenPrd}
@@ -100,6 +89,7 @@ export function PlanTree({
 function PlanTreeGroup({
   plan,
   tasks,
+  filtering,
   activeTaskId,
   onOpenTask,
   onOpenPrd,
@@ -107,6 +97,7 @@ function PlanTreeGroup({
 }: {
   plan: Plan;
   tasks: Plan["tasks"];
+  filtering: boolean;
   activeTaskId: string | null;
   onOpenTask: (task: OpenTask) => void;
   onOpenPrd: (planId: string) => void;
@@ -114,6 +105,45 @@ function PlanTreeGroup({
 }) {
   const [collapsed, toggle] = useSidebarCollapsed(`plan:${plan.plan_id}`);
   const label = plan.title ?? plan.file_path;
+  const done = tasks.filter((task) => task.status === "accepted");
+  const renderTask = (task: Plan["tasks"][number]) => {
+    const id = `task:${plan.plan_id}:${task.anchor}`;
+    const StatusIcon = STATUS_ICON[task.status];
+    return (
+      <button
+        key={task.anchor}
+        className={`tree-item tree-item--${task.status}`}
+        aria-current={id === activeTaskId}
+        onClick={() =>
+          onOpenTask({
+            planId: plan.plan_id,
+            taskAnchor: task.anchor,
+            taskText: task.text,
+          })
+        }
+      >
+        <span
+          className={`tree-item__status tree-item__status--${task.status}`}
+          role="img"
+          aria-label={STATUS_LABEL[task.status]}
+          title={STATUS_LABEL[task.status]}
+        >
+          <StatusIcon size={16} />
+        </span>
+        <span className="tree-item__text">
+          {taskSummary(task.text)}
+        </span>
+        {task.run_count > 0 && (
+          <span
+            className="tree-item__count"
+            title={`${task.run_count} run(s)`}
+          >
+            {task.run_count}
+          </span>
+        )}
+      </button>
+    );
+  };
 
   return (
     <div className="plan-tree__group">
@@ -143,45 +173,17 @@ function PlanTreeGroup({
           onClick={() => onArchivePlan(plan.plan_id)}
         />
       </div>
-      {!collapsed &&
-        tasks.map((task) => {
-          const id = `task:${plan.plan_id}:${task.anchor}`;
-          const StatusIcon = STATUS_ICON[task.status];
-          return (
-            <button
-              key={task.anchor}
-              className="tree-item"
-              aria-current={id === activeTaskId}
-              onClick={() =>
-                onOpenTask({
-                  planId: plan.plan_id,
-                  taskAnchor: task.anchor,
-                  taskText: task.text,
-                })
-              }
-            >
-              <span
-                className={`tree-item__status tree-item__status--${task.status}`}
-                role="img"
-                aria-label={STATUS_LABEL[task.status]}
-                title={STATUS_LABEL[task.status]}
-              >
-                <StatusIcon size={16} />
-              </span>
-              <span className="tree-item__text">
-                {taskSummary(task.text)}
-              </span>
-              {task.run_count > 0 && (
-                <span
-                  className="tree-item__count"
-                  title={`${task.run_count} run(s)`}
-                >
-                  {task.run_count}
-                </span>
-              )}
-            </button>
-          );
-        })}
+      {!collapsed && (
+        <>
+          {tasks.filter((task) => task.status !== "accepted").map(renderTask)}
+          {done.length > 0 && (
+            <details className="plan-tree__history" open={filtering || done.some((task) => `task:${plan.plan_id}:${task.anchor}` === activeTaskId) || undefined}>
+              <summary><ChevronRightIcon size={12} className="disclosure__chevron" />{done.length} accepted</summary>
+              {done.map(renderTask)}
+            </details>
+          )}
+        </>
+      )}
     </div>
   );
 }

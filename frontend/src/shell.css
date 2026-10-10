@@ -2,6 +2,7 @@
  * all values come from tokens.css. */
 
 .app-shell {
+  position: relative;
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
   grid-template-rows: minmax(0, 1fr) auto;
@@ -93,6 +94,14 @@
   background: transparent;
   color: var(--c-text-muted);
   border-radius: var(--radius-sm);
+}
+
+.sidebar__restore-btn {
+  position: absolute;
+  left: 76px;
+  top: calc(var(--titlebar-h) / 2);
+  transform: translateY(-50%);
+  z-index: 1;
 }
 
 .sidebar__collapse-btn:hover {
@@ -233,11 +242,6 @@
   padding: 0 var(--space-2);
 }
 
-/* Connection row: leading folder icon + status dot + repo name, with the
- * short-path metadata right-aligned and muted. Fixed to --row-h so rows sit
- * on the same rhythm as tree-item below. Its remove affordance sits right
- * after the name, only showing up on hover/focus so the list doesn't carry
- * a permanent trash icon on every row. */
 .project-item {
   display: flex;
   align-items: center;
@@ -254,18 +258,14 @@
   cursor: pointer;
 }
 
-/* Trailing slot: the path and the remove button share one fixed-width cell
- * so revealing the remove button on hover can't reflow anything before it —
- * the same discipline `.task-status` applies to its glyph/label swap. Both
- * children stack in the slot and only one paints at a time. */
 .project-item__trail {
   position: relative;
   flex: none;
-  width: 128px;
+  width: var(--control-h);
   height: 100%;
+  margin-left: auto;
 }
 
-.project-item__trail .project-item__meta,
 .project-row__remove {
   position: absolute;
   top: 50%;
@@ -275,13 +275,9 @@
 }
 
 .project-row__remove {
-  opacity: 0;
-  pointer-events: none;
+  opacity: 1;
+  pointer-events: auto;
   color: var(--c-text-faint);
-}
-
-.project-item:is(:hover, :focus-within) .project-item__trail .project-item__meta {
-  opacity: 0;
 }
 
 .project-item:is(:hover, :focus-within) .project-row__remove,
@@ -351,17 +347,6 @@
   border-radius: var(--radius-sm);
   padding: 0 var(--space-1);
   white-space: nowrap;
-}
-
-.project-item__meta {
-  max-width: 100%;
-  font-size: var(--text-xs);
-  color: var(--c-text-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  direction: rtl; /* keep the tail visible when the parent path is long */
-  text-align: left;
 }
 
 /* Remove-project confirmation: a real interactive dialog (unlike the
@@ -550,12 +535,6 @@
   color: var(--c-text-faint);
 }
 
-/* Group header: a real row on the same --row-h rhythm as the task rows below
- * it, not an uppercase caption. Uppercasing a document title ("PRD: Duplicate
- * detection") mangles it, so the title keeps its own casing and reads as the
- * object it is. Three slots: the chevron toggles the group, the title opens
- * the plan as a document, and the trailing archive button appears on
- * hover/focus — the same reveal as the connection row's trash icon. */
 .plan-tree__group-head {
   display: flex;
   align-items: center;
@@ -604,12 +583,10 @@
   white-space: nowrap;
 }
 
-/* Reserved slot: the button is always laid out, only its paint is toggled, so
- * revealing it on hover can't reflow the title beside it. */
 .plan-tree__archive {
   flex: none;
-  opacity: 0;
-  pointer-events: none;
+  opacity: 1;
+  pointer-events: auto;
   color: var(--c-text-faint);
   transition: opacity var(--motion-fast) var(--ease-out);
 }
@@ -699,12 +676,8 @@
   overflow-y: auto;
 }
 
-/* With the sidebar collapsed the main pane starts at the window's left edge,
- * so its toolbar runs under the native traffic lights. Inset it by the same
- * 76px `.sidebar__top` uses, so the breadcrumb clears them; the toggle that
- * brings the sidebar back is the toolbar's own trailing panel-left button. */
 .app-shell--sidebar-hidden .toolbar {
-  padding-left: 76px;
+  padding-left: calc(76px + var(--space-6) + var(--space-3));
 }
 
 /* The run/task/compare views fill the pane so their internal event streams
@@ -914,4 +887,32 @@
   margin: var(--space-1) 0 0;
   font-size: var(--text-sm);
   color: var(--c-text-muted);
+}
+
+.plan-tree__history > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--row-h);
+  padding: var(--space-2);
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  list-style: none;
+}
+
+.plan-tree__history > summary::-webkit-details-marker {
+  display: none;
+}
+
+.plan-tree__history[open] > summary .disclosure__chevron {
+  transform: rotate(90deg);
+}
+
+.tree-item--accepted {
+  color: var(--c-text-faint);
+}
+
+.plan-tree__history > summary:hover {
+  background: var(--c-surface-hover);
 }
