@@ -323,6 +323,12 @@ export type Usage = {
   output_tokens: number;
 };
 
+export type Delivery =
+  | { kind: "steered" | "queued" | "unknown" }
+  | { kind: "delivered"; pass: number };
+
+export type UserMessage = { kind: "user_message"; id: string; text: string; delivery: Delivery };
+
 /// The normalized event, serialized internally tagged by `kind`
 /// (snake_case). `core::NormalizedEvent`. Only `FileChanged` is app-sourced;
 /// everything else is adapter-sourced.

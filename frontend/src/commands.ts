@@ -10,6 +10,7 @@ import type {
   ArchivePreview,
   CompareView,
   ContinuePlanResult,
+  Delivery,
   PlanEditProposal,
   PlanView,
   Project,
@@ -186,13 +187,7 @@ export function stopRun(runId: string): Promise<void> {
   return invoke("stop_run", { runId });
 }
 
-export function tapRun(
-  runId: string,
-  text: string,
-): Promise<
-  | { kind: "steered" | "queued" | "unknown" }
-  | { kind: "delivered"; pass: number }
-> {
+export function tapRun(runId: string, text: string): Promise<Delivery> {
   return invoke("tap_run", { runId, text });
 }
 
