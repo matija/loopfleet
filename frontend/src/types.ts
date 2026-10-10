@@ -333,6 +333,7 @@ export type UserMessage = { kind: "user_message"; id: string; text: string; deli
 /// (snake_case). `core::NormalizedEvent`. Only `FileChanged` is app-sourced;
 /// everything else is adapter-sourced.
 export type NormalizedEvent =
+  | UserMessage
   | { kind: "turn_started" }
   | { kind: "assistant_text"; text: string }
   | { kind: "reasoning"; text: string }

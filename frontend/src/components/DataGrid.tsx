@@ -8,11 +8,31 @@
 // one layout.
 
 import type { NormalizedEvent } from "../types";
+import { DELIVERY_LABEL } from "../status";
 
 /// One grid row: the event's log position, its recorded/observed time (unix
 /// millis, or `null` when unknown — the live stream carries no persisted ts),
 /// and the normalized event itself.
 export type GridRow = { seq: number; ts: number | null; event: NormalizedEvent };
+
+export function currentMessageRows<T extends GridRow>(rows: T[]): T[] {
+  const result: T[] = [];
+  const messages = new Map<string, number>();
+  for (const row of rows) {
+    if (row.event.kind !== "user_message") {
+      result.push(row);
+      continue;
+    }
+    const index = messages.get(row.event.id);
+    if (index === undefined) {
+      messages.set(row.event.id, result.length);
+      result.push(row);
+    } else {
+      result[index] = { ...result[index], event: row.event };
+    }
+  }
+  return result;
+}
 
 type Pill = { label: string; tone: string };
 
@@ -23,6 +43,8 @@ export function eventPill(e: NormalizedEvent): Pill {
   switch (e.kind) {
     case "turn_started":
       return { label: "Start", tone: "neutral" };
+    case "user_message":
+      return { label: "User", tone: "text" };
     case "assistant_text":
       return { label: "Agent", tone: "text" };
     case "reasoning":
@@ -56,6 +78,7 @@ export function eventPill(e: NormalizedEvent): Pill {
 // payload-less events (rendered as the NULL pill).
 export function eventDetail(e: NormalizedEvent): string {
   switch (e.kind) {
+    case "user_message":
     case "assistant_text":
     case "reasoning":
       return e.text;
@@ -119,6 +142,9 @@ export function DataGrid({ rows }: { rows: GridRow[] }) {
               className="data-grid__cell data-grid__cell--detail"
               title={detail || undefined}
             >
+              {r.event.kind === "user_message" && (
+                <strong>{DELIVERY_LABEL[r.event.delivery.kind]} · </strong>
+              )}
               {detail ? detail : <span className="grid-null">—</span>}
             </span>
             <span className="data-grid__cell data-grid__cell--ts">

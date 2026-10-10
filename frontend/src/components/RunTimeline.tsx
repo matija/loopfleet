@@ -15,7 +15,7 @@ import type {
   RunTimeline as Timeline,
 } from "../types";
 import type { ActiveRun } from "./RunDock";
-import { DataGrid, formatDuration, GridFooter, rowsDuration } from "./DataGrid";
+import { currentMessageRows, DataGrid, formatDuration, GridFooter, rowsDuration } from "./DataGrid";
 import { RunSubtabs, type RunSubtab } from "./RunSubtabs";
 import { UseRun } from "./UseRun";
 import { RUN_STATUS_ICON, RUN_STATUS_LABEL, isActiveRun, isMergedRun } from "../status";
@@ -62,7 +62,16 @@ export function RunTimeline({
   // Prefer the persisted status once loaded; fall back to the dock's view.
   const status = (timeline?.status as RunStatus) ?? run.status;
   const StatusIcon = RUN_STATUS_ICON[status];
-  const iterations = timeline?.iterations ?? [];
+  const recordedIterations = timeline?.iterations ?? [];
+  const currentRows = currentMessageRows(recordedIterations.flatMap((it) => it.events));
+  const rowsBySeq = new Map(currentRows.map((row) => [row.seq, row]));
+  const iterations = recordedIterations.map((it) => ({
+    ...it,
+    events: it.events.flatMap((row) => {
+      const current = rowsBySeq.get(row.seq);
+      return current ? [current] : [];
+    }),
+  }));
   const eventCount = iterations.reduce((n, it) => n + it.events.length, 0);
   // Passes the run was launched with (from the persisted timeline, falling back
   // to the dock's seed) and whether it produced a snapshot to merge.

@@ -5,7 +5,7 @@
 // `.status-pill` in status.css, which owns the matching per-status colors.
 
 import type { JSX } from "react";
-import type { RunStatus } from "./types";
+import type { Delivery, RunStatus } from "./types";
 import {
   AlertIcon,
   CheckIcon,
@@ -86,3 +86,10 @@ export function isMergedRun(run: {
 }): boolean {
   return !isActiveRun(run.status) && run.accepted === true;
 }
+
+export const DELIVERY_LABEL: Record<Delivery["kind"], string> = {
+  queued: "Queued",
+  steered: "Steered",
+  delivered: "Delivered",
+  unknown: "Unknown",
+};

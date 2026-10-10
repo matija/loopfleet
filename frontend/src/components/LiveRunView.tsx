@@ -19,7 +19,7 @@ import type { AgentStatus } from "../types";
 import { RUN_STATUS_ICON, RUN_STATUS_LABEL, isActiveRun } from "../status";
 import { CommandBar } from "./CommandBar";
 import { Elapsed } from "./Elapsed";
-import { DataGrid, formatDuration, rowsDuration, GridFooter, type GridRow } from "./DataGrid";
+import { currentMessageRows, DataGrid, formatDuration, rowsDuration, GridFooter, type GridRow } from "./DataGrid";
 import { RunSubtabs, type RunSubtab } from "./RunSubtabs";
 import type { ActiveRun } from "./RunDock";
 
@@ -75,10 +75,10 @@ export function LiveRunView({
         const path = p.event.path;
         setFiles((prev) => (prev.includes(path) ? prev : [...prev, path]));
       } else {
-        setEvents((prev) => [
+        setEvents((prev) => currentMessageRows([
           ...prev,
           { seq: p.seq, ts: Date.now(), event: p.event },
-        ]);
+        ]));
       }
     });
     return () => {
