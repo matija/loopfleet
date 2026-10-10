@@ -1115,10 +1115,11 @@ export default function App() {
                     className="project-item"
                     role="button"
                     tabIndex={0}
+                    title={p.repo_path}
                     aria-current={p.id === selectedId}
                     onClick={() => selectProject(p.id)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
+                      if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
                         e.preventDefault();
                         selectProject(p.id);
                       }

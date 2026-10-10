@@ -261,8 +261,9 @@
 .project-item__trail {
   position: relative;
   flex: none;
-  width: 128px;
+  width: var(--control-h);
   height: 100%;
+  margin-left: auto;
 }
 
 .project-item__trail .project-item__meta,
@@ -275,8 +276,8 @@
 }
 
 .project-row__remove {
-  opacity: 0;
-  pointer-events: none;
+  opacity: 1;
+  pointer-events: auto;
   color: var(--c-text-faint);
 }
 
@@ -608,8 +609,8 @@
  * revealing it on hover can't reflow the title beside it. */
 .plan-tree__archive {
   flex: none;
-  opacity: 0;
-  pointer-events: none;
+  opacity: 1;
+  pointer-events: auto;
   color: var(--c-text-faint);
   transition: opacity var(--motion-fast) var(--ease-out);
 }
@@ -914,4 +915,36 @@
   margin: var(--space-1) 0 0;
   font-size: var(--text-sm);
   color: var(--c-text-muted);
+}
+
+.project-item__meta {
+  display: none;
+}
+
+.plan-tree__history > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--row-h);
+  padding: var(--space-2);
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  list-style: none;
+}
+
+.plan-tree__history > summary::-webkit-details-marker {
+  display: none;
+}
+
+.plan-tree__history[open] > summary .disclosure__chevron {
+  transform: rotate(90deg);
+}
+
+.tree-item--accepted {
+  color: var(--c-text-faint);
+}
+
+.plan-tree__history > summary:hover {
+  background: var(--c-surface-hover);
 }

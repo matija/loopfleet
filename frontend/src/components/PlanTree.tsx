@@ -1,15 +1,3 @@
-// Plan tree: the selected connection's plan rendered as the sidebar's object
-// list (the DB client's filterable table tree). Tasks group under their plan
-// file, each row leading with the derived `TaskStatus` glyph (muted, amber only
-// for needs-review) and a right-aligned run-count badge from `plan_overview`.
-// Clicking a task opens or focuses its tab.
-//
-// A group header is a row like any other, not a caption: the chevron toggles
-// the group, the title itself opens that plan as a document (the pane's PRD
-// view), and a trailing archive button — hover/focus-revealed, the same
-// discipline as the connection row's trash icon — starts the existing archive
-// flow that moves the file into the project's prds/ directory.
-
 import { useEffect, useState } from "react";
 import { planOverview } from "../commands";
 import { taskSummary } from "../displayText";
@@ -87,6 +75,7 @@ export function PlanTree({
           key={plan.plan_id}
           plan={plan}
           tasks={tasks}
+          filtering={!!q}
           activeTaskId={activeTaskId}
           onOpenTask={onOpenTask}
           onOpenPrd={onOpenPrd}
@@ -100,6 +89,7 @@ export function PlanTree({
 function PlanTreeGroup({
   plan,
   tasks,
+  filtering,
   activeTaskId,
   onOpenTask,
   onOpenPrd,
@@ -107,6 +97,7 @@ function PlanTreeGroup({
 }: {
   plan: Plan;
   tasks: Plan["tasks"];
+  filtering: boolean;
   activeTaskId: string | null;
   onOpenTask: (task: OpenTask) => void;
   onOpenPrd: (planId: string) => void;
@@ -114,43 +105,14 @@ function PlanTreeGroup({
 }) {
   const [collapsed, toggle] = useSidebarCollapsed(`plan:${plan.plan_id}`);
   const label = plan.title ?? plan.file_path;
-
-  return (
-    <div className="plan-tree__group">
-      <div className="plan-tree__group-head">
-        <button
-          type="button"
-          className="plan-tree__disclosure"
-          aria-expanded={!collapsed}
-          aria-label={`${collapsed ? "Expand" : "Collapse"} ${label}`}
-          onClick={toggle}
-        >
-          <ChevronRightIcon size={12} className="disclosure__chevron" />
-        </button>
-        <button
-          type="button"
-          className="plan-tree__group-label"
-          title={`Open ${label} — ${plan.file_path}`}
-          onClick={() => onOpenPrd(plan.plan_id)}
-        >
-          <span className="plan-tree__group-label-text">{label}</span>
-        </button>
-        <IconButton
-          icon={ArchiveIcon}
-          aria-label={`Archive ${label}`}
-          title="Archive into prds/"
-          className="plan-tree__archive"
-          onClick={() => onArchivePlan(plan.plan_id)}
-        />
-      </div>
-      {!collapsed &&
-        tasks.map((task) => {
+  const done = tasks.filter((task) => task.status === "accepted");
+  const renderTask = (task: Plan["tasks"][number]) => {
           const id = `task:${plan.plan_id}:${task.anchor}`;
           const StatusIcon = STATUS_ICON[task.status];
           return (
             <button
               key={task.anchor}
-              className="tree-item"
+              className={`tree-item tree-item--${task.status}`}
               aria-current={id === activeTaskId}
               onClick={() =>
                 onOpenTask({
@@ -181,7 +143,48 @@ function PlanTreeGroup({
               )}
             </button>
           );
-        })}
+  };
+
+
+  return (
+    <div className="plan-tree__group">
+      <div className="plan-tree__group-head">
+        <button
+          type="button"
+          className="plan-tree__disclosure"
+          aria-expanded={!collapsed}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${label}`}
+          onClick={toggle}
+        >
+          <ChevronRightIcon size={12} className="disclosure__chevron" />
+        </button>
+        <button
+          type="button"
+          className="plan-tree__group-label"
+          title={`Open ${label} — ${plan.file_path}`}
+          onClick={() => onOpenPrd(plan.plan_id)}
+        >
+          <span className="plan-tree__group-label-text">{label}</span>
+        </button>
+        <IconButton
+          icon={ArchiveIcon}
+          aria-label={`Archive ${label}`}
+          title="Archive into prds/"
+          className="plan-tree__archive"
+          onClick={() => onArchivePlan(plan.plan_id)}
+        />
+      </div>
+      {!collapsed && (
+        <>
+          {tasks.filter((task) => task.status !== "accepted").map(renderTask)}
+          {done.length > 0 && (
+            <details className="plan-tree__history" open={filtering || done.some((task) => `task:${plan.plan_id}:${task.anchor}` === activeTaskId) || undefined}>
+              <summary><ChevronRightIcon size={12} className="disclosure__chevron" />{done.length} accepted</summary>
+              {done.map(renderTask)}
+            </details>
+          )}
+        </>
+      )}
     </div>
   );
 }
