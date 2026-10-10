@@ -1,0 +1,6 @@
+{"id":1,"result":{}}
+{"method":"item/completed","params":{"item":{"type":"userMessage","text":"echo"}}}
+{"method":"turn/started","params":{"turn":{"id":"turn"}}}
+{"method":"item/completed","params":{"item":{"type":"agentMessage","text":"answer"}}}
+{"method":"thread/tokenUsage/updated","params":{"tokenUsage":{"total":{"inputTokens":12,"outputTokens":3}}}}
+{"method":"turn/completed","params":{"turn":{"id":"turn","status":"completed"}}}

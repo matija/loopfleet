@@ -1,0 +1,11 @@
+{"type":"response","id":"1","command":"prompt","success":true,"data":{"disposition":"started"}}
+{"type":"message_end","message":{"role":"user","content":[{"type":"text","text":"echo"}]}}
+{"type":"turn_start"}
+{"type":"agent_end","willRetry":false}
+{"type":"auto_compaction_start"}
+{"type":"auto_compaction_end"}
+{"type":"auto_retry_start"}
+{"type":"auto_retry_end","success":true}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"answer"}]}}
+{"type":"turn_end","message":{"role":"assistant","usage":{"input":12,"output":3}}}
+{"type":"agent_settled","aborted":false}

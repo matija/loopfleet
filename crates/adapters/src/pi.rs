@@ -635,6 +635,26 @@ print(json.dumps(dict(type='agent_end', willRetry=False)), flush=True)
         }).await.unwrap();
     }
 
+    #[test]
+    fn maps_versioned_rpc_fixture() {
+        assert_eq!(
+            map_all(include_str!("../fixtures/pi-rpc-v1.jsonl")),
+            vec![
+                NormalizedEvent::TurnStarted,
+                NormalizedEvent::AssistantText {
+                    text: "answer".into()
+                },
+                NormalizedEvent::TurnCompleted {
+                    usage: Usage {
+                        input_tokens: 12,
+                        output_tokens: 3
+                    }
+                },
+                NormalizedEvent::Ended,
+            ]
+        );
+    }
+
     fn map_all(text: &str) -> Vec<NormalizedEvent> {
         let mut mapper = PiMapper::new();
         text.lines()

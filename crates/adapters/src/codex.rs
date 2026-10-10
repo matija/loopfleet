@@ -629,6 +629,88 @@ if phase in ['shutdown', 'bounded']:
         }
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn scripted_handshake_and_steering_outcomes() {
+        for (codex, adapter) in [
+            (true, &CodexAdapter as &dyn AgentAdapter),
+            (false, &crate::PiAdapter),
+        ] {
+            for scenario in [
+                "accepted",
+                "rejected",
+                "stale",
+                "unknown",
+                "completion-first",
+                "exit",
+            ] {
+                let dir = tempfile::tempdir().unwrap();
+                let script = dir.path().join("harness.py");
+                std::fs::write(&script, include_str!("../fixtures/harness-v1.py")).unwrap();
+                let mut run = adapter
+                    .start_run(&RunSpec {
+                        cwd: dir.path().into(),
+                        prompt: "initial\nprompt".into(),
+                        wrapper: vec!["python3".into(), script.into_os_string(), scenario.into()],
+                        model: Some("test-model".into()),
+                    })
+                    .await
+                    .unwrap();
+                tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                    assert_eq!(run.events.recv().await, Some(NormalizedEvent::TurnStarted), "{codex} {scenario}");
+                    let (ack, receiver) = tokio::sync::oneshot::channel();
+                    run.steer.as_ref().unwrap().send(SteerRequest {
+                        tap_id: "tap".into(), text: "steer".into(), ack,
+                    }).await.unwrap();
+                    let mut events = Vec::new();
+                    while let Some(event) = run.events.recv().await {
+                        events.push(event);
+                    }
+                    let accepted = matches!(receiver.await, Ok(Ok(())));
+                    assert_eq!(accepted, scenario == "accepted" || (!codex && scenario == "completion-first"), "{codex} {scenario}");
+                    assert_eq!(events.last(), Some(&NormalizedEvent::Ended));
+                    assert_eq!(events.iter().filter(|event| matches!(event, NormalizedEvent::Ended)).count(), 1);
+                    assert!(!events.iter().any(|event| matches!(event, NormalizedEvent::TurnStarted)));
+                    if scenario == "exit" || (!codex && scenario == "unknown") {
+                        assert!(events.iter().any(|event| matches!(event, NormalizedEvent::Failed { reason } if reason.contains("agent exited without"))));
+                    } else {
+                        assert!(!events.iter().any(|event| matches!(event, NormalizedEvent::Failed { .. })));
+                    }
+                    let text: Vec<_> = events.iter().filter_map(|event| match event {
+                        NormalizedEvent::AssistantText { text } => Some(text.as_str()),
+                        _ => None,
+                    }).collect();
+                    assert_eq!(text, if matches!(scenario, "exit" | "completion-first") { vec![] } else { vec!["answer"] });
+                    let pid: i32 = std::fs::read_to_string(dir.path().join("pid")).unwrap().parse().unwrap();
+                    assert_ne!(unsafe { libc::kill(pid, 0) }, 0);
+                    if scenario != "exit" && (scenario != "unknown" || codex) {
+                        assert!(dir.path().join("eof").exists());
+                    }
+                }).await.unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn maps_versioned_app_server_fixture() {
+        assert_eq!(
+            map_all(include_str!("../fixtures/codex-app-server-v1.jsonl")),
+            vec![
+                NormalizedEvent::TurnStarted,
+                NormalizedEvent::AssistantText {
+                    text: "answer".into()
+                },
+                NormalizedEvent::TurnCompleted {
+                    usage: Usage {
+                        input_tokens: 12,
+                        output_tokens: 3
+                    }
+                },
+                NormalizedEvent::Ended,
+            ]
+        );
+    }
+
     fn map_all(text: &str) -> Vec<NormalizedEvent> {
         let mut mapper = CodexMapper::default();
         text.lines()
