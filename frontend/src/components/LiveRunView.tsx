@@ -13,6 +13,8 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { agentCatalog } from "../appData";
 import { onRunEvent } from "../events";
+import { matchShortcut, shortcutEventFromDOM } from "../shortcuts";
+import { TapComposer } from "./TapComposer";
 import type { AgentStatus } from "../types";
 import { RUN_STATUS_ICON, RUN_STATUS_LABEL, isActiveRun } from "../status";
 import { CommandBar } from "./CommandBar";
@@ -108,6 +110,23 @@ export function LiveRunView({
   };
 
   const active = isActiveRun(run.status);
+  const [composerRunId, setComposerRunId] = useState<string | null>(null);
+  const composerAnchor = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    setComposerRunId(null);
+  }, [run.runId, active]);
+
+  useEffect(() => {
+    if (!active || !toolbarActions) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.defaultPrevented || e.isComposing || matchShortcut(shortcutEventFromDOM(e)) !== "openComposer") return;
+      e.preventDefault();
+      setComposerRunId(run.runId);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [run.runId, active, toolbarActions]);
   // Resolve the agent's human name + detected version so the header states what
   // is actually running, not just the CLI key. (Model/effort are not tracked by
   // the backend in v1 — the agent identity + version is the run's real "what".)
@@ -144,15 +163,31 @@ export function LiveRunView({
       {active &&
         toolbarActions &&
         createPortal(
-          <button
-            className="run-view__stop"
-            onClick={() => onStop(run.runId)}
-            title="Stop at the next pass boundary"
-          >
-            Stop
-          </button>,
+          <>
+            <button
+              ref={composerAnchor}
+              className="toolbar-btn"
+              onClick={() => setComposerRunId(run.runId)}
+              title="Send guidance to this run (⌘⇧T / Ctrl+Shift+T)"
+              aria-haspopup="dialog"
+              aria-expanded={composerRunId === run.runId}
+            >
+              Tap
+            </button>
+            <button
+              className="run-view__stop"
+              onClick={() => onStop(run.runId)}
+              title="Stop at the next pass boundary"
+            >
+              Stop
+            </button>
+          </>,
           toolbarActions,
         )}
+
+      {active && toolbarActions && composerRunId === run.runId && (
+        <TapComposer key={run.runId} run={run} anchorRef={composerAnchor} onClose={() => setComposerRunId(null)} />
+      )}
 
       <CommandBar
         toolbarFilter={toolbarFilter}

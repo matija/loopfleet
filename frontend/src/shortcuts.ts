@@ -15,7 +15,7 @@
 // Escape would have no way to know which surface is topmost, so it would
 // risk closing the wrong one.
 
-export type ShortcutId = "commandPalette" | "toggleSidebar" | "openSettings";
+export type ShortcutId = "commandPalette" | "toggleSidebar" | "openSettings" | "openComposer";
 
 /// "mod" is the platform's primary modifier: Cmd on macOS, Ctrl elsewhere.
 /// Matching accepts either key for it (mirroring the app's existing
@@ -59,6 +59,12 @@ export const SHORTCUTS: readonly Shortcut[] = [
     key: ",",
     mods: ["mod"],
     label: "Open run defaults",
+  },
+  {
+    id: "openComposer",
+    key: "t",
+    mods: ["mod", "shift"],
+    label: "Open active run composer (⌘⇧T / Ctrl+Shift+T)",
   },
 ] as const;
 
