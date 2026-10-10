@@ -20,7 +20,7 @@ use std::fmt::Write as _;
 use loopfleet_gitx::run_cumulative_diff_at;
 use loopfleet_store::Connection;
 
-use crate::event::NormalizedEvent;
+use crate::event::{Delivery, NormalizedEvent};
 use crate::task_status::{derive_status, TaskRun as TaskRunState, TaskStatus};
 use crate::timeline::{to_diff_view, DiffView};
 use crate::RunState;
@@ -523,7 +523,23 @@ fn event_style(ev: &NormalizedEvent) -> (&'static str, &'static str, String) {
             .join(" \u{b7} "),
         ),
         NormalizedEvent::Ended => ("st-muted", "ended", String::new()),
-        NormalizedEvent::UserMessage { text, .. } => ("st-text", "user", escape_html(text)),
+        NormalizedEvent::UserMessage {
+            id, text, delivery,
+        } => (
+            "st-text",
+            "user tap",
+            format!(
+                "<code>{}</code> · {} · {}",
+                escape_html(id),
+                match delivery {
+                    Delivery::Steered => "steered".into(),
+                    Delivery::Queued => "queued".into(),
+                    Delivery::Delivered { pass } => format!("delivered in pass {pass}"),
+                    Delivery::Unknown => "unknown".into(),
+                },
+                escape_html(text)
+            ),
+        ),
         NormalizedEvent::FileChanged { path } => (
             "st-accent",
             "file changed",
