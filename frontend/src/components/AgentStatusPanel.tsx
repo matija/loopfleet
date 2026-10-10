@@ -108,6 +108,7 @@ function AgentChip({
     <div className={`agent-chip agent-chip--${state}`}>
       <span className="agent-chip__dot" />
       <span className="agent-chip__name">{agent.display}</span>
+      <span>{agent.can_steer ? "Live steering" : "No live steering · Tap sends notes for the next pass"}</span>
       <span className="agent-chip__ver">
         {agent.installed
           ? (agent.version ?? "installed")

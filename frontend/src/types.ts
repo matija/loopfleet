@@ -84,6 +84,7 @@ export type AgentStatus = {
   tested_version: string;
   /// Found on PATH and ran.
   installed: boolean;
+  can_steer: boolean;
   /// Detected version, if installed and recognized.
   version: string | null;
   /// `true`/`false` once installed: does the detected version match the tested

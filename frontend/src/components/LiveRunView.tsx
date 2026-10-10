@@ -130,7 +130,7 @@ export function LiveRunView({
   // Resolve the agent's human name + detected version so the header states what
   // is actually running, not just the CLI key. (Model/effort are not tracked by
   // the backend in v1 — the agent identity + version is the run's real "what".)
-  const matched = agents.find((a) => a.key === run.agent);
+  const matched = agents.find((a) => a.key === (run.agent === "cursor-agent" ? "cursor" : run.agent));
   const agentLabel = matched?.display ?? run.agent;
   const passLabel =
     run.maxIterations !== undefined
@@ -151,6 +151,7 @@ export function LiveRunView({
           </span>
           <span className="run-view__meta">
             <span className="run-view__agent">{agentLabel}</span>
+            <span>{matched ? (matched.can_steer ? " · Live steering" : " · No live steering · Tap sends notes for the next pass") : " · Steering capability unknown"}</span>
             {matched?.version && (
               <span className="run-view__agent-ver">v{matched.version}</span>
             )}
