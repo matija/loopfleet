@@ -3,8 +3,8 @@
 Agent cockpit for spec-and-loop driven development.
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Loopfleet main view — fleet of runs across harnesses and models" width="900">
-  <br><em>Fleet view — every scheduled run, its harness, model, and status at a glance.</em>
+  <img src="docs/screenshot.png" alt="Loopfleet welcome screen with project setup and the plan, run, and review workflow" width="900">
+  <br><em>Start with a repository, make a plan, run your agents, and review their work.</em>
 </p>
 
 <p align="center">
@@ -37,9 +37,9 @@ use notes (`can_steer() == false`).
 ## Download
 
 <!-- download-links:start -->
-**Download Loopfleet 0.3.5** —
-[Apple Silicon](https://github.com/matija/loopfleet/releases/download/0.3.5/Loopfleet_0.3.5_aarch64.dmg)
-· [Intel](https://github.com/matija/loopfleet/releases/download/0.3.5/Loopfleet_0.3.5_x64.dmg)
+**Download Loopfleet 0.3.6** —
+[Apple Silicon](https://github.com/matija/loopfleet/releases/download/0.3.6/Loopfleet_0.3.6_aarch64.dmg)
+· [Intel](https://github.com/matija/loopfleet/releases/download/0.3.6/Loopfleet_0.3.6_x64.dmg)
 <!-- download-links:end -->
 
 Signed and notarized `.dmg` builds; the app updates itself from there.

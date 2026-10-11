@@ -50,6 +50,7 @@ import { isActiveRun } from "./status";
 import { AppShell } from "./components/AppShell";
 import { AddProject, pickAndRegisterProject } from "./components/AddProject";
 import { PromptEmptyState } from "./components/EmptyState";
+import { ProjectStart } from "./components/ProjectStart";
 import { AgentStatusPanel } from "./components/AgentStatusPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SandboxBoundaryPanel } from "./components/SandboxBoundaryPanel";
@@ -1312,7 +1313,7 @@ export default function App() {
         className={`main__body${
           view.kind === "run" || view.kind === "compare"
             ? " main__body--run"
-            : ""
+            : view.kind === "start" ? " main__body--start" : ""
         }`}
       >
         {view.kind === "start" ? (
@@ -1325,20 +1326,14 @@ export default function App() {
               action={<Button onClick={() => void loadProjects()}>Retry</Button>}
             />
           ) : (
-            <PromptEmptyState
-              title={projects.length === 0 ? "Add a project to get started" : "Open a project"}
-              subtitle={projects.length === 0 ? "Choose a git repository to get started." : "Choose a registered project to open its plan."}
-              action={
-                <>
-                  {projects.map((p) => (
-                    <Button key={p.id} icon={FolderIcon} title={p.repo_path} onClick={() => selectProject(p.id)}>
-                      {repoName(p.repo_path)}
-                    </Button>
-                  ))}
-                  <AddProject onAdded={onAdded} />
-                </>
-              }
-            />
+            <ProjectStart hasProjects={projects.length > 0}>
+              {projects.map((p) => (
+                <Button key={p.id} icon={FolderIcon} title={p.repo_path} onClick={() => selectProject(p.id)}>
+                  {repoName(p.repo_path)}
+                </Button>
+              ))}
+              <AddProject onAdded={onAdded} />
+            </ProjectStart>
           )
         ) : view.kind === "run" ? (
           <RunPane
