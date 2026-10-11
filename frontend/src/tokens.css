@@ -120,7 +120,7 @@
 }
 
 :root {
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Readex Pro", system-ui, sans-serif;
+  --font-sans: "Readex Pro", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
   --text-2xs: 10px;
   --text-xs: 11px;
@@ -1533,8 +1533,14 @@ pre {
   font-family: var(--font-mono);
 }
 
-button {
+button,
+input,
+select,
+textarea {
   font: inherit;
+}
+
+button {
   cursor: pointer;
   /* box-shadow is deliberately absent: shadow blur is the expensive paint,
    * and only the chip buttons actually animate their shadow (they declare it

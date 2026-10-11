@@ -117,7 +117,7 @@ pub fn render(params: &RenderParams) -> Result<String, RenderError> {
 
     let mut profile = TEMPLATE.replace(WRITE_SUBPATHS_MARKER, subpaths.trim_end());
     if params.native_automation {
-        profile.push_str("\n(allow lsopen)\n(allow appleevent-send)\n");
+        profile.push_str("\n(allow lsopen)\n(allow appleevent-send)\n(allow signal)\n");
     }
     Ok(profile)
 }

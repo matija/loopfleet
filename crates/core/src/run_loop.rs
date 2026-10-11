@@ -388,13 +388,17 @@ Obey these rules:\n\
 - Preserve the task requirements in plan files.\n\
 - Add results to plan files without replacement of the plan.\n\
 - Preserve processes that were active before this attempt.\n\
+- Never quit, kill, or restart the Loopfleet application hosting this run.\n\
+- For native checks, build and launch this worktree's app, not the installed Loopfleet app.\n\
+- Track native app PIDs individually; never quit applications by name or kill by a shared executable path.\n\
 - Before you stop, stop each background process that you started for this attempt.\n\
 - Make sure that each process you stopped exited.\n\n\
 Process inspection:\n\
 The macOS sandbox blocks setuid programs, including `ps` and `top`.\n\
 - Find processes with `pgrep` instead of `ps`.\n\
 - Measure process resources with `libproc` instead of `top`.\n\
-- If native app launch returns error -54, record that native automation permission is necessary.\n\
+- Inspect the rendered sandbox profile before diagnosing native automation permissions.\n\
+- If it already allows lsopen and appleevent-send, do not claim the project permission is disabled.\n\
 - Do not remove the sandbox or change its permissions.\n\n\
 Record the result:\n\
 1. Add the completed work and the test results to the progress file.\n\
