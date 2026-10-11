@@ -78,7 +78,7 @@
 
 .run-chip--selected {
   border-color: var(--c-border-strong);
-  background: var(--c-accent-quiet);
+  background: var(--c-surface-3);
 }
 
 .run-chip--unseen {
@@ -111,8 +111,16 @@
   text-align: left;
 }
 
-.run-chip__open:hover {
-  background: var(--c-surface-hover);
+.run-chip__open:is(:hover, :focus-visible) {
+  background: var(--c-surface-2);
+}
+
+.run-chip--selected .run-chip__open:is(:hover, :focus-visible) {
+  background: var(--c-surface-3);
+}
+
+.run-chip--ready .run-chip__open:is(:hover, :focus-visible) {
+  background: var(--c-warn-quiet);
 }
 
 /* Leading status glyph — the dock's compact stand-in for the filled
@@ -193,16 +201,16 @@
   color: var(--c-text-muted);
 }
 
-.run-chip__action:hover {
+.run-chip__action:hover:not(:disabled) {
   background: var(--c-danger-loud);
   color: var(--c-text);
 }
 
-.run-chip__action--dismiss:hover {
-  background: var(--c-surface-hover);
+.run-chip__action--dismiss:hover:not(:disabled) {
+  background: var(--c-surface-2);
 }
 
-.run-chip__action--cancel-resume:hover {
+.run-chip__action--cancel-resume:hover:not(:disabled) {
   background: var(--c-warn-loud);
   color: var(--c-text);
 }
@@ -210,8 +218,8 @@
 /* Merge ("use this run") is the one affirmative chip action, so it hovers
    accent rather than the destructive default. While the merge is in flight the
    button is disabled and dimmed — the chip's only pending signal. */
-.run-chip__action--merge:hover,
-.run-chip__action--merge:focus-visible {
+.run-chip__action--merge:hover:not(:disabled),
+.run-chip__action--merge:focus-visible:not(:disabled) {
   background: var(--c-accent-quiet-hover);
   color: var(--c-accent-text-hover);
 }
@@ -311,7 +319,7 @@
 }
 
 .run-chip--merged.run-chip--selected {
-  background: var(--c-surface-2);
+  background: var(--c-surface-3);
   border-color: var(--c-border-strong);
 }
 

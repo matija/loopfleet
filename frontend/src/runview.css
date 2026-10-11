@@ -285,16 +285,25 @@
   color: var(--c-text-muted);
   padding: 0 var(--space-2);
   font-size: var(--text-sm);
+  transition: background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
 }
 
-.run-subtab:hover {
+.run-subtab:hover:not(:disabled) {
   color: var(--c-text);
-  background: var(--c-surface-hover);
+  background: var(--c-surface-2);
 }
 
-.run-subtab--active {
+.run-subtab--active,
+.run-subtab--active:hover:not(:disabled) {
   color: var(--c-text);
+  background: var(--c-surface-3);
   border-bottom-color: var(--c-accent);
+}
+
+.run-subtab:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--c-text);
 }
 
 .run-subtab__count {

@@ -121,7 +121,11 @@
  * which portals to document.body — `:has()` can't see them there, so
  * LaunchControl mirrors that open state onto `.launch--engaged` instead. */
 .task-row:is(:hover, :focus-within, :has(.launch--engaged)) {
-  background: var(--c-surface-hover);
+  background: var(--c-surface-2);
+}
+
+.task-row:has(.task-row__text[aria-expanded="true"]) {
+  background: var(--c-surface-3);
 }
 
 /* The title fills the row's remaining width and clamps to one line with an
@@ -145,7 +149,7 @@
 }
 
 .task-row__text:hover {
-  background: var(--c-surface-hover);
+  background: transparent;
 }
 
 /* Expanded: the task's full text wraps instead of clipping to one line. */
@@ -761,6 +765,10 @@
 
 .task-row--completed-unaccepted {
   background: var(--c-warn-wash);
+}
+
+.task-row--completed-unaccepted:is(:hover, :focus-within, :has(.launch--engaged), :has(.task-row__text[aria-expanded="true"])) {
+  background: var(--c-warn-quiet);
 }
 
 .task-row--completed-unaccepted .task-row__compare {

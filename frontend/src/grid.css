@@ -20,10 +20,15 @@
   min-height: 24px; /* tokens-allow: compact row height, tighter than --row-h */
   padding: 2px var(--space-2);
   border-bottom: 1px solid var(--c-border);
+  transition: background-color var(--motion-fast) var(--ease-out);
 }
 
-.data-grid__row:not(.data-grid__row--head):hover {
-  background: var(--c-surface-hover);
+.data-grid__row:not(.data-grid__row--head):is(:hover, :focus-within) {
+  background: var(--c-surface-2);
+}
+
+.data-grid__row:not(.data-grid__row--head)[aria-selected="true"] {
+  background: var(--c-surface-3);
 }
 
 .data-grid__row:last-child {
