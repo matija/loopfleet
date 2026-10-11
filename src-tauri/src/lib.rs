@@ -43,6 +43,7 @@ struct AppState {
     db: Arc<Mutex<Connection>>,
     git: GitActor,
     data_dir: PathBuf,
+    storage_lock: Arc<tokio::sync::RwLock<()>>,
     stops: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
     taps: Arc<Mutex<HashMap<String, mpsc::Sender<Tap>>>>,
     edits: Arc<Mutex<HashMap<String, PendingEdit>>>,
@@ -711,6 +712,7 @@ async fn propose_plan(
             repo_path.display()
         )
     })?;
+    let _storage_guard = state.storage_lock.read().await;
     let edit_id = uuid::Uuid::new_v4().to_string();
     let worktrees_root = state.data_dir.join("worktrees");
     let edit_dir = state.data_dir.join("edits").join(&edit_id);
@@ -789,7 +791,7 @@ async fn propose_plan(
     let proposed = match result {
         Ok(proposed) => proposed,
         Err(error) => {
-            let _ = state.git.worktree_remove(repo_path, worktree.path).await;
+            cleanup_plan_edit(state, &edit_id, repo_path, worktree.path).await;
             return Err(error);
         }
     };
@@ -814,6 +816,7 @@ async fn propose_plan(
 
 #[tauri::command]
 async fn plan_edit_apply(edit_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    let _storage_guard = state.storage_lock.read().await;
     use std::io::Write;
     let pending = state
         .edits
@@ -861,10 +864,7 @@ async fn plan_edit_apply(edit_id: String, state: State<'_, AppState>) -> Result<
         state.edits.lock().unwrap().insert(edit_id, pending);
         return Err(error);
     }
-    let _ = state
-        .git
-        .worktree_remove(pending.repo_path, pending.worktree_path)
-        .await;
+    cleanup_plan_edit(&state, &edit_id, pending.repo_path, pending.worktree_path).await;
     Ok(())
 }
 
@@ -872,14 +872,43 @@ async fn plan_edit_apply(edit_id: String, state: State<'_, AppState>) -> Result<
 /// Idempotent — an unknown/already-resolved `edit_id` is a no-op.
 #[tauri::command]
 async fn plan_edit_discard(edit_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    let _storage_guard = state.storage_lock.read().await;
     let pending = state.edits.lock().unwrap().remove(&edit_id);
     if let Some(pending) = pending {
-        let _ = state
-            .git
-            .worktree_remove(pending.repo_path, pending.worktree_path)
-            .await;
+        cleanup_plan_edit(&state, &edit_id, pending.repo_path, pending.worktree_path).await;
     }
     Ok(())
+}
+
+async fn cleanup_plan_edit(state: &AppState, edit_id: &str, repo: PathBuf, path: PathBuf) {
+    if let Err(e) = state
+        .git
+        .reap(repo.clone(), state.data_dir.join("worktrees"), path)
+        .await
+    {
+        eprintln!("plan cleanup: {e}");
+        return;
+    }
+    for path in [
+        state.data_dir.join("edits").join(edit_id),
+        state
+            .data_dir
+            .join("profiles")
+            .join(format!("{edit_id}.sb")),
+    ] {
+        if path.exists() {
+            if let Err(e) = remove_artifact(&path) {
+                eprintln!("plan cleanup: {e}");
+            }
+        }
+    }
+    if let Err(e) = state
+        .git
+        .delete_branch(repo, loopfleet_gitx::worktree::branch_for(edit_id))
+        .await
+    {
+        eprintln!("plan cleanup: {e}");
+    }
 }
 
 /// Launch `max_iterations` looping passes of `agent` against the task anchored at
@@ -1077,6 +1106,8 @@ fn spawn_run(
     };
 
     // App-managed paths, keyed by run id (outside the repo).
+    let storage_lock = app.state::<AppState>().storage_lock.clone();
+    let storage_guard = storage_lock.read().await;
     let run_id = uuid::Uuid::new_v4().to_string();
     let worktrees_root = data_dir.join("worktrees");
     let progress_dir = data_dir.join("progress").join(&run_id);
@@ -1132,6 +1163,7 @@ fn spawn_run(
         .map_err(|e| e.to_string())?;
     }
 
+    drop(storage_guard);
     let worktree_path = worktree.path.clone();
     let cfg = LoopConfig {
         run_id: run_id.clone(),
@@ -1312,6 +1344,7 @@ fn spawn_run(
             let auto_merge_db = db.clone();
             let auto_merge_git = git.clone();
             let auto_merge_data_dir = data_dir.clone();
+            let auto_merge_storage_lock = app.state::<AppState>().storage_lock.clone();
             let auto_merge_app = app.clone();
             let auto_advance_settings = settings.clone();
             let auto_merge_task_text = cfg.task_text.clone();
@@ -1324,6 +1357,7 @@ fn spawn_run(
                     &auto_merge_db,
                     &auto_merge_git,
                     &auto_merge_data_dir,
+                    &auto_merge_storage_lock,
                 )
                 .await
                 {
@@ -1883,7 +1917,7 @@ async fn tap_run(
 /// worktree to still be there when it fires). Idempotent: a worktree/profile/
 /// progress dir already gone is not an error.
 ///
-/// Also refuses (without erroring) a worktree that's some live process's
+/// Also refuses a worktree that's some live process's
 /// current working directory — e.g. a user with a shell or editor open in
 /// it — since deleting out from under that process would break it. Detected
 /// via `lsof` just before the delete; the run is left for the next sweep
@@ -1924,7 +1958,7 @@ async fn reap_run(
             eprintln!(
                 "reap_run: deferring run {run_id}, worktree {worktree_path} is a live process's cwd"
             );
-            return Ok(());
+            return Err(format!("cleanup deferred: worktree for run {run_id} is still in use"));
         }
         let worktrees_root = data_dir.join("worktrees");
         git.reap(repo_path.clone(), worktrees_root, PathBuf::from(worktree_path))
@@ -1989,17 +2023,21 @@ async fn sweep_worktrees(
     db: &Arc<Mutex<Connection>>,
     git: &GitActor,
     data_dir: &std::path::Path,
-) -> SweepResult {
+    edits: &Arc<Mutex<HashMap<String, PendingEdit>>>,
+) -> Result<SweepResult, String> {
     let worktrees_root = data_dir.join("worktrees");
     let now = std::time::SystemTime::now();
     let mut result = SweepResult {
         removed: 0,
         bytes_reclaimed: 0,
+        logs_removed: 0,
+        errors: Vec::new(),
     };
 
     let (candidates, retention_hours) = {
         let conn = db.lock().unwrap();
-        let candidates = loopfleet_store::list_sweep_candidates(&conn).unwrap_or_default();
+        let candidates =
+            loopfleet_store::list_sweep_candidates(&conn).map_err(|e| e.to_string())?;
         let retention_hours = loopfleet_store::load_settings(&conn)
             .map(|s| s.worktree_retention_hours)
             .unwrap_or(48);
@@ -2011,14 +2049,11 @@ async fn sweep_worktrees(
             || match retention_hours {
                 -1 => false,
                 hours => {
-                    let retention =
-                        std::time::Duration::from_secs((hours.max(0) as u64) * 60 * 60);
+                    let retention = std::time::Duration::from_secs((hours.max(0) as u64) * 60 * 60);
                     match candidate.finished_at {
                         Some(finished_at_millis) => {
                             let finished_at = std::time::UNIX_EPOCH
-                                + std::time::Duration::from_millis(
-                                    finished_at_millis.max(0) as u64
-                                );
+                                + std::time::Duration::from_millis(finished_at_millis.max(0) as u64);
                             now.duration_since(finished_at).unwrap_or_default() >= retention
                         }
                         None => candidate
@@ -2037,57 +2072,187 @@ async fn sweep_worktrees(
 
         if eligible {
             let worktree_path = candidate.worktree_path.as_ref().map(std::path::Path::new);
-            let bytes_before = worktree_path.map(dir_size).unwrap_or(0);
+            let bytes_before = worktree_path.map(dir_size).unwrap_or(0)
+                + dir_size(&data_dir.join("progress").join(&candidate.id))
+                + dir_size(
+                    &data_dir
+                        .join("profiles")
+                        .join(format!("{}.sb", candidate.id)),
+                );
             match reap_run(db, git, data_dir, &candidate.id).await {
-                // `reap_run` also returns `Ok(())` without removing anything when
-                // the worktree is some live process's cwd (deferred to next
-                // sweep) — only count it once the directory is actually gone.
                 Ok(()) if worktree_path.is_none_or(|p| !p.exists()) => {
                     result.removed += 1;
                     result.bytes_reclaimed += bytes_before;
                 }
                 Ok(()) => {}
                 Err(e) => {
-                    eprintln!("sweep_worktrees: failed to reap run {}: {e}", candidate.id);
+                    result.errors.push(format!("{}: {e}", candidate.id));
                 }
             }
         }
     }
 
-    let known_run_ids: std::collections::HashSet<String> = {
+    let (retained_ids, repos) = {
         let conn = db.lock().unwrap();
-        loopfleet_store::all_run_ids(&conn)
-            .unwrap_or_default()
-            .into_iter()
-            .collect()
+        let mut stmt = conn.prepare("SELECT id FROM runs WHERE reaped_at IS NULL OR status IN ('queued', 'running') OR id IN (SELECT run_id FROM pending_resumes)")
+            .map_err(|e| e.to_string())?;
+        let retained = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<std::collections::HashSet<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        let repos = loopfleet_store::list_projects(&conn).map_err(|e| e.to_string())?;
+        (retained, repos)
     };
-
-    let Ok(entries) = std::fs::read_dir(&worktrees_root) else {
-        return result;
-    };
-    for entry in entries.flatten() {
-        if !entry.path().is_dir() {
-            continue;
-        }
-        let name = entry.file_name().to_string_lossy().to_string();
-        if known_run_ids.contains(&name) {
-            continue;
-        }
-        let bytes_before = dir_size(&entry.path());
-        match std::fs::remove_dir_all(entry.path()) {
-            Ok(()) => {
-                result.removed += 1;
-                result.bytes_reclaimed += bytes_before;
-            }
+    let edit_ids = edits
+        .lock()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<std::collections::HashSet<_>>();
+    let repo_dirs = repos
+        .iter()
+        .filter_map(|repo| {
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo.repo_path)
+                .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+                .output()
+                .ok()
+                .filter(|out| out.status.success())
+                .map(|out| {
+                    (
+                        PathBuf::from(&repo.repo_path),
+                        PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()),
+                    )
+                })
+        })
+        .collect::<Vec<_>>();
+    for folder in ["worktrees", "progress", "profiles", "edits"] {
+        let root = data_dir.join(folder);
+        let entries = match std::fs::read_dir(&root) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => {
-                eprintln!(
-                    "sweep_worktrees: failed to remove orphan worktree dir {}: {e}",
-                    entry.path().display()
-                );
+                result.errors.push(format!("{folder}: {e}"));
+                continue;
+            }
+        };
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(e) => {
+                    result.errors.push(e.to_string());
+                    continue;
+                }
+            };
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            let id = if folder == "profiles" {
+                name.strip_suffix(".sb").unwrap_or(&name)
+            } else {
+                &name
+            };
+            if retained_ids.contains(id) || edit_ids.contains(id) {
+                continue;
+            }
+            if worktree_in_use(&data_dir.join("worktrees").join(id).to_string_lossy()) {
+                result.errors.push(format!("{name}: still in use"));
+                continue;
+            }
+            let bytes_before = dir_size(&path);
+            let removed = if folder == "worktrees" {
+                let git_file = std::fs::read_to_string(path.join(".git")).unwrap_or_default();
+                let repo = repo_dirs.iter().find(|(_, common_dir)| {
+                    git_file
+                        .trim()
+                        .strip_prefix("gitdir: ")
+                        .is_some_and(|dir| std::path::Path::new(dir).starts_with(common_dir))
+                });
+                match repo {
+                    Some((repo, _)) => {
+                        match git
+                            .reap(repo.clone(), worktrees_root.clone(), path.clone())
+                            .await
+                        {
+                            Ok(()) => {
+                                if let Err(e) = git
+                                    .delete_branch(
+                                        repo.clone(),
+                                        loopfleet_gitx::worktree::branch_for(id),
+                                    )
+                                    .await
+                                {
+                                    result.errors.push(e.to_string());
+                                }
+                                Ok(())
+                            }
+                            Err(e) => Err(e.to_string()),
+                        }
+                    }
+                    None => remove_artifact(&path),
+                }
+            } else {
+                remove_artifact(&path)
+            };
+            match removed {
+                Ok(()) => {
+                    result.removed += 1;
+                    result.bytes_reclaimed += bytes_before;
+                }
+                Err(e) => result.errors.push(format!("{name}: {e}")),
             }
         }
     }
-    result
+    for repo in repos {
+        let repo = PathBuf::from(repo.repo_path);
+        if let Err(e) = git.cleanup_orphans(repo.clone()).await {
+            result.errors.push(e.to_string());
+        }
+        match std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args([
+                "for-each-ref",
+                "--format=%(refname:short)",
+                "refs/heads/agent/",
+            ])
+            .output()
+        {
+            Ok(out) if out.status.success() => {
+                for branch in String::from_utf8_lossy(&out.stdout).lines() {
+                    let Some(id) = branch.strip_prefix("agent/") else {
+                        continue;
+                    };
+                    if uuid::Uuid::parse_str(id).is_err()
+                        || retained_ids.contains(id)
+                        || edit_ids.contains(id)
+                    {
+                        continue;
+                    }
+                    match git.delete_branch(repo.clone(), branch.to_string()).await {
+                        Ok(()) => result.removed += 1,
+                        Err(e) => result.errors.push(e.to_string()),
+                    }
+                }
+            }
+            Ok(out) => result
+                .errors
+                .push(String::from_utf8_lossy(&out.stderr).trim().to_string()),
+            Err(e) => result.errors.push(e.to_string()),
+        }
+    }
+    Ok(result)
+}
+
+fn remove_artifact(path: &std::path::Path) -> Result<(), String> {
+    let metadata = std::fs::symlink_metadata(path).map_err(|e| e.to_string())?;
+    if metadata.is_dir() {
+        std::fs::remove_dir_all(path)
+    } else {
+        std::fs::remove_file(path)
+    }
+    .map_err(|e| e.to_string())
 }
 
 /// Total on-disk size of everything under `path` (recursing into
@@ -2124,6 +2289,8 @@ fn dir_size(path: &std::path::Path) -> u64 {
 struct SweepResult {
     removed: u32,
     bytes_reclaimed: u64,
+    logs_removed: usize,
+    errors: Vec<String>,
 }
 
 /// Run a worktree sweep pass immediately, outside the hourly schedule, for the
@@ -2132,8 +2299,29 @@ struct SweepResult {
 /// `worktree_retention_hours`, and orphan worktree directories) — this just
 /// triggers a pass on demand and hands the UI something to toast.
 #[tauri::command]
-async fn sweep_worktrees_now(state: State<'_, AppState>) -> Result<SweepResult, String> {
-    Ok(sweep_worktrees(&state.db, &state.git, &state.data_dir).await)
+async fn sweep_worktrees_now(
+    clear_merged_logs: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<SweepResult, String> {
+    let _storage_guard = state.storage_lock.write().await;
+    let mut result = sweep_worktrees(&state.db, &state.git, &state.data_dir, &state.edits).await?;
+    let conn = state.db.lock().unwrap();
+    let before = dir_size(&state.data_dir.join("loopfleet.db"))
+        + dir_size(&state.data_dir.join("loopfleet.db-wal"));
+    result.logs_removed = conn.execute(
+        "DELETE FROM events WHERE run_or_session_id NOT IN (SELECT id FROM runs)
+         OR (?1 AND run_or_session_id IN (SELECT id FROM runs WHERE accepted = 1
+             AND reaped_at IS NOT NULL AND status IN ('completed', 'failed', 'stopped', 'limit-reached')
+             AND id NOT IN (SELECT run_id FROM pending_resumes)))",
+        [clear_merged_logs.unwrap_or(false)],
+    ).map_err(|e| e.to_string())?;
+    if let Err(e) = conn.execute_batch("VACUUM; PRAGMA wal_checkpoint(TRUNCATE);") {
+        result.errors.push(format!("Compacting logs: {e}"));
+    }
+    let after = dir_size(&state.data_dir.join("loopfleet.db"))
+        + dir_size(&state.data_dir.join("loopfleet.db-wal"));
+    result.bytes_reclaimed += before.saturating_sub(after);
+    Ok(result)
 }
 
 /// Abort a pending rate-limit re-run before it fires, keyed by the original
@@ -2911,7 +3099,9 @@ async fn merge_and_accept_run(
     db: &Arc<Mutex<Connection>>,
     git: &GitActor,
     data_dir: &std::path::Path,
+    storage_lock: &tokio::sync::RwLock<()>,
 ) -> Result<UseRunResult, String> {
+    let _storage_guard = storage_lock.read().await;
     let target = target_branch
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty());
@@ -3012,7 +3202,14 @@ async fn use_run(
     target_branch: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<UseRunResult, String> {
-    merge_and_accept_run(&run_id, target_branch, &state.db, &state.git, &state.data_dir).await
+    merge_and_accept_run(
+        &run_id,
+        target_branch,
+        &state.db,
+        &state.git,
+        &state.data_dir,
+        &state.storage_lock,
+    ).await
 }
 
 /// Load one project by id.
@@ -3357,6 +3554,7 @@ pub fn run() {
                 db: db.clone(),
                 git: git.clone(),
                 data_dir: dir.clone(),
+                storage_lock: Arc::new(tokio::sync::RwLock::new(())),
                 stops: Arc::new(Mutex::new(HashMap::new())),
                 taps: Arc::new(Mutex::new(HashMap::new())),
                 edits: Arc::new(Mutex::new(HashMap::new())),
@@ -3410,7 +3608,13 @@ pub fn run() {
                 for repo in repos {
                     let _ = sweep_git.cleanup_orphans(PathBuf::from(repo)).await;
                 }
-                sweep_worktrees(&sweep_db, &sweep_git, &sweep_dir).await;
+                {
+                    let state = app_handle.state::<AppState>();
+                    let _storage_guard = state.storage_lock.write().await;
+                    if let Err(e) = sweep_worktrees(&sweep_db, &sweep_git, &sweep_dir, &state.edits).await {
+                        eprintln!("cleanup: {e}");
+                    }
+                }
 
                 // Recover any rate-limit resume a crash or quit interrupted
                 // mid-wait (see `rearm_pending_resumes`), so the resume chip
@@ -3430,7 +3634,11 @@ pub fn run() {
                 ticker.tick().await; // first tick fires immediately; already swept above
                 loop {
                     ticker.tick().await;
-                    sweep_worktrees(&sweep_db, &sweep_git, &sweep_dir).await;
+                    let state = app_handle.state::<AppState>();
+                    let _storage_guard = state.storage_lock.write().await;
+                    if let Err(e) = sweep_worktrees(&sweep_db, &sweep_git, &sweep_dir, &state.edits).await {
+                        eprintln!("cleanup: {e}");
+                    }
                 }
             });
 

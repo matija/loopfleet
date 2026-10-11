@@ -22,12 +22,6 @@
 // a user thinks in here, and it's disabled while the section already holds its
 // defaults, so it never claims there's something to undo when there isn't.
 //
-// The panel's commands share one footer row instead of a button per section:
-// Save (primary) and Clean up now (quiet). Clean up now used to sit under
-// Worktrees in a row of its own, which read as a second call to action of
-// equal weight — the retention hint above it already says what it does, and
-// pressing it is a chore rather than the point of the panel.
-//
 // Theme is the one field here that is *not* backend state: it's a per-device
 // display preference App owns and persists to localStorage, so it applies on
 // pick rather than on Save. It lives in this panel anyway because this is
@@ -166,6 +160,7 @@ export function SettingsPanel({
   // otherwise the restored values look indistinguishable from saved ones and
   // a user could close the panel believing the reset had taken.
   const [resetNote, setResetNote] = useState<string | null>(null);
+  const [clearMergedLogs, setClearMergedLogs] = useState(false);
   const [sweeping, setSweeping] = useState(false);
   const [sweepMsg, setSweepMsg] = useState<{ text: string; ok: boolean } | null>(
     null,
@@ -270,13 +265,13 @@ export function SettingsPanel({
     setSweeping(true);
     setSweepMsg(null);
     try {
-      const result = await sweepWorktreesNow();
+      const result = await sweepWorktreesNow(clearMergedLogs);
       setSweepMsg({
         text:
-          result.removed === 0
+          `${result.removed === 0 && result.logs_removed === 0 && result.bytes_reclaimed === 0
             ? "Nothing to clean up"
-            : `Removed ${result.removed} worktree${result.removed === 1 ? "" : "s"}, reclaimed ${formatBytes(result.bytes_reclaimed)}`,
-        ok: true,
+            : `Removed ${result.removed} item${result.removed === 1 ? "" : "s"} and ${result.logs_removed} log entries, reclaimed ${formatBytes(result.bytes_reclaimed)}`}${result.errors.length ? `. Some items were kept: ${result.errors.join("; ")}` : ""}`,
+        ok: result.errors.length === 0,
       });
     } catch (e) {
       setSweepMsg({ text: String(e), ok: false });
@@ -595,22 +590,46 @@ export function SettingsPanel({
         </Hint>
       </section>
 
-      {/* One action row for the panel’s two commands, ranked rather than
-        * stacked: Save is the reason the panel is open, so it takes the filled
-        * primary; Clean up now is a maintenance chore you may never press, so
-        * it rides beside Save at text weight. Each keeps its own message,
-        * printed after the pair so neither result is mistaken for the other. */}
-      <div className="panel__actions">
-        <Button variant="primary" onClick={save} disabled={saving || !loaded}>
-          {saving ? "Saving…" : "Save settings"}
-        </Button>
+      <section className="panel-section">
+        <div className="panel-section__head">
+          <FolderIcon size={16} className="icon panel-section__icon" />
+          <h4 className="panel-section__title">Storage cleanup</h4>
+        </div>
+        <p className="field-note">
+          Remove merged and expired worktrees, abandoned drafts, unused progress
+          files, sandbox profiles, unused branches and orphan logs. Uses saved retention settings.
+          Active runs, scheduled resumes and pending drafts are kept.
+        </p>
+        <label className="field field--checkbox">
+          <input
+            type="checkbox"
+            checked={clearMergedLogs}
+            disabled={sweeping || !loaded}
+            onChange={(e) => setClearMergedLogs(e.target.checked)}
+          />
+          <span>Also clear merged-run logs</span>
+        </label>
+        <p className="field-note">
+          Permanently removes detailed activity and usage from merged runs and
+          their reports. Run records and diffs are kept.
+        </p>
         <Button
           variant="quiet"
           onClick={cleanUpNow}
           disabled={sweeping || !loaded}
-          title="Delete finished worktrees that are past their retention window"
         >
           {sweeping ? "Cleaning up…" : "Clean up now"}
+        </Button>
+        {sweepMsg && (
+          <p role="status" className={`msg ${sweepMsg.ok ? "msg--ok" : "msg--err"}`}>
+            {sweepMsg.text}
+          </p>
+        )}
+      </section>
+
+      <div className="panel__actions">
+        <Button variant="primary" onClick={save} disabled={saving || !loaded}>
+          {saving ? "Saving…" : "Save settings"}
         </Button>
         {msg ? (
           <span className={`msg ${msg.ok ? "msg--ok" : "msg--err"}`}>
@@ -619,11 +638,6 @@ export function SettingsPanel({
         ) : resetNote ? (
           <span className="msg">{resetNote}</span>
         ) : null}
-        {sweepMsg && (
-          <span className={`msg ${sweepMsg.ok ? "msg--ok" : "msg--err"}`}>
-            {sweepMsg.text}
-          </span>
-        )}
       </div>
     </section>
   );

@@ -300,6 +300,8 @@ export type UseRunResult = {
 export type SweepResult = {
   removed: number;
   bytes_reclaimed: number;
+  logs_removed: number;
+  errors: string[];
 };
 
 // --- src-tauri: plan_edit ---

@@ -248,8 +248,8 @@ export function answerAutopilotPrompt(
 /// Run a worktree sweep pass immediately (same eligibility rules as the
 /// hourly background sweep) and report how much it reclaimed, for the
 /// settings panel's "Clean up now" control.
-export function sweepWorktreesNow(): Promise<SweepResult> {
-  return invoke("sweep_worktrees_now");
+export function sweepWorktreesNow(clearMergedLogs = false): Promise<SweepResult> {
+  return invoke("sweep_worktrees_now", { clearMergedLogs });
 }
 
 /// Clear the OS-level dock badge/attention signal — the command counterpart to
