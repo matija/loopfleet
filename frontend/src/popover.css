@@ -21,6 +21,11 @@
   outline: none;
 }
 
+.popover .crumb-menu__option {
+  align-items: center;
+  transition: background-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+}
+
 /* Dims the page and blocks clicks from reaching whatever sits underneath a
  * destructive-action confirmation (Popover's `scrim` prop). Sits just below
  * the panel in z-index so the panel itself still reads as the focal point. */
@@ -83,6 +88,8 @@
 .meta-popover__icon {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  align-self: center;
   color: var(--c-text-faint);
 }
 

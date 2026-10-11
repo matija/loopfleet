@@ -711,6 +711,9 @@
  * the toast's full-strength text color, this just raises the glyph's own
  * weight to match. */
 .toast__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: none;
   color: var(--c-danger);
   line-height: var(--text-sm);
@@ -727,6 +730,9 @@
 }
 
 .toast__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: none;
   border: none;
   background: transparent;
@@ -734,9 +740,12 @@
   padding: 0;
   font-size: var(--text-sm);
   line-height: 1;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
 }
 
 .toast__close:hover {
+  background: var(--c-surface-hover);
   color: var(--c-text);
 }
 

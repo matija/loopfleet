@@ -38,11 +38,12 @@
   background: transparent;
   color: var(--c-text-faint);
   cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out);
 }
 
 .hint__more:hover,
 .hint__more[aria-expanded="true"] {
-  color: var(--c-accent);
+  color: var(--c-accent-text);
 }
 
 /* Wide enough for a few sentences to break naturally, narrow enough to stay

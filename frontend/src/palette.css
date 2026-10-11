@@ -34,7 +34,7 @@
   flex-direction: column;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-2);
   overflow: hidden;
   /* The panel settles down onto its resting spot while the scrim fades, so the
@@ -58,10 +58,14 @@
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--c-border);
+  transition: border-color var(--motion-fast) var(--ease-out);
 }
 
 .palette__input-icon {
   position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   left: var(--space-5);
   color: var(--c-text-faint);
   pointer-events: none;
@@ -130,7 +134,8 @@
   background: transparent;
   color: var(--c-text-muted);
   padding: 0 var(--space-3);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
+  transition: background-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
 }
 
 .palette__row:hover {
@@ -138,21 +143,28 @@
   color: var(--c-text);
 }
 
-/* Quiet fill for the selected row — the accent is reserved for genuine
- * accent affordances elsewhere, not row selection. */
-.palette__row--active {
-  background: var(--c-surface-3);
-  color: var(--c-text);
+.palette__row--active,
+.palette__row--active:hover {
+  background: var(--c-accent-quiet);
+  color: var(--c-accent-text);
 }
 
 .palette__row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: none;
   color: var(--c-text-faint);
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.palette__row:hover .palette__row-icon {
+  color: var(--c-text-muted);
 }
 
 .palette__row--active .palette__row-icon,
-.palette__row:hover .palette__row-icon {
-  color: var(--c-text-muted);
+.palette__row--active:hover .palette__row-icon {
+  color: var(--c-accent-text);
 }
 
 .palette__row-body {
