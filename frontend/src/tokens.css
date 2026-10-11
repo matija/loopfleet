@@ -111,8 +111,16 @@
  * inverted-ladder pattern github-light established and every light block
  * inherits. */
 
+@font-face {
+  font-family: "Readex Pro";
+  src: url("./assets/fonts/ReadexPro-Variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+}
+
 :root {
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Readex Pro Variable", system-ui, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Readex Pro", system-ui, sans-serif;
   --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
   --text-2xs: 10px;
   --text-xs: 11px;

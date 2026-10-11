@@ -2,7 +2,6 @@ import { emit } from "@tauri-apps/api/event";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import "@fontsource-variable/readex-pro";
 import "./tokens.css";
 import "./shell.css";
 import "./panels.css";
