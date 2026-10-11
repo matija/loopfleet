@@ -312,7 +312,7 @@
   height: var(--control-h);
   min-width: 184px;
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   overflow: hidden;
   background: var(--c-surface);
 }
@@ -444,8 +444,8 @@
 }
 
 .launch__schedule:hover:not(:disabled) {
-  background: var(--c-accent-quiet);
-  color: var(--c-accent-text);
+  background: var(--c-surface-hover);
+  color: var(--c-text);
 }
 
 .launch__schedule:disabled {
@@ -460,7 +460,7 @@
   align-items: stretch;
   height: var(--control-h);
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   overflow: hidden;
   background: var(--c-surface);
 }
@@ -489,7 +489,7 @@
   align-items: stretch;
   height: var(--control-h);
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   overflow: hidden;
   background: var(--c-surface);
 }
@@ -549,10 +549,10 @@
  * the primary action without shouting. Sized down to the row's --control-h,
  * since toolbar-split defaults to the taller toolbar control height. */
 .launch__run {
-  --toolbar-split-inner-radius: calc(var(--radius-md) - 1px);
+  --toolbar-split-inner-radius: calc(var(--radius-sm) - 1px);
   height: var(--control-h);
   border-color: var(--c-accent-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: var(--c-accent-quiet);
   box-shadow: var(--shadow-chip-hi);
 }
@@ -585,7 +585,8 @@
   color: var(--c-accent-text-hover);
 }
 
-.launch__run .toolbar-split__main:active:not(:disabled) {
+.launch__run .toolbar-split__main:active:not(:disabled),
+.launch__run .toolbar-split__chevron:active:not(:disabled) {
   background: var(--c-accent-quiet);
   box-shadow: var(--shadow-chip-pressed);
 }
@@ -594,6 +595,34 @@
  * Popover primitive (Popover.tsx) — this file only trims the message text.
  * Scoped to `.launch__result` (not `.launch .msg`, a plain descendant
  * selector) because the popover portals to document.body, outside `.launch`. */
+.launch__schedule,
+.launch__count-btn,
+.launch__model-input,
+.launch__run .toolbar-split__chevron,
+.launch__blocked-actions button {
+  transition: background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.launch__agent:active:not(:disabled),
+.launch__count-btn:active:not(:disabled),
+.launch__schedule:active:not(:disabled),
+.launch__blocked-actions button:active:not(:disabled) {
+  box-shadow: var(--shadow-chip-pressed);
+}
+
+.launch__schedule:focus-visible,
+.launch__blocked-actions button:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
+
+.launch__blocked-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .launch__result {
   max-width: 24ch;
   overflow: hidden;
@@ -633,20 +662,21 @@
   cursor: pointer;
 }
 
-.launch__blocked-actions button:hover {
-  background: var(--c-accent-quiet);
-  color: var(--c-accent-text);
+.launch__blocked-actions button:hover:not(:disabled) {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
 }
 
 .launch__blocked-actions .launch__blocked-schedule {
   border-color: var(--c-accent);
   background: var(--c-accent);
-  color: var(--c-accent-text);
+  color: var(--c-on-accent);
 }
 
-.launch__blocked-actions .launch__blocked-schedule:hover {
-  background: var(--c-accent);
-  filter: brightness(1.1);
+.launch__blocked-actions .launch__blocked-schedule:hover:not(:disabled) {
+  background: var(--c-accent-quiet-hover);
+  border-color: var(--c-accent-border-hover);
+  color: var(--c-accent-text-hover);
 }
 
 .launch__blocked-actions .launch__blocked-run {
