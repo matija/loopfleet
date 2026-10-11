@@ -157,10 +157,14 @@ button.toolbar__crumb:hover {
   border-radius: var(--radius-sm);
 }
 
-.toolbar__crumb--menu:hover,
-.toolbar__crumb--menu[aria-expanded="true"] {
+.toolbar__crumb--menu:hover {
   background: var(--c-surface-hover);
   color: var(--c-text);
+}
+
+.toolbar__crumb--menu[aria-expanded="true"] {
+  background: var(--c-accent-quiet);
+  color: var(--c-accent-text);
 }
 
 .toolbar__crumb-chevron {
@@ -207,10 +211,9 @@ button.toolbar__crumb:hover {
   outline: none;
 }
 
-/* The project already open. Marked by weight rather than a fill, so the
- * hover/focus fill above still reads on top of it. */
 .crumb-menu__option[aria-current="true"] {
-  color: var(--c-text);
+  background: var(--c-accent-quiet);
+  color: var(--c-accent-text);
   font-weight: 600;
 }
 
@@ -256,8 +259,14 @@ button.toolbar__crumb:hover {
   white-space: nowrap;
 }
 
-.toolbar-btn:hover:not(:disabled) {
+.toolbar-btn:hover:not(:disabled):not([aria-pressed="true"]):not([aria-expanded="true"]) {
   background: var(--c-surface-hover);
+}
+
+.toolbar-btn:is([aria-pressed="true"], [aria-expanded="true"]) {
+  background: var(--c-accent-quiet);
+  border-color: var(--c-accent-border);
+  color: var(--c-accent-text);
 }
 
 .toolbar-btn:disabled {

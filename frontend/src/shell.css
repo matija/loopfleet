@@ -257,7 +257,6 @@
   color: var(--c-text);
 }
 
-/* Quiet fill for the current row — the accent is reserved for the status dot. */
 .project-item[aria-current="true"] {
   background: var(--c-accent-quiet);
   border-color: var(--c-accent-border);
@@ -586,9 +585,9 @@
   color: var(--c-text);
 }
 
-/* Quiet fill for the current row — the accent is reserved for the status dot. */
 .tree-item[aria-current="true"] {
-  background: var(--c-surface-3);
+  background: var(--c-accent-quiet);
+  border-color: var(--c-accent-border);
   color: var(--c-text);
 }
 

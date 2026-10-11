@@ -26,6 +26,7 @@
 }
 
 .plan-toggle__tab:hover {
+  background: var(--c-surface-hover);
   color: var(--c-text);
 }
 
@@ -34,9 +35,9 @@
   outline-offset: 2px;
 }
 
-.plan-toggle__tab--active {
-  color: var(--c-text);
-  background: var(--c-surface);
+.plan-toggle__tab[aria-selected="true"] {
+  color: var(--c-accent-text);
+  background: var(--c-accent-quiet);
 }
 
 /* --- document --- */
