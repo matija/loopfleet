@@ -3,13 +3,8 @@
 Agent cockpit for spec-and-loop driven development.
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Loopfleet welcome screen with project setup and the plan, run, and review workflow" width="900">
+  <img src="docs/screenshot-welcome.png" alt="Loopfleet welcome screen with project setup and the plan, run, and review workflow" width="900">
   <br><em>Start with a repository, make a plan, run your agents, and review their work.</em>
-</p>
-
-<p align="center">
-  <img src="docs/screenshot-diff.png" alt="Loopfleet diff review" width="900">
-  <br><em>Diff review — inspect exactly what each agent produced before accepting a task.</em>
 </p>
 
 Write a PRD, break it into tasks, and let coding agents loop on them until every task is accepted. 🚀
