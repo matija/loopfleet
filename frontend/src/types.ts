@@ -155,6 +155,7 @@ export type TaskView = {
   status: TaskStatus;
   /// How many runs are bound to this task.
   run_count: number;
+  failed_run_id?: string | null;
 };
 
 /// One plan rendered for the overview. `core::overview::PlanView`.

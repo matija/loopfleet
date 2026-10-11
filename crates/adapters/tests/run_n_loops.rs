@@ -102,6 +102,7 @@ async fn runs_n_loops_on_a_task_with_claude() {
     let wrapper = confine_prefix(&params, &profile_dir.path().join("run.sb")).unwrap();
 
     let cfg = LoopConfig {
+        repair_context: None,
         run_id: run_id.into(),
         repo: repo.path().into(),
         worktree: worktree.path.clone(),

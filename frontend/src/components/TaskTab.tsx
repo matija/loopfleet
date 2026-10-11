@@ -78,14 +78,14 @@ export function TaskTab({
   }
 
   const review = task.status === "completed-unaccepted";
-  const StatusIcon = STATUS_ICON[task.status];
+  const StatusIcon = task.failed_run_id ? AlertIcon : STATUS_ICON[task.status];
   return (
     <div className="task-tab">
       <div className="task-tab__toolbar">
         <div className="task-tab__meta">
-          <span className={`task-status task-status--${task.status}`}>
+          <span className={`task-status task-status--${task.failed_run_id ? "failed" : task.status}`}>
             <StatusIcon size={16} className="task-status__icon" />
-            <span className="task-status__label">{STATUS_LABEL[task.status]}</span>
+            <span className="task-status__label">{task.failed_run_id ? "Failed" : STATUS_LABEL[task.status]}</span>
           </span>
           <span className="task-tab__plan">{plan.title ?? plan.file_path}</span>
         </div>
@@ -93,12 +93,14 @@ export function TaskTab({
           projectId={projectId}
           planId={planId}
           taskAnchor={task.anchor}
+          repairRunId={task.failed_run_id}
           installed={installed}
           agentsLoading={agentsLoading}
           onLaunched={onLaunched}
           onLaunch={(runId, agent, model, maxIterations) =>
             onLaunch({
               runId,
+              repairOf: task.failed_run_id ?? undefined,
               taskText: task.text,
               taskAnchor: task.anchor,
               agent,

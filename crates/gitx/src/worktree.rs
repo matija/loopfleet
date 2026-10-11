@@ -87,6 +87,10 @@ fn git(repo: &Path, args: &[&str]) -> Result<String> {
 /// commit (a HEAD to branch from). `worktrees_root` should be an app-managed
 /// location outside the repo; its parent is created if missing.
 pub fn add(repo: &Path, worktrees_root: &Path, run_id: &str) -> Result<Worktree> {
+    add_at(repo, worktrees_root, run_id, "HEAD")
+}
+
+fn add_at(repo: &Path, worktrees_root: &Path, run_id: &str, base: &str) -> Result<Worktree> {
     let branch = branch_for(run_id);
     let path = worktrees_root.join(run_id);
     std::fs::create_dir_all(worktrees_root)?;
@@ -98,12 +102,45 @@ pub fn add(repo: &Path, worktrees_root: &Path, run_id: &str) -> Result<Worktree>
             "-b",
             &branch,
             &path.to_string_lossy(),
+            base,
         ],
     )?;
     // git records the canonical path (on macOS /var -> /private/var); canonicalize
     // ours too so it matches what `list` reports and what's on disk.
     let path = std::fs::canonicalize(&path)?;
     Ok(Worktree { path, branch })
+}
+
+pub fn fork(
+    repo: &Path,
+    worktrees_root: &Path,
+    run_id: &str,
+    source_path: Option<&Path>,
+    first_ref: Option<&str>,
+    last_ref: Option<&str>,
+) -> Result<Worktree> {
+    let source_path = source_path.filter(|p| p.is_dir());
+    let base = match first_ref {
+        Some(rev) => git(repo, &["rev-parse", "--verify", &format!("{rev}^{{commit}}^")])?,
+        None => git(source_path.unwrap_or(repo), &["rev-parse", "HEAD"])?,
+    };
+    let seed = match source_path {
+        Some(path) => Some(
+            crate::shadow::snapshot(repo, path, run_id, 0)
+                .map_err(|e| WorktreeError::Git(e.to_string()))?
+                .commit,
+        ),
+        None => last_ref.map(str::to_owned),
+    };
+    let worktree = add_at(repo, worktrees_root, run_id, &base)?;
+    if let Some(seed) = seed {
+        if let Err(e) = git(&worktree.path, &["read-tree", "--reset", "-u", &seed]) {
+            let _ = remove(repo, &worktree.path);
+            let _ = delete_branch(repo, &worktree.branch);
+            return Err(e);
+        }
+    }
+    Ok(worktree)
 }
 
 /// Remove a worktree. Uses `--force` because agents leave dirty/untracked trees

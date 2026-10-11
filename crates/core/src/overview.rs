@@ -55,6 +55,7 @@ pub struct TaskView {
     pub status: TaskStatus,
     /// How many runs are bound to this task (context for the compare queue).
     pub run_count: usize,
+    pub failed_run_id: Option<String>,
 }
 
 /// Why a plan overview could not be built.
@@ -152,6 +153,7 @@ pub fn plan_overview(conn: &Connection, project: &Project) -> Result<Vec<PlanVie
         // last known line) to place it, not a single equality test per task.
         //
         let mut bound: Vec<Vec<TaskRun>> = vec![Vec::new(); parsed.tasks.len()];
+        let mut latest_runs = vec![None; parsed.tasks.len()];
         let mut unbound_runs = 0;
         let mut drifted_runs = 0;
         for r in &runs {
@@ -167,6 +169,7 @@ pub fn plan_overview(conn: &Connection, project: &Project) -> Result<Vec<PlanVie
                     if res.kind != MatchKind::Exact || res.position_disagreed {
                         drifted_runs += 1;
                     }
+                    latest_runs[res.task_index] = Some(r);
                     bound[res.task_index].push(TaskRun {
                         state,
                         accepted: r.accepted,
@@ -180,13 +183,17 @@ pub fn plan_overview(conn: &Connection, project: &Project) -> Result<Vec<PlanVie
             .tasks
             .iter()
             .zip(bound)
-            .map(|(t, task_runs)| TaskView {
+            .zip(latest_runs)
+            .map(|((t, task_runs), latest)| TaskView {
                 anchor: t.anchor.normalized_text.clone(),
                 line_hint: t.anchor.line_hint,
                 text: t.text.clone(),
                 checked: t.checked,
                 status: derive_status(&task_runs, t.checked),
                 run_count: task_runs.len(),
+                failed_run_id: latest
+                    .filter(|r| r.status == "failed" && derive_status(&task_runs, t.checked) == TaskStatus::NotStarted)
+                    .map(|r| r.id.clone()),
             })
             .collect();
         // Implemented tasks (Accepted — either an accepted run or an authored

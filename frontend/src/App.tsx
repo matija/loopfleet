@@ -766,7 +766,7 @@ export default function App() {
   // A launched run joins the dock, tagged with the project it ran against.
   const onLaunch = useCallback(
     (run: LaunchedRun) => {
-      const projectName = selected ? repoName(selected.repo_path) : "project";
+      const projectName = run.projectName ?? (selected ? repoName(selected.repo_path) : "project");
       setRuns((prev) => [
         {
           runId: run.runId,
@@ -777,14 +777,18 @@ export default function App() {
           maxIterations: run.maxIterations,
           startedAt: Date.now(),
           status: "running",
-          projectId: selected?.id,
+          projectId: run.projectId ?? selected?.id,
           taskAnchor: run.taskAnchor,
         },
         ...prev,
       ]);
       setDockCollapsed(false);
+      if (run.repairOf) {
+        setPlanNonce((n) => n + 1);
+        openRun(run.runId);
+      }
     },
-    [selected],
+    [selected, openRun],
   );
 
   // Retry a finished run: re-launch the same task with the same agent + passes.
@@ -1346,6 +1350,7 @@ export default function App() {
             onClose={goBack}
             onAccepted={() => setPlanNonce((n) => n + 1)}
             onRetry={onRetry}
+            onLaunch={onLaunch}
             toolbarActions={toolbarActionsEl}
             toolbarFilter={toolbarFilterEl}
           />
@@ -1498,6 +1503,7 @@ function RunPane({
   onClose,
   onAccepted,
   onRetry,
+  onLaunch,
   toolbarActions,
   toolbarFilter,
 }: {
@@ -1507,6 +1513,7 @@ function RunPane({
   onClose: () => void;
   onAccepted: () => void;
   onRetry: (run: ActiveRun) => void;
+  onLaunch: (run: LaunchedRun) => void;
   toolbarActions: HTMLDivElement | null;
   toolbarFilter: HTMLDivElement | null;
 }) {
@@ -1530,6 +1537,7 @@ function RunPane({
       onClose={onClose}
       onAccepted={onAccepted}
       onRetry={onRetry}
+      onLaunch={onLaunch}
       toolbarActions={toolbarActions}
     />
   );

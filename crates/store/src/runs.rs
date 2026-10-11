@@ -171,6 +171,7 @@ pub fn load_iterations(conn: &Connection, run_id: &str) -> rusqlite::Result<Vec<
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunDetail {
     pub id: String,
+    pub repair_of: Option<String>,
     /// The plan this run's task is bound to, so a caller can look the task's
     /// full authored text back up by `(plan_id, task_anchor)`.
     pub plan_id: String,
@@ -194,7 +195,7 @@ pub struct RunDetail {
 pub fn load_run(conn: &Connection, run_id: &str) -> rusqlite::Result<Option<RunDetail>> {
     conn.query_row(
         "SELECT r.id, r.plan_id, r.task_anchor, r.agent, r.model, r.status, r.max_iterations,
-                pr.repo_path, r.worktree_path, r.accepted
+                pr.repo_path, r.worktree_path, r.accepted, r.repair_of
          FROM runs r
          JOIN plans pl ON r.plan_id = pl.id
          JOIN projects pr ON pl.project_id = pr.id
@@ -212,6 +213,7 @@ pub fn load_run(conn: &Connection, run_id: &str) -> rusqlite::Result<Option<RunD
                 repo_path: r.get(7)?,
                 worktree_path: r.get(8)?,
                 accepted: r.get::<_, i64>(9)? != 0,
+                repair_of: r.get(10)?,
             })
         },
     )
@@ -341,7 +343,7 @@ pub fn latest_launch_prefs_for_plan(
 pub fn list_runs_for_plan(conn: &Connection, plan_id: &str) -> rusqlite::Result<Vec<RunSummary>> {
     let mut stmt = conn.prepare(
         "SELECT id, task_anchor, status, accepted FROM runs
-         WHERE plan_id = ?1 ORDER BY id",
+         WHERE plan_id = ?1 ORDER BY rowid",
     )?;
     let rows = stmt
         .query_map([plan_id], |r| {

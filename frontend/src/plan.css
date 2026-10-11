@@ -234,6 +234,10 @@
   flex: none;
 }
 
+.task-status--failed .task-status__icon {
+  color: var(--c-danger);
+}
+
 .task-status--completed-unaccepted .task-status__icon {
   color: var(--c-warn);
 }

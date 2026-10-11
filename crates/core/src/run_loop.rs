@@ -61,6 +61,7 @@ pub struct LoopConfig {
     pub progress_path: PathBuf,
     /// The bound task's text, injected into every pass's prompt.
     pub task_text: String,
+    pub repair_context: Option<String>,
     /// Maximum passes before the run fails as incomplete.
     pub max_iterations: u32,
     /// The opaque sandbox wrapper prefix prepended to each pass's agent spawn
@@ -405,12 +406,13 @@ Record the result:\n\
 7. Describe the changes in the summary line.\n\
 8. Start the summary with an imperative verb.\n\
 9. Use fewer than 72 characters for the summary.\n\n\
---- prior progress ---\n{prior}\n{notes}",
+--- prior progress ---\n{prior}\n{repair}\n{notes}",
         task = cfg.task_text,
         progress = cfg.progress_path.display(),
         marker = crate::progress::COMPLETION_MARKER,
         summary = crate::progress::SUMMARY_MARKER,
         prior = prior,
+        repair = cfg.repair_context.as_deref().unwrap_or_default(),
         notes = tap::render_notes(pending).map_or(String::new(), |notes| format!("\n{notes}\n")),
     )
 }
@@ -914,6 +916,7 @@ mod tests {
             .await
             .unwrap();
         let cfg = LoopConfig {
+            repair_context: None,
             run_id: run_id.into(),
             repo: repo.path().into(),
             worktree: wt.path,

@@ -7,8 +7,11 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { runTimeline } from "../commands";
+import { agentCatalog } from "../appData";
+import { LaunchControl, type LaunchedRun } from "./PlanView";
 import { normalizeDisplayText } from "../displayText";
 import type {
+  AgentStatus,
   DiffView,
   IterationView,
   RunStatus,
@@ -25,6 +28,7 @@ export function RunTimeline({
   onClose,
   onAccepted,
   onRetry,
+  onLaunch,
   toolbarActions,
 }: {
   run: ActiveRun;
@@ -35,11 +39,18 @@ export function RunTimeline({
   // Re-launch this run's task (same agent + passes). Backs the rate-limited
   // banner's "Retry now"; a no-op when the run carries no project/task identity.
   onRetry?: (run: ActiveRun) => void;
+  onLaunch?: (run: LaunchedRun) => void;
   // The toolbar's action-slot DOM node. Use run / Retry portal there instead
   // of rendering inline.
   toolbarActions: HTMLElement | null;
 }) {
   const [timeline, setTimeline] = useState<Timeline | null>(null);
+  const [agents, setAgents] = useState<AgentStatus[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(true);
+
+  useEffect(() => {
+    agentCatalog().then(setAgents).catch(() => {}).finally(() => setAgentsLoading(false));
+  }, []);
   const [error, setError] = useState<string | null>(null);
   // The Events / Diff / Files subtab. All three panels stay mounted (toggled
   // with `hidden`) so switching preserves each panel's scroll position.
@@ -114,6 +125,27 @@ export function RunTimeline({
           </span>
         </div>
       </header>
+
+      {status === "failed" && !merged && run.projectId && run.taskAnchor && onLaunch && (
+        <LaunchControl
+          projectId={run.projectId}
+          planId=""
+          taskAnchor={run.taskAnchor}
+          repairRunId={run.runId}
+          installed={agents.filter((a) => a.installed).map((a) => a.key)}
+          agentsLoading={agentsLoading}
+          onLaunched={() => {}}
+          onLaunch={(runId, agent, model, maxIterations) => onLaunch({
+            runId, agent, model, maxIterations,
+            taskText: run.taskText,
+            taskAnchor: run.taskAnchor!,
+            projectId: run.projectId,
+            projectName: run.projectName,
+            repairOf: run.runId,
+          })}
+          actionsPortal={toolbarActions}
+        />
+      )}
 
       {limitReached && (
         <div className="run-view__limit" role="status">

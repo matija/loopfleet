@@ -181,6 +181,15 @@ export function launchRun(args: {
   return invoke("launch_run", { ...args, model: args.model ?? null });
 }
 
+export function repairRun(args: {
+  runId: string;
+  agent: string;
+  model?: string | null;
+  maxIterations: number;
+}): Promise<string> {
+  return invoke("repair_run", { ...args, model: args.model ?? null });
+}
+
 /// Start a plan's next not-started task (document order), carrying forward the
 /// plan's most recently launched run's agent/model/pass count — falling back to
 /// the app's default agent/iterations if the plan has never had a run. Rejects

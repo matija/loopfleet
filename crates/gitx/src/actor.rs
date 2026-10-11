@@ -56,6 +56,28 @@ impl GitActor {
             .await
     }
 
+    pub async fn worktree_fork(
+        &self,
+        repo: PathBuf,
+        worktrees_root: PathBuf,
+        run_id: String,
+        source_path: Option<PathBuf>,
+        first_ref: Option<String>,
+        last_ref: Option<String>,
+    ) -> Result<Worktree, WorktreeError> {
+        self.exec(move || {
+            worktree::fork(
+                &repo,
+                &worktrees_root,
+                &run_id,
+                source_path.as_deref(),
+                first_ref.as_deref(),
+                last_ref.as_deref(),
+            )
+        })
+        .await
+    }
+
     /// Remove a run worktree (`worktree::remove`) through the actor.
     pub async fn worktree_remove(&self, repo: PathBuf, path: PathBuf) -> Result<(), WorktreeError> {
         self.exec(move || worktree::remove(&repo, &path)).await

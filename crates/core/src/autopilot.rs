@@ -205,6 +205,7 @@ mod tests {
 
     fn task(anchor: &str, status: TaskStatus) -> TaskView {
         TaskView {
+            failed_run_id: None,
             anchor: anchor.into(),
             line_hint: 0,
             text: anchor.into(),

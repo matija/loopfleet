@@ -9,6 +9,7 @@ import {
   launchRun,
   listProjects,
   planOverview,
+  repairRun,
   scheduleLaunch,
 } from "../commands";
 import { normalizeDisplayText, taskSummary } from "../displayText";
@@ -68,6 +69,9 @@ export const STATUS_ICON: Record<TaskStatus, typeof CheckIcon> = {
 /// What a task launch reports upward for the global run dock.
 export type LaunchedRun = {
   runId: string;
+  repairOf?: string;
+  projectId?: string;
+  projectName?: string;
   taskText: string;
   taskAnchor: string;
   agent: string;
@@ -363,7 +367,7 @@ function TaskRow({
   onLaunch: (run: LaunchedRun) => void;
   onCompare: (target: CompareTarget) => void;
 }) {
-  const StatusIcon = STATUS_ICON[task.status];
+  const StatusIcon = task.failed_run_id ? AlertIcon : STATUS_ICON[task.status];
   const [lastRun, setLastRun] = useState<RowLastRun | null>(null);
   const rowRef = useRef<HTMLLIElement>(null);
   const { open, handlers, close } = useHoverOpen(400, rowRef);
@@ -493,16 +497,17 @@ function TaskRow({
             </button>
           )}
         </span>
-        <span className={`task-status task-status--${task.status}`}>
+        <span className={`task-status task-status--${task.failed_run_id ? "failed" : task.status}`}>
           <span aria-hidden="true">
             <StatusIcon size={16} className="task-status__icon" />
           </span>
-          <span className="task-status__label">{STATUS_LABEL[task.status]}</span>
+          <span className="task-status__label">{task.failed_run_id ? "Failed" : STATUS_LABEL[task.status]}</span>
         </span>
         <LaunchControl
           projectId={projectId}
           planId={planId}
           taskAnchor={task.anchor}
+          repairRunId={task.failed_run_id}
           installed={installed}
           agentsLoading={agentsLoading}
           onLaunched={onLaunched}
@@ -517,6 +522,7 @@ function TaskRow({
             });
             onLaunch({
               runId,
+              repairOf: task.failed_run_id ?? undefined,
               taskText: task.text,
               taskAnchor: task.anchor,
               agent,
@@ -625,12 +631,14 @@ export function LaunchControl({
   onLaunched,
   onLaunch,
   actionsPortal,
+  repairRunId,
 }: {
   projectId: string;
   planId: string;
   taskAnchor: string;
   installed: string[];
   agentsLoading?: boolean;
+  repairRunId?: string | null;
   onLaunched: () => void;
   onLaunch: (
     runId: string,
@@ -758,13 +766,10 @@ export function LaunchControl({
     setMsg(null);
     const maxIterations = Math.max(1, passes || 1);
     try {
-      const runId = await launchRun({
-        projectId,
-        taskAnchor,
-        agent,
-        model: model.trim() || null,
-        maxIterations,
-      });
+      const options = { agent, model: model.trim() || null, maxIterations };
+      const runId = repairRunId
+        ? await repairRun({ runId: repairRunId, ...options })
+        : await launchRun({ projectId, taskAnchor, ...options });
       onLaunch(runId, agent, model.trim(), maxIterations);
       onLaunched();
       setJustLaunched(true);
@@ -873,7 +878,7 @@ export function LaunchControl({
     >
       <SplitButton
         className="launch__run"
-        onClick={launch}
+        onClick={repairRunId ? () => setMenuOpen(true) : launch}
         onChevronClick={() => setMenuOpen((v) => !v)}
         chevronLabel="Choose agent and passes"
         disabled={noAgents || checking || launching || !agent}
@@ -885,15 +890,15 @@ export function LaunchControl({
             ? "Launching…"
             : justLaunched
               ? "Launched"
-              : "Run"}
+              : repairRunId ? "Fix with Agent" : "Run"}
       </SplitButton>
       <Popover
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         anchorRef={chevronRef}
         placement="bottom-end"
-        role="menu"
-        aria-label="Choose agent and passes"
+        role={repairRunId ? "dialog" : "menu"}
+        aria-label={repairRunId ? "Fix with Agent" : "Choose agent and passes"}
         className="launch__menu"
       >
         <div
@@ -949,7 +954,7 @@ export function LaunchControl({
             {headroom.warning && (
               <span className="launch__usage-note">{headroom.warning}</span>
             )}
-            {headroom.display === "exhausted" && (
+            {headroom.display === "exhausted" && !repairRunId && (
               <button
                 type="button"
                 className="launch__schedule"
@@ -1016,6 +1021,11 @@ export function LaunchControl({
             +
           </button>
         </div>
+        {repairRunId && (
+          <button type="button" className="toolbar-btn" onClick={launch} disabled={noAgents || checking || launching || !agent}>
+            Start repair
+          </button>
+        )}
       </Popover>
       <Popover
         open={msg !== null}
@@ -1047,7 +1057,7 @@ export function LaunchControl({
             " A run started now will schedule its own resume once the agent reports the limit."}
         </p>
         <div className="launch__blocked-actions">
-          {blockedResetAtMs !== null && (
+          {blockedResetAtMs !== null && !repairRunId && (
             <button
               type="button"
               className="launch__blocked-schedule"

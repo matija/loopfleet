@@ -101,6 +101,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0011_native_automation",
         include_str!("migrations/0011_native_automation.sql"),
     ),
+    (
+        "0012_run_repair",
+        include_str!("migrations/0012_run_repair.sql"),
+    ),
 ];
 
 /// Open a SQLite database at `path`, enable foreign keys, and apply all pending
