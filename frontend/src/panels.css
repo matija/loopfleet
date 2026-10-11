@@ -692,10 +692,60 @@ button.surface-card:hover {
   margin-bottom: var(--space-5);
 }
 
+.settings-panel .settings-row {
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.settings-panel .field:not(.field--checkbox) {
+  display: grid;
+  grid-template-columns: minmax(0, 30ch) minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  gap: var(--space-3);
+}
+
+.settings-panel .field > span {
+  min-width: 0;
+}
+
+.settings-panel .select-trigger,
+.settings-panel .number-field {
+  max-width: 100%;
+  background: var(--c-surface);
+  border-color: var(--c-border);
+}
+
+.settings-panel .number-field__input {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: var(--space-2) 0 var(--space-2) var(--space-3);
+}
+
+.settings-panel .number-field__input:focus {
+  outline: none;
+}
+
+.settings-panel .panel-section__icon {
+  flex: none;
+  color: var(--c-text-muted);
+}
+
+.settings-panel .field--checkbox input {
+  flex: none;
+}
+
 .settings-panel .field-note {
   max-width: var(--form-w);
   margin-top: var(--space-2);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 640px) {
+  .settings-panel .field:not(.field--checkbox) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .settings-panel .panel__actions {

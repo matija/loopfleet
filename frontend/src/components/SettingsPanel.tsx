@@ -281,7 +281,7 @@ export function SettingsPanel({
   }
 
   return (
-    <section className="panel settings-panel">
+    <section className="panel settings-panel" aria-label="Settings">
       <div className="panel__head">
         <SettingsIcon size={16} className="icon panel__icon" />
         <h3>Settings</h3>
@@ -316,8 +316,6 @@ export function SettingsPanel({
             />
           </label>
         </div>
-        {/* Iterations and concurrency answer one question together — how much
-          * work a launch does at once — so they sit on a single row. */}
         <div className="settings-row">
           <label className="field">
             <span>Default iterations</span>
@@ -373,8 +371,6 @@ export function SettingsPanel({
             onReset={resetWorktrees}
           />
         </div>
-        {/* The hour count is an argument to the "after a delay" mode, not a
-          * setting of its own, so it sits beside the mode it qualifies. */}
         <div className="settings-row">
           <label className="field">
             <span>Delete finished worktrees</span>
@@ -567,8 +563,6 @@ export function SettingsPanel({
               options={THEMES.map((theme) => ({ value: theme.id, label: theme.label }))}
             />
           </label>
-          {/* Beside the picker rather than under it: the two are one decision,
-            * and the row already wraps on a narrow panel. */}
           <ThemePreview themeId={previewThemeId(highlightedTheme, themeId)} />
         </div>
         {/* The summary carries the part a user acts on — there's no Save to

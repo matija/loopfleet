@@ -18,11 +18,13 @@
   /* Sized to the row it shares with the picker: wide enough for the pill's
      8.5em min-width plus the card's insets, narrow enough that it reads as a
      sample rather than a second panel. */
-  width: 30ch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   flex: none;
   padding: var(--space-3);
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--c-bg);
   color: var(--c-text);
   /* The sample is decorative and non-interactive; keep a stray click or drag
@@ -40,11 +42,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: var(--space-2);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-sm);
-  background: var(--c-surface-2);
-  box-shadow: var(--shadow-card);
+  min-width: 0;
 }
 
 .theme-preview__head {
@@ -96,7 +94,6 @@
   margin-top: var(--space-1);
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
-  background: var(--c-surface);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--c-text-muted);
