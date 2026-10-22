@@ -35,7 +35,7 @@ the frontend. Both rebuild on change.
 From the app root, release both architectures and update the website:
 
 ```sh
-npm run release                 # release the current version
+make release                    # release the current version
 npm run release -- 0.3.8        # bump, commit, push, and release
 ```
 
