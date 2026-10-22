@@ -1108,6 +1108,11 @@ fn spawn_run(
     // the plan + tasks into the store, so the run's FK resolves on insert. Also
     // enforce the concurrency cap (M6 settings) and read the project's sandbox
     // write overrides — all under one lock.
+    let repair_progress = repair_of.as_deref().map(|source_id| {
+        loopfleet_core::safe_file::read_bounded(&data_dir,
+            &data_dir.join("progress").join(source_id).join("progress.md"), 256 * 1024)
+            .unwrap_or_default()
+    }).unwrap_or_default();
     let (project, plan_id, task_text, extra_writes, native_automation, repair) = {
         let conn = db.lock().unwrap();
 
@@ -1157,8 +1162,7 @@ fn spawn_run(
                 .collect::<Vec<_>>().join("\n");
             let recent = events.iter().rev().take(80).collect::<Vec<_>>().into_iter().rev()
                 .map(|e| e.event_json.chars().take(2000).collect::<String>()).collect::<Vec<_>>().join("\n");
-            let progress = std::fs::read_to_string(data_dir.join("progress").join(source_id).join("progress.md"))
-                .unwrap_or_default();
+            let progress = &repair_progress;
             let context = format!(
                 "Repair attempt for run {source_id} (agent: {}, status: {}, passes: {}).\n\
 Diagnose why the previous attempt failed, fix the cause where possible, and complete the original task.\n\

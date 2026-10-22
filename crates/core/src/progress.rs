@@ -53,7 +53,7 @@ pub fn summary_from_contents(contents: &str) -> Option<String> {
 /// Read `path` and test for the marker. A missing or unreadable file is treated
 /// as "not complete" — the agent simply has not written it yet.
 pub fn file_marks_complete(path: &Path) -> bool {
-    std::fs::read_to_string(path)
+    crate::safe_file::read_bounded(path.parent().and_then(Path::parent).unwrap_or_else(|| Path::new("/")), path, 256 * 1024)
         .map(|c| contents_mark_complete(&c))
         .unwrap_or(false)
 }

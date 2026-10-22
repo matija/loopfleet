@@ -348,7 +348,7 @@ fn resolve_tap(
 
 /// Read the progress file, or `""` if it does not exist yet (first pass).
 fn read_progress(path: &Path) -> String {
-    std::fs::read_to_string(path).unwrap_or_default()
+    crate::safe_file::read_bounded(path.parent().and_then(Path::parent).unwrap_or_else(|| Path::new("/")), path, 256 * 1024).unwrap_or_default()
 }
 
 /// Assemble a pass's prompt: the bound task, the loop rules, the progress-file

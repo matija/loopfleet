@@ -35,6 +35,17 @@ fn regular(file: &File) -> io::Result<()> {
     Ok(())
 }
 
+pub fn read_bounded(root: &Path, path: &Path, limit: u64) -> io::Result<String> {
+    let (dir, leaf) = parent(root, path)?;
+    let file = open_at(&dir, &leaf, libc::O_RDONLY)?;
+    regular(&file)?;
+    if file.metadata()?.len() > limit { return Err(io::Error::other("file exceeds size limit")); }
+    let mut bytes = Vec::new();
+    file.take(limit + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > limit { return Err(io::Error::other("file exceeds size limit")); }
+    String::from_utf8(bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}
+
 pub fn replace(root: &Path, path: &Path, original: Option<&str>, proposed: &str) -> io::Result<()> {
     let (dir, leaf) = parent(root, path)?;
     if let Some(original) = original {
@@ -60,4 +71,3 @@ pub fn replace(root: &Path, path: &Path, original: Option<&str>, proposed: &str)
     unsafe { libc::unlinkat(dir.as_raw_fd(), temporary.as_ptr(), 0); }
     result
 }
-
