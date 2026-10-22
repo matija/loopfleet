@@ -139,10 +139,18 @@ impl AgentAdapter for ClaudeAdapter {
 /// distinction [`UsageSnapshot`] can express, so it is not one worth carrying
 /// up.
 ///
-/// The probe needs no worktree, no sandbox wrapper and no permissions: `/usage`
-/// is answered by the CLI itself, without a model turn.
+/// The probe uses the normal write confinement without a project directory.
 async fn probe_usage() -> Option<String> {
-    let mut cmd = tokio::process::Command::new("claude");
+    #[cfg(not(target_os = "macos"))]
+    return None;
+    let temporary = std::env::temp_dir();
+    let mut params = loopfleet_sandbox::RenderParams::new(&temporary, &temporary);
+    if let Some(home) = std::env::var_os("HOME") {
+        params.agent_dirs.push(std::path::PathBuf::from(home).join(".claude"));
+    }
+    let profile = loopfleet_sandbox::render(&params).ok()?;
+    let mut cmd = tokio::process::Command::new("/usr/bin/sandbox-exec");
+    cmd.args(["-p", &profile, "claude"]).current_dir(temporary).kill_on_drop(true);
     cmd.arg("-p")
         .arg("/usage")
         .args(["--output-format", "json"])

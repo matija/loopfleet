@@ -7,6 +7,7 @@ authors.workspace = true
 
 [dependencies]
 loopfleet-core.workspace = true
+loopfleet-sandbox.workspace = true
 async-trait.workspace = true
 tokio = { workspace = true, features = ["process", "io-util", "time"] }
 serde.workspace = true
@@ -19,6 +20,5 @@ libc.workspace = true
 
 [dev-dependencies]
 loopfleet-gitx.workspace = true
-loopfleet-sandbox.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tempfile = "3"
