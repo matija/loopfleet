@@ -32,6 +32,24 @@ the frontend. Both rebuild on change.
 
 ## Release
 
+From the app root, release both architectures and update the website:
+
+```sh
+npm run release                 # release the current version
+npm run release -- 0.3.8        # bump, commit, push, and release
+```
+
+The command runs the Apple Silicon release, then Intel, then updates every
+download link and version badge in `../loopfleet.web`. It builds the website,
+commits the changes, and pushes its default branch. GitHub Actions deploys it.
+The website checkout must be clean and match its remote default branch.
+Both Rust targets must be installed before the command starts.
+
+If only the website update fails, fix the error and run `npm run release:website`
+to retry without rebuilding the app. If a website push failed, push that commit
+from the website checkout first. `RELEASE_TAG` also applies to website updates.
+The separate architecture commands below remain available for recovery.
+
 Release builds run on an **Apple Silicon (arm64) macOS host**, which builds
 and notarizes both the native `aarch64-apple-darwin` bundle and, by
 cross-compiling, the `x86_64-apple-darwin` (Intel) bundle. The scripts in
@@ -117,7 +135,7 @@ is set to `""` for you) — don't set one when generating it.
 
 ### Release sequence
 
-A release is two commands, run in order on an arm64 macOS host:
+The individual release commands run in this order on an arm64 macOS host:
 
 ```sh
 build/release.sh 0.2.0        # bump to 0.2.0, commit + push the bump, build, notarize, publish aarch64

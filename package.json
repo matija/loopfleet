@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "release": "bash build/release-all.sh",
+    "release:website": "node build/release-website.mjs",
     "tauri": "tauri"
   },
   "devDependencies": {
