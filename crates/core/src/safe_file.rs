@@ -71,3 +71,20 @@ pub fn replace(root: &Path, path: &Path, original: Option<&str>, proposed: &str)
     unsafe { libc::unlinkat(dir.as_raw_fd(), temporary.as_ptr(), 0); }
     result
 }
+
+pub fn archive(root: &Path, source: &Path, destination: &Path) -> io::Result<()> {
+    let (source_dir, source_leaf) = parent(root, source)?;
+    let source_file = open_at(&source_dir, &source_leaf, libc::O_RDONLY)?;
+    regular(&source_file)?;
+    let (repo_dir, archive_dir) = parent(root, &root.join("prds"))?;
+    let rc = unsafe { libc::mkdirat(repo_dir.as_raw_fd(), archive_dir.as_ptr(), 0o755) };
+    if rc < 0 && io::Error::last_os_error().kind() != io::ErrorKind::AlreadyExists { return Err(io::Error::last_os_error()); }
+    let dir = open_at(&repo_dir, &archive_dir, libc::O_RDONLY | libc::O_DIRECTORY)?;
+    let leaf = name(destination.file_name().ok_or_else(|| io::Error::other("missing archive name"))?)?;
+    #[cfg(target_os = "macos")]
+    let rc = unsafe { libc::renameatx_np(source_dir.as_raw_fd(), source_leaf.as_ptr(), dir.as_raw_fd(), leaf.as_ptr(), libc::RENAME_EXCL) };
+    #[cfg(not(target_os = "macos"))]
+    let rc = unsafe { libc::renameat2(source_dir.as_raw_fd(), source_leaf.as_ptr(), dir.as_raw_fd(), leaf.as_ptr(), libc::RENAME_NOREPLACE) };
+    if rc < 0 { return Err(io::Error::last_os_error()); }
+    Ok(())
+}

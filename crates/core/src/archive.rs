@@ -410,8 +410,7 @@ pub fn archive_plan(
         ));
     }
 
-    fs::create_dir_all(&destination_dir).map_err(ArchivePlanError::Io)?;
-    fs::rename(source, &destination).map_err(ArchivePlanError::Io)?;
+    crate::safe_file::archive(repo, source, &destination).map_err(ArchivePlanError::Io)?;
 
     let new_path = destination.to_string_lossy().into_owned();
     let new_id = loopfleet_store::plan_id(&project_id, &new_path);
