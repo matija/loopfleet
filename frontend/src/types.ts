@@ -241,6 +241,7 @@ export type IterationView = {
 
 /// A whole run's timeline. `core::timeline::RunTimeline`.
 export type RunTimeline = {
+  plan_id: string;
   run_id: string;
   agent: string;
   status: RunStatus;

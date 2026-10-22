@@ -888,6 +888,7 @@ async fn cleanup_plan_edit(state: &AppState, edit_id: &str, repo: PathBuf, path:
 #[tauri::command]
 async fn launch_run(
     project_id: String,
+    plan_id: String,
     task_anchor: String,
     agent: String,
     model: Option<String>,
@@ -899,6 +900,7 @@ async fn launch_run(
     // shared state so a scheduled re-run (rate limits) can call it again.
     spawn_run(
         project_id,
+        plan_id,
         task_anchor,
         agent,
         model,
@@ -927,7 +929,7 @@ async fn repair_run(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let (project_id, task_anchor) = {
+    let (project_id, plan_id, task_anchor) = {
         let conn = state.db.lock().unwrap();
         let run = loopfleet_store::load_run(&conn, &run_id)
             .map_err(|e| e.to_string())?
@@ -947,10 +949,11 @@ async fn repair_run(
             .find(|task| task.failed_run_id.as_deref() == Some(&run_id) || task.anchor == run.task_anchor)
             .map(|task| task.anchor)
             .ok_or_else(|| "this task is no longer in the plan".to_string())?;
-        (project_id, task_anchor)
+        (project_id, run.plan_id, task_anchor)
     };
     spawn_run(
         project_id,
+        plan_id,
         task_anchor,
         agent,
         model,
@@ -1022,6 +1025,7 @@ async fn continue_plan(
 
     let run_id = spawn_run(
         project_id,
+        plan_id,
         task_anchor.clone(),
         agent.clone(),
         model.clone(),
@@ -1058,6 +1062,7 @@ async fn continue_plan(
 #[allow(clippy::too_many_arguments)]
 fn spawn_run(
     project_id: String,
+    selected_plan_id: String,
     task_anchor: String,
     agent: String,
     model: Option<String>,
@@ -1119,15 +1124,12 @@ fn spawn_run(
 
         let project = get_project(&conn, &project_id)?;
         let views = loopfleet_core::plan_overview(&conn, &project).map_err(|e| e.to_string())?;
-        let (plan_id, task_text) = views
-            .iter()
-            .find_map(|v| {
-                v.tasks
-                    .iter()
-                    .find(|t| t.anchor == task_anchor)
-                    .map(|t| (v.plan_id.clone(), t.text.clone()))
-            })
-            .ok_or_else(|| format!("no task anchored at '{task_anchor}'"))?;
+        let plan = views.iter().find(|v| v.plan_id == selected_plan_id)
+            .ok_or_else(|| "selected plan no longer exists in this project".to_string())?;
+        let mut matches = plan.tasks.iter().filter(|t| t.anchor == task_anchor);
+        let task = matches.next().ok_or_else(|| format!("no task anchored at '{task_anchor}' in selected plan"))?;
+        if matches.next().is_some() { return Err("ambiguous task anchor in selected plan".into()); }
+        let (plan_id, task_text) = (plan.plan_id.clone(), task.text.clone());
         let extra_writes = loopfleet_store::project_sandbox_writes(&conn, &project_id)
             .map_err(|e| e.to_string())?;
         let native_automation = loopfleet_store::project_native_automation(&conn, &project_id)
@@ -1136,8 +1138,7 @@ fn spawn_run(
             let source = loopfleet_store::load_run(&conn, source_id)
                 .map_err(|e| e.to_string())?
                 .ok_or_else(|| "failed run not found".to_string())?;
-            let task = views.iter().flat_map(|v| &v.tasks)
-                .find(|t| t.anchor == task_anchor).unwrap();
+            let task = plan.tasks.iter().find(|t| t.anchor == task_anchor).unwrap();
             if source.plan_id != plan_id
                 || (source.task_anchor != task_anchor && task.failed_run_id.as_deref() != Some(source_id))
                 || source.accepted || !matches!(source.status.as_str(), "failed" | "limit-reached") {
@@ -1212,6 +1213,7 @@ If no failure reason was recorded, inspect the partial work and diagnose the mis
 
     // Keep the launch inputs for a possible rate-limit re-run (`task_anchor` and
     // `agent` are moved into the run row just below).
+    let rerun_plan_id = plan_id.clone();
     let rerun = (project_id, task_anchor.clone(), agent.clone(), model.clone(), max_iterations);
     // Rate limits are the agent's, not the run's, so the headroom snapshot this
     // run observes is filed under the agent name (see `record_agent_limit`).
@@ -1651,7 +1653,7 @@ If no failure reason was recorded, inspect the partial work and diagnose the mis
                 let handle = tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(delay).await;
                     let _ = spawn_run(
-                        project_id, task_anchor, agent, model, max_iterations,
+                        project_id, rerun_plan_id, task_anchor, agent, model, max_iterations,
                         app, db, git, data_dir, stops, taps, unacknowledged, resumes_for_task.clone(),
                         scheduled_auto_merges, next_attempt, next_repair_of,
                     )
@@ -1741,6 +1743,11 @@ fn rearm_pending_resumes(app: &AppHandle) {
         let model = resume.model.clone();
         let max_iterations = resume.pass_count;
         let attempt = resume.attempt;
+        let plan_id = {
+            let conn = db.lock().unwrap();
+            loopfleet_store::load_run(&conn, &resume_run_id).ok().flatten().map(|run| run.plan_id)
+        };
+        let Some(plan_id) = plan_id else { continue; };
         let repair_of = {
             let conn = db.lock().unwrap();
             loopfleet_store::load_run(&conn, &resume_run_id).ok().flatten()
@@ -1752,7 +1759,7 @@ fn rearm_pending_resumes(app: &AppHandle) {
                 tokio::time::sleep(delay).await;
             }
             let _ = spawn_run(
-                project_id, task_anchor, agent, model, max_iterations,
+                project_id, plan_id, task_anchor, agent, model, max_iterations,
                 app, db, git, data_dir, stops, taps, unacknowledged, resumes_for_task.clone(),
                 scheduled_auto_merges, attempt, repair_of,
             )
@@ -2847,6 +2854,7 @@ fn arm_scheduled_launch(
         let launch_result = match project_id {
             Some(project_id) => spawn_run(
                 project_id,
+                plan_id.clone(),
                 task_anchor.clone(),
                 agent,
                 model,

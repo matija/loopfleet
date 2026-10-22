@@ -171,6 +171,7 @@ export function planEditDiscard(editId: string): Promise<void> {
 /// loop runs in the background and streams `run_event`/`run_status` events.
 export function launchRun(args: {
   projectId: string;
+  planId: string;
   taskAnchor: string;
   agent: string;
   /// Model override for this run (e.g. Claude's "opus"/"sonnet", or a pinned

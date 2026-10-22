@@ -801,7 +801,9 @@ export default function App() {
       if (!run.projectId || !run.taskAnchor) return;
       const maxIterations = run.maxIterations ?? 1;
       try {
+        const detail = await runTimeline(run.runId);
         const runId = await launchRun({
+          planId: detail.plan_id,
           projectId: run.projectId,
           taskAnchor: run.taskAnchor,
           agent: run.agent,

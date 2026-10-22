@@ -14,6 +14,7 @@ use serde::Serialize;
 /// A whole run's timeline: its metadata plus one row per iteration.
 #[derive(Debug, Serialize)]
 pub struct RunTimeline {
+    pub plan_id: String,
     pub run_id: String,
     pub agent: String,
     pub status: String,
@@ -137,6 +138,7 @@ pub fn run_timeline(conn: &Connection, run_id: &str) -> Result<RunTimeline, Time
     let worktree_path = live_worktree_path(run.worktree_path);
 
     Ok(RunTimeline {
+        plan_id: run.plan_id,
         run_id: run.id,
         agent: run.agent,
         status: run.status,

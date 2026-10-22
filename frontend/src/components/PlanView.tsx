@@ -769,7 +769,7 @@ export function LaunchControl({
       const options = { agent, model: model.trim() || null, maxIterations };
       const runId = repairRunId
         ? await repairRun({ runId: repairRunId, ...options })
-        : await launchRun({ projectId, taskAnchor, ...options });
+        : await launchRun({ projectId, planId, taskAnchor, ...options });
       onLaunch(runId, agent, model.trim(), maxIterations);
       onLaunched();
       setJustLaunched(true);
