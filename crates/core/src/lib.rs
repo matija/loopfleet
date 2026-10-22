@@ -23,6 +23,7 @@ pub mod overview;
 pub mod plan;
 pub mod progress;
 pub mod report;
+pub mod safe_file;
 pub mod run_loop;
 pub mod supervisor;
 pub mod tap;

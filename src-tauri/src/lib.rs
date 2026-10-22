@@ -817,7 +817,6 @@ async fn propose_plan(
 #[tauri::command]
 async fn plan_edit_apply(edit_id: String, state: State<'_, AppState>) -> Result<(), String> {
     let _storage_guard = state.storage_lock.read().await;
-    use std::io::Write;
     let pending = state
         .edits
         .lock()
@@ -825,40 +824,10 @@ async fn plan_edit_apply(edit_id: String, state: State<'_, AppState>) -> Result<
         .remove(&edit_id)
         .ok_or_else(|| format!("unknown or already-resolved edit: {edit_id}"))?;
     let result = (|| -> Result<(), String> {
-        if let Some(original) = &pending.original {
-            let current = std::fs::read_to_string(&pending.file_path).map_err(|e| e.to_string())?;
-            if &current != original {
-                return Err(
-                    "the plan changed on disk since this edit was proposed — discard and re-run"
-                        .into(),
-                );
-            }
-            std::fs::write(&pending.file_path, &pending.proposed).map_err(|e| e.to_string())
-        } else {
-            let parent = pending
-                .file_path
-                .parent()
-                .ok_or("plan has no parent directory")?;
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-            if !parent
-                .canonicalize()
-                .map_err(|e| e.to_string())?
-                .starts_with(&pending.repo_path)
-            {
-                return Err("plan directory is outside the repository".into());
-            }
-            let mut file = std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&pending.file_path)
-                .map_err(|e| if e.kind() == std::io::ErrorKind::AlreadyExists {
-                    "PRD.md appeared on disk — discard this draft or archive that file first".to_string()
-                } else {
-                    format!("creating PRD: {e}")
-                })?;
-            file.write_all(pending.proposed.as_bytes())
-                .map_err(|e| e.to_string())
-        }
+        loopfleet_core::safe_file::replace(
+            &pending.repo_path, &pending.file_path,
+            pending.original.as_deref(), &pending.proposed,
+        ).map_err(|e| e.to_string())
     })();
     if let Err(error) = result {
         state.edits.lock().unwrap().insert(edit_id, pending);
