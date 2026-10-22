@@ -9,8 +9,10 @@
 //! In M3 these calls funnel through the single serialized git actor; this module
 //! stays actor-agnostic and just builds/runs the commands.
 
+#[cfg(test)]
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(test)]
 use std::process::Command;
 
 /// Fallback identity for shadow commits when the repo has no `user.*` configured.
@@ -73,106 +75,34 @@ type Result<T> = std::result::Result<T, SnapshotError>;
 /// (falling back to the worktree's base HEAD) so the refs form a readable chain.
 /// The agent branch and any user branches are never touched.
 pub fn snapshot(repo: &Path, worktree: &Path, run_id: &str, iter: u32) -> Result<Snapshot> {
-    // A throwaway index, keyed uniquely so serialized snapshots never collide,
-    // so the worktree's real index is left exactly as the agent left it.
-    let tmp_index = temp_index_path(run_id, iter);
-    let _ = std::fs::remove_file(&tmp_index);
-    let index_env: [(&str, &OsStr); 1] = [("GIT_INDEX_FILE", tmp_index.as_os_str())];
-    // `add -A` from an empty index stages every file on disk; it honors
-    // .gitignore, so build artifacts are not snapshotted. Objects land in the
-    // shared object database.
-    run_git(worktree, &["add", "-A"], &index_env)?;
-    let tree = run_git(worktree, &["write-tree"], &index_env)?;
-    let _ = std::fs::remove_file(&tmp_index);
-
-    let parent = resolve_parent(repo, worktree, run_id, iter)?;
-    // Kept as plain bookkeeping, not written for a human: `merge::is_snapshot_message`
-    // recognizes this exact shape to filter these commits out of a squash message, and
-    // `merge::fallback_message` no longer falls back to a source commit's own message
-    // (which used to let this text leak onto a user branch when a run had no other
-    // commits) — it now names the run by its source sha instead. With that fallback
-    // gone, this message never reaches a user branch, so it only needs to serve as the
-    // app's internal ledger of `refs/agentapp/run-<id>/iter-<n>` history.
-    let msg = format!("run {run_id} iter {iter}");
-    // Attribute the snapshot to the user (their configured git identity) so a
-    // run's commits land in their history under their name once the run is used.
-    let (name, email) = commit_identity(repo);
-    let ident: [(&str, &OsStr); 4] = [
-        ("GIT_AUTHOR_NAME", OsStr::new(&name)),
-        ("GIT_AUTHOR_EMAIL", OsStr::new(&email)),
-        ("GIT_COMMITTER_NAME", OsStr::new(&name)),
-        ("GIT_COMMITTER_EMAIL", OsStr::new(&email)),
-    ];
-    let commit = run_git(
-        repo,
-        &["commit-tree", &tree, "-p", &parent, "-m", &msg],
-        &ident,
-    )?;
-
+    let repository = git2::Repository::open(repo).map_err(git_error)?;
+    let parent = if iter > 1 {
+        repository.revparse_single(&shadow_ref(run_id, iter - 1)).ok()
+            .and_then(|object| object.peel_to_commit().ok())
+    } else { None };
+    let parent = parent.or_else(|| repository.find_branch(&format!("agent/{run_id}"), git2::BranchType::Local)
+        .ok().and_then(|branch| branch.get().peel_to_commit().ok()))
+        .ok_or_else(|| SnapshotError::Git("missing run branch".into()))?;
+    let signature = repository.signature().or_else(|_| git2::Signature::now(COMMIT_NAME, COMMIT_EMAIL)).map_err(git_error)?;
+    repository.set_workdir(worktree, false).map_err(git_error)?;
+    let mut index = git2::Index::new().map_err(git_error)?;
+    repository.set_index(&mut index).map_err(git_error)?;
+    index.add_all(["*"], git2::IndexAddOption::DEFAULT, None).map_err(git_error)?;
+    let tree_id = index.write_tree_to(&repository).map_err(git_error)?;
+    let tree = repository.find_tree(tree_id).map_err(git_error)?;
     let git_ref = shadow_ref(run_id, iter);
-    run_git(repo, &["update-ref", &git_ref, &commit], &[])?;
-    Ok(Snapshot { git_ref, commit })
+    let commit = repository.commit(Some(&git_ref), &signature, &signature,
+        &format!("run {run_id} iter {iter}"), &tree, &[&parent]).map_err(git_error)?;
+    Ok(Snapshot { git_ref, commit: commit.to_string() })
 }
 
-/// Parent for iteration `iter`: the previous iteration's shadow commit if it
-/// exists, else the worktree's base HEAD (the agent branch tip — the agent never
-/// commits, so this is the commit the worktree was cut from).
-fn resolve_parent(repo: &Path, worktree: &Path, run_id: &str, iter: u32) -> Result<String> {
-    if iter > 1 {
-        if let Some(sha) = rev_parse_opt(repo, &shadow_ref(run_id, iter - 1))? {
-            return Ok(sha);
-        }
-    }
-    run_git(worktree, &["rev-parse", "HEAD"], &[])
-}
-
-/// The identity to stamp a shadow commit with: the repo's configured
-/// `user.name`/`user.email` (so the run is attributed to the user), falling back
-/// to the synthetic [`COMMIT_NAME`]/[`COMMIT_EMAIL`] only when git has no
-/// identity configured — `commit-tree` needs one either way. Both fields must be
-/// set to use the user identity; a half-configured repo falls back wholesale
-/// rather than mixing a real name with a synthetic email.
-fn commit_identity(repo: &Path) -> (String, String) {
-    match (git_config(repo, "user.name"), git_config(repo, "user.email")) {
-        (Some(name), Some(email)) => (name, email),
-        _ => (COMMIT_NAME.to_string(), COMMIT_EMAIL.to_string()),
-    }
-}
-
-/// Read a single git config value from `repo`, or `None` when unset or empty.
-/// Respects the normal local/global/system config cascade.
-fn git_config(repo: &Path, key: &str) -> Option<String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args(["config", "--get", key])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let val = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    (!val.is_empty()).then_some(val)
-}
-
-/// Resolve `rev` to a commit sha, or `None` if it does not exist. `--verify
-/// --quiet` exits non-zero with no output for a missing ref, which is not an
-/// error here (the first iteration has no predecessor).
-fn rev_parse_opt(dir: &Path, rev: &str) -> Result<Option<String>> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(["rev-parse", "--verify", "--quiet", rev])
-        .output()?;
-    if out.status.success() {
-        Ok(Some(String::from_utf8_lossy(&out.stdout).trim().to_string()))
-    } else {
-        Ok(None)
-    }
+fn git_error(error: git2::Error) -> SnapshotError {
+    SnapshotError::Git(error.to_string())
 }
 
 /// Run `git -C <dir> <args...>` with extra env vars, returning trimmed stdout or
 /// the stderr on non-zero exit.
+#[cfg(test)]
 fn run_git(dir: &Path, args: &[&str], envs: &[(&str, &OsStr)]) -> Result<String> {
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(dir).args(args);
@@ -187,16 +117,6 @@ fn run_git(dir: &Path, args: &[&str], envs: &[(&str, &OsStr)]) -> Result<String>
             String::from_utf8_lossy(&out.stderr).trim().to_string(),
         ))
     }
-}
-
-/// A unique throwaway-index path in the system temp dir. Keyed by pid + run + n;
-/// the git actor serializes snapshots, so this only needs to avoid clashing with
-/// unrelated processes and prior iterations.
-fn temp_index_path(run_id: &str, iter: u32) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "loopfleet-index-{}-{run_id}-{iter}",
-        std::process::id()
-    ))
 }
 
 #[cfg(test)]
