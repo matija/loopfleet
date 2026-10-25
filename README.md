@@ -40,6 +40,12 @@ use notes (`can_steer() == false`).
 Signed and notarized `.dmg` builds; the app updates itself from there.
 Older builds: [all releases](https://github.com/matija/loopfleet/releases).
 
+Or install with [Homebrew](https://brew.sh/):
+
+```sh
+brew install --cask matija/tap/loopfleet
+```
+
 > WIP.
 
 ## Build from source 🛠️
