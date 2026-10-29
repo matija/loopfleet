@@ -9,20 +9,6 @@
 //! fresh context every pass, the external progress file as durable state, an
 //! app-owned snapshot between passes.
 //!
-//! Each pass: seed the prompt with the bound task plus the prior progress-file
-//! contents → `start_run` a fresh agent invocation → drain its normalized events
-//! → snapshot the worktree to `refs/agentapp/run-<id>/iter-<n>` → check the
-//! progress file for the `<STATUS>COMPLETE</STATUS>` marker.
-//!
-//! Stop conditions (PRD run status machine):
-//! - the bound task's `<STATUS>COMPLETE</STATUS>` appears → [`RunState::Completed`];
-//! - the user requests a stop via `cancel` → [`RunState::Stopped`];
-//! - the agent hit a rate limit during the pass and it did not otherwise finish
-//!   → [`RunState::LimitReached`] (the caller schedules a re-run once it resets);
-//! - `max_iterations` reached still incomplete → [`RunState::Failed`];
-//! - a hard failure (adapter cannot spawn, or a snapshot fails) →
-//!   [`RunState::Failed`].
-//!
 //! A per-pass `Failed` *event* is deliberately NOT fatal: the ralph pattern is
 //! resilient across passes, so a pass that ends without completing the task just
 //! rolls into the next fresh pass; only exhausting N without completion, or an
@@ -44,6 +30,7 @@ use loopfleet_gitx::GitActor;
 use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::adapter::{AgentAdapter, RunSpec, SteerRequest};
+use crate::execution::{self, AgentResult, ExecutionConfig};
 use crate::tap::{self, Delivery};
 use crate::{NormalizedEvent, RunState, Tap};
 
@@ -56,11 +43,11 @@ pub struct LoopConfig {
     pub repo: PathBuf,
     /// The per-run worktree the agent runs in and the snapshotter captures.
     pub worktree: PathBuf,
-    /// The external, app-managed progress file. Read for seed context and the
-    /// completion marker; written by the agent (never by this loop).
     pub progress_path: PathBuf,
     /// The bound task's text, injected into every pass's prompt.
     pub task_text: String,
+    pub plan_context: String,
+    pub execution: ExecutionConfig,
     pub repair_context: Option<String>,
     /// Maximum passes before the run fails as incomplete.
     pub max_iterations: u32,
@@ -121,6 +108,26 @@ pub async fn run_loop(
     let mut iterations = Vec::new();
     let mut pending = Vec::new();
 
+    for (index, check) in cfg.execution.preflight.iter().enumerate() {
+        let result = execution::run_check(check, &cfg.worktree, &cfg.wrapper, cancel).await;
+        on_event(0, &NormalizedEvent::AssistantText {
+            text: format!("Loopfleet preflight: {}\n{}", result.name, result.output),
+        });
+        if let Err(error) = execution::write_record(&cfg.progress_path, &format!("preflight-{index}.json"), &serde_json::to_string_pretty(&result).unwrap()) {
+            on_event(0, &NormalizedEvent::Failed { reason: format!("Cannot record preflight: {error}") });
+            return LoopOutcome { state: RunState::Failed, iterations, reset_at: None };
+        }
+        if !result.passed {
+            let reason = format!("Preflight blocked: {}. Restore this prerequisite and resume the run.\n{}", result.name, result.output);
+            let _ = execution::append_progress(&cfg.progress_path, &reason);
+            on_event(0, &NormalizedEvent::Failed { reason });
+            return LoopOutcome {
+                state: if *cancel.borrow() || cancel.has_changed().is_err() { RunState::Stopped } else { RunState::Blocked },
+                iterations, reset_at: None,
+            };
+        }
+    }
+
     for n in 1..=cfg.max_iterations {
         // Boundary stop (PRD default): a stop requested between passes returns
         // without spawning the next one — nothing is running, so it is clean.
@@ -149,7 +156,7 @@ pub async fn run_loop(
                 pending.push(tap);
             }
         }
-        let prompt = build_prompt(cfg, &prior, &pending);
+        let prompt = build_prompt(cfg, &prior, &pending, n);
         for tap in pending.drain(..) {
             on_event(
                 n,
@@ -262,9 +269,58 @@ pub async fn run_loop(
             );
         }
 
-        // App-owned snapshot of this pass's worktree state (the agent never
-        // commits). Taken even on stop, so shadow refs are kept. A snapshot
-        // failure is a hard failure.
+        let mut ready = false;
+        let mut blocked = false;
+        if !cancelled {
+            match execution::read_result(&cfg.progress_path, n) {
+                Ok(AgentResult::Blocked { reason }) => {
+                    blocked = true;
+                    let _ = execution::append_progress(&cfg.progress_path, &format!("Blocked: {reason}"));
+                    on_event(n, &NormalizedEvent::AssistantText { text: format!("Blocked: {reason}") });
+                }
+                Ok(AgentResult::Ready { summary, checks }) => {
+                    let mut seen = std::collections::HashSet::new();
+                    let checks: Vec<_> = cfg.execution.verify.iter().chain(&checks)
+                        .filter(|check| seen.insert(check.command.clone())).collect();
+                    ready = !checks.is_empty();
+                    if checks.is_empty() {
+                        on_event(n, &NormalizedEvent::Failed { reason: "No verification checks supplied. Report the task's executable checks or configure .loopfleet.json.".into() });
+                    }
+                    let mut results = Vec::new();
+                    for check in checks {
+                        let result = execution::run_check(check, &cfg.worktree, &cfg.wrapper, cancel).await;
+                        on_event(n, &NormalizedEvent::AssistantText {
+                            text: format!("Loopfleet verification: {} — {}\n{}", result.name, if result.passed { "passed" } else { "failed" }, result.output),
+                        });
+                        let passed = result.passed;
+                        results.push(result);
+                        if !passed {
+                            ready = false;
+                            break;
+                        }
+                    }
+                    let evidence = serde_json::to_string_pretty(&results).unwrap();
+                    if let Err(error) = execution::write_record(&cfg.progress_path, &format!("verification-{n}.json"), &evidence) {
+                        ready = false;
+                        on_event(n, &NormalizedEvent::Failed { reason: format!("Cannot record verification: {error}") });
+                    }
+                    let failures = results.iter().filter(|result| !result.passed)
+                        .map(|result| format!("{}: {}", result.name, result.output.chars().take(2000).collect::<String>()))
+                        .collect::<Vec<_>>().join("\n");
+                    let feedback = if ready { format!("Runner verification passed.\nSUMMARY: {summary}") } else { format!("Runner verification failed. Fix these checks before reporting ready:\n{failures}") };
+                    if let Err(error) = execution::append_progress(&cfg.progress_path, &feedback) {
+                        ready = false;
+                        on_event(n, &NormalizedEvent::Failed { reason: format!("Cannot record verification progress: {error}") });
+                    }
+                }
+                Err(reason) => {
+                    let _ = execution::append_progress(&cfg.progress_path, &reason);
+                    on_event(n, &NormalizedEvent::Failed { reason });
+                }
+            }
+        }
+        cancelled |= *cancel.borrow() || cancel.has_changed().is_err();
+
         match git
             .snapshot(
                 cfg.repo.clone(),
@@ -297,10 +353,9 @@ pub async fn run_loop(
             };
         }
 
-        // Done when the agent has written the completion marker for its task.
-        if crate::progress::file_marks_complete(&cfg.progress_path) {
+        if ready || blocked {
             return LoopOutcome {
-                state: RunState::Completed,
+                state: if ready { RunState::Completed } else { RunState::Blocked },
                 iterations,
                 reset_at: None,
             };
@@ -318,7 +373,6 @@ pub async fn run_loop(
         }
     }
 
-    // Exhausted all passes without a completion marker.
     LoopOutcome {
         state: RunState::Failed,
         iterations,
@@ -353,14 +407,15 @@ fn read_progress(path: &Path) -> String {
 
 /// Assemble a pass's prompt: the bound task, the loop rules, the progress-file
 /// protocol, and the prior progress the fresh context reads back.
-fn build_prompt(cfg: &LoopConfig, prior: &str, pending: &[Tap]) -> String {
+fn build_prompt(cfg: &LoopConfig, prior: &str, pending: &[Tap], pass: u32) -> String {
     let prior = if prior.trim().is_empty() {
         "(no prior progress yet)"
     } else {
         prior
     };
     format!(
-        "Task:\n{task}\n\n\
+        "{contract}\n\nSelected task:\n{task}\n\n\
+Full plan reference captured at launch (only implement the selected task):\n<plan-reference>\n{plan}\n</plan-reference>\n\n\
 Complete the entire task in this attempt. Do all required tests and checks.\n\
 The required result is the completed task, not a progress report or a plan.\n\
 If a task requirement remains unfinished, this attempt failed.\n\
@@ -401,20 +456,19 @@ The macOS sandbox blocks setuid programs, including `ps` and `top`.\n\
 - If it already allows lsopen and appleevent-send, do not claim the project permission is disabled.\n\
 - Do not remove the sandbox or change its permissions.\n\n\
 Record the result:\n\
-1. Add the completed work and the test results to the progress file.\n\
-2. If a problem prevents further work, write the cause and the unfinished requirements in the progress file.\n\
-3. Write facts, not plans.\n\
-4. If required work or checks remain unfinished, do not write `{marker}`.\n\
-5. If each requirement is satisfied and all required checks passed, write `{marker}` on a separate line.\n\
-6. After the completion marker, write a summary line that starts with `{summary}`.\n\
-7. Describe the changes in the summary line.\n\
-8. Start the summary with an imperative verb.\n\
-9. Use fewer than 72 characters for the summary.\n\n\
+1. Add completed work, exact check commands, results, and unfinished requirements to the progress file.\n\
+2. Write a JSON result to {result_path}. This is required even if task text mentions an older completion marker.\n\
+3. For implemented work with all required checks passed, use {{\"status\":\"ready\",\"summary\":\"Imperative description under 72 characters\",\"checks\":[{{\"name\":\"Task acceptance\",\"command\":[\"program\",\"argument\"],\"timeout_seconds\":300}}]}}. Supply actual executable checks, not placeholder commands.\n\
+4. For an external prerequisite that prevents required work or verification, use {{\"status\":\"blocked\",\"reason\":\"Specific prerequisite, unfinished checks, and recovery action\"}}. Do not start host infrastructure or weaken the sandbox.\n\
+5. For code/test failures, continue fixing the task. Do not label implementation failures as external blockers.\n\
+6. Loopfleet independently runs verification before marking work ready for review. A completion marker alone never completes the run.\n\
+7. Preserve useful worktree changes. Loopfleet handles snapshots and commits. Do not request Git write access.\n\n\
 --- prior progress ---\n{prior}\n{repair}\n{notes}",
+        contract = execution::RUNNER_CONTRACT,
         task = cfg.task_text,
+        plan = cfg.plan_context,
         progress = cfg.progress_path.display(),
-        marker = crate::progress::COMPLETION_MARKER,
-        summary = crate::progress::SUMMARY_MARKER,
+        result_path = execution::result_path(&cfg.progress_path, pass).display(),
         prior = prior,
         repair = cfg.repair_context.as_deref().unwrap_or_default(),
         notes = tap::render_notes(pending).map_or(String::new(), |notes| format!("\n{notes}\n")),
@@ -767,6 +821,7 @@ mod tests {
         progress_path: PathBuf,
         /// 1-based pass on which to write `<STATUS>COMPLETE</STATUS>`; `None` = never.
         complete_on: Option<u32>,
+        result_override: Option<&'static str>,
         /// 1-based pass on which to emit a `RateLimited` event (carrying this
         /// reset time) instead of finishing normally; `None` = never.
         rate_limit_on: Option<(u32, Option<String>)>,
@@ -785,6 +840,7 @@ mod tests {
                 taps: None,
                 progress_path,
                 complete_on,
+                result_override: None,
                 rate_limit_on: None,
                 fail_start: false,
                 call: AtomicU32::new(0),
@@ -816,7 +872,11 @@ mod tests {
                 .unwrap();
             writeln!(f, "pass {n} did work").unwrap();
             if self.complete_on == Some(n) {
-                writeln!(f, "{}", crate::progress::COMPLETION_MARKER).unwrap();
+                writeln!(f, "<STATUS>COMPLETE</STATUS>").unwrap();
+                let result = self.result_override.unwrap_or(r#"{"status":"ready","summary":"Implement the widget","checks":[{"name":"Fixture","command":["/usr/bin/true"]}]}"#);
+                if !result.is_empty() {
+                    std::fs::write(execution::result_path(&self.progress_path, n), result).unwrap();
+                }
             }
 
             // Change the worktree so each snapshot has real content.
@@ -926,6 +986,8 @@ mod tests {
             worktree: wt.path,
             progress_path: progress_dir.path().join("progress.md"),
             task_text: "Implement the widget".into(),
+            plan_context: "# Plan\nImplementation decisions and nested acceptance details".into(),
+            execution: ExecutionConfig::default(),
             max_iterations,
             wrapper: Vec::new(),
             model: None,
@@ -934,7 +996,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn completes_when_marker_written() {
+    async fn verifies_handoff_and_preserves_blocked_work() {
         let git = GitActor::spawn();
         let (cfg, _repo, _root, _prog) = setup("loop-complete", 3, &git).await;
         let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(1));
@@ -959,9 +1021,63 @@ mod tests {
             "refs/agentapp/run-loop-complete/iter-1"
         );
         // Every event from the one pass was forwarded, tagged pass 1.
-        assert_eq!(seen.len(), 4);
+        assert_eq!(seen.len(), 5);
         assert!(seen.iter().all(|(n, _)| *n == 1));
         assert!(matches!(seen[0].1, NormalizedEvent::TurnStarted));
+        let evidence = std::fs::read_to_string(cfg.progress_path.with_file_name("verification-1.json")).unwrap();
+        assert!(evidence.contains("\"passed\": true"));
+
+        for (id, report, expected) in [
+            ("marker-only", "", RunState::Failed),
+            ("bad-report", r#"{"status":"ready","summary":"Done","checks":[]}"#, RunState::Failed),
+            ("blocked-report", r#"{"status":"blocked","reason":"Docker unavailable. Start Docker and resume."}"#, RunState::Blocked),
+            ("failed-verification", r#"{"status":"ready","summary":"Implement feature","checks":[{"name":"Acceptance","command":["/usr/bin/false"]}]}"#, RunState::Failed),
+        ] {
+            let (cfg, _repo, _root, _prog) = setup(id, 1, &git).await;
+            let mut adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(1));
+            adapter.result_override = Some(report);
+            let (_tx, mut cancel) = watch::channel(false);
+            let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut mpsc::channel(1).1, &mut |_, _| {}).await;
+            assert_eq!(outcome.state, expected, "{id}");
+            assert_eq!(outcome.iterations.len(), 1);
+            assert!(cfg.worktree.join("pass-1.txt").exists());
+        }
+
+        let (mut cfg, repo, _root, _prog) = setup("preflight-blocked", 4, &git).await;
+        let config = repo.path().join(".loopfleet.json");
+        std::fs::write(&config, r#"{"version":1,"preflight":[{"name":"Docker available","command":["/usr/bin/false"]}]}"#).unwrap();
+        cfg.execution = ExecutionConfig::load(repo.path()).unwrap();
+        let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(1));
+        let (_tx, mut cancel) = watch::channel(false);
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut mpsc::channel(1).1, &mut |_, _| {}).await;
+        assert_eq!(outcome.state, RunState::Blocked);
+        assert!(outcome.iterations.is_empty());
+        assert_eq!(adapter.call.load(Ordering::SeqCst), 0);
+        assert!(std::fs::read_to_string(&cfg.progress_path).unwrap().contains("Docker available"));
+        std::fs::write(&config, r#"{"version":99}"#).unwrap();
+        assert!(ExecutionConfig::load(repo.path()).is_err());
+        std::fs::write(&config, r#"{"version":1,"verify":[{"name":"Invalid","command":[],"timeout_seconds":0}]}"#).unwrap();
+        assert!(ExecutionConfig::load(repo.path()).is_err());
+
+        let (mut cfg, _repo, _root, _prog) = setup("pinned-verification", 1, &git).await;
+        cfg.execution.verify.push(execution::Check { name: "Required acceptance".into(), command: vec!["/usr/bin/false".into()], timeout_seconds: 5 });
+        let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(1));
+        let (_tx, mut cancel) = watch::channel(false);
+        let outcome = run_loop(&adapter, &git, &cfg, &mut cancel, &mut mpsc::channel(1).1, &mut |_, _| {}).await;
+        assert_eq!(outcome.state, RunState::Failed);
+        assert!(std::fs::read_to_string(&cfg.progress_path).unwrap().contains("Runner verification failed"));
+
+        let check = execution::Check { name: "Timeout cleanup".into(), command: vec!["/bin/sh".into(), "-c".into(), "sleep 60 & wait".into()], timeout_seconds: 1 };
+        let started = std::time::Instant::now();
+        let result = execution::run_check(&check, &cfg.worktree, &[], &mut cancel).await;
+        assert!(!result.passed);
+        assert!(result.output.contains("Timed out"));
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        let (tx, mut cancelled) = watch::channel(false);
+        tx.send(true).unwrap();
+        let result = execution::run_check(&check, &cfg.worktree, &[], &mut cancelled).await;
+        assert!(!result.passed);
+        assert_eq!(result.output, "Stopped");
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -1065,10 +1181,11 @@ mod tests {
         assert!(prompts[0].contains("(no prior progress yet)"));
         // Pass 2: the prior progress the agent wrote in pass 1 is fed back.
         assert!(prompts[1].contains("pass 1 did work"));
-        // Every pass asks for both end-of-task markers.
         for prompt in prompts.iter() {
-            assert!(prompt.contains(crate::progress::COMPLETION_MARKER));
-            assert!(prompt.contains(crate::progress::SUMMARY_MARKER));
+            assert!(prompt.contains("Loopfleet owns all Git mutations"));
+            assert!(prompt.contains("Implementation decisions and nested acceptance details"));
+            assert!(prompt.contains("result-"));
+            assert!(prompt.contains("Loopfleet independently runs verification"));
             assert!(prompt.contains("Complete the entire task in this attempt"));
             assert!(prompt.contains("Do all required tests and checks."));
             assert!(prompt.contains("Do not stop after one part of the task."));
@@ -1079,7 +1196,7 @@ mod tests {
                 "A problem that prevents further work does not make the task completed."
             ));
             assert!(prompt.contains("A missing test, an omitted check, or a failed check"));
-            assert!(prompt.contains("If required work or checks remain unfinished, do not write"));
+            assert!(prompt.contains("Do not label implementation failures as external blockers"));
             assert!(!prompt.contains("Do the next part of the task"));
         }
     }
@@ -1090,11 +1207,11 @@ mod tests {
         let (mut cfg, _repo, _root, _prog) = setup("loop-wrapper", 3, &git).await;
         // Stand in for the Seatbelt prefix the wiring layer builds.
         cfg.wrapper = vec![
-            OsString::from("/usr/bin/sandbox-exec"),
-            OsString::from("-f"),
-            OsString::from("/tmp/run-loop-wrapper.sb"),
+            OsString::from("/usr/bin/env"),
+            OsString::from("LOOPFLEET_CHECK_WRAPPER=1"),
         ];
-        let adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(2));
+        let mut adapter = ScriptedAdapter::new(cfg.progress_path.clone(), Some(2));
+        adapter.result_override = Some(r#"{"status":"ready","summary":"Verify wrapper","checks":[{"name":"Wrapped acceptance","command":["/bin/sh","-c","test \"$LOOPFLEET_CHECK_WRAPPER\" = 1"]}]}"#);
 
         let (_ctx, mut cancel) = watch::channel(false);
         let mut taps = mpsc::channel(1).1;

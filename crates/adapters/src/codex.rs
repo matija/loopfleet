@@ -152,7 +152,8 @@ async fn drive(
                     1 => {
                         send(&mut stdin, json!({"method":"initialized"})).await?;
                         send(&mut stdin, json!({"id":2,"method":"thread/start","params":{
-                            "model":spec.model,"cwd":spec.cwd,"approvalPolicy":"never","sandbox":"danger-full-access"
+                            "model":spec.model,"cwd":spec.cwd,"approvalPolicy":"never","sandbox":"danger-full-access",
+                            "developerInstructions":loopfleet_core::execution::RUNNER_CONTRACT
                         }})).await?;
                     }
                     2 => {
@@ -997,6 +998,7 @@ reply(1, {'userAgent': 'test'})
 assert read() == {'method': 'initialized'}
 msg = read()
 assert msg['method'] == 'thread/start' and msg['id'] == 2
+assert msg['params'].pop('developerInstructions').startswith('Loopfleet execution contract:')
 assert msg['params'] == {'cwd': os.getcwd(), 'model': 'test-model', 'approvalPolicy': 'never', 'sandbox': 'danger-full-access'}
 thread = str(os.getpid())
 with open('passes', 'a') as file:

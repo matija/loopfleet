@@ -283,6 +283,7 @@ export function finishedRunTone(status: RunStatus): "warn" | "danger" | undefine
       return "danger";
     case "stopped":
     case "limit-reached":
+    case "blocked":
       return "warn";
     default:
       return undefined;

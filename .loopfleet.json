@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "preflight": [
+    {
+      "name": "Node.js available",
+      "command": ["node", "--version"],
+      "timeout_seconds": 10
+    },
+    {
+      "name": "Rust toolchain available",
+      "command": ["cargo", "--version"],
+      "timeout_seconds": 10
+    }
+  ],
+  "verify": [
+    {
+      "name": "Loopfleet verification suite",
+      "command": ["npm", "run", "verify"],
+      "timeout_seconds": 1200
+    }
+  ]
+}

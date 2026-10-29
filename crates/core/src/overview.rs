@@ -56,6 +56,7 @@ pub struct TaskView {
     /// How many runs are bound to this task (context for the compare queue).
     pub run_count: usize,
     pub failed_run_id: Option<String>,
+    pub blocked_run_id: Option<String>,
 }
 
 /// Why a plan overview could not be built.
@@ -191,6 +192,9 @@ pub fn plan_overview(conn: &Connection, project: &Project) -> Result<Vec<PlanVie
                 checked: t.checked,
                 status: derive_status(&task_runs, t.checked),
                 run_count: task_runs.len(),
+                blocked_run_id: latest
+                    .filter(|r| r.status == "blocked" && derive_status(&task_runs, t.checked) == TaskStatus::Blocked)
+                    .map(|r| r.id.clone()),
                 failed_run_id: latest
                     .filter(|r| r.status == "failed" && derive_status(&task_runs, t.checked) == TaskStatus::NotStarted)
                     .map(|r| r.id.clone()),

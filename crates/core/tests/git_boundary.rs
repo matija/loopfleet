@@ -161,4 +161,25 @@ fn agent_cannot_write_parent_git_while_app_actor_commits() {
         String::from_utf8_lossy(&ok.stderr)
     );
     assert!(inside.exists(), "the worktree write should have landed");
+
+    let mut params = RenderParams::new(&wt.path, progress.path());
+    params.temp_dirs.clear();
+    let wrapper = loopfleet_sandbox::confine_prefix(&params, &root.path().join("checks.sb")).unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    runtime.block_on(async {
+        let (_tx, mut cancel) = tokio::sync::watch::channel(false);
+        for (name, target, expected) in [
+            ("Confined verification", wt.path.join("runner-check.txt"), true),
+            ("Git metadata remains protected", repo.path().join(".git/hooks/runner-check"), false),
+        ] {
+            let check = loopfleet_core::execution::Check {
+                name: name.into(),
+                command: vec!["/usr/bin/touch".into(), target.to_string_lossy().into_owned()],
+                timeout_seconds: 5,
+            };
+            let result = loopfleet_core::execution::run_check(&check, &wt.path, &wrapper, &mut cancel).await;
+            assert_eq!(result.passed, expected, "{}: {}", result.name, result.output);
+            assert_eq!(target.exists(), expected);
+        }
+    });
 }

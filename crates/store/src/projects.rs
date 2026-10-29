@@ -67,47 +67,33 @@ pub fn delete_project(
 ) -> rusqlite::Result<DeleteProjectSummary> {
     conn.execute_batch("BEGIN")?;
     let result = (|| {
-        let mut summary = DeleteProjectSummary::default();
-
-        summary.events = conn.execute(
-            "DELETE FROM events WHERE run_or_session_id IN
-               (SELECT r.id FROM runs r JOIN plans p ON p.id = r.plan_id WHERE p.project_id = ?1)",
-            params![project_id],
-        )?;
-
-        summary.pending_resumes = conn.execute(
-            "DELETE FROM pending_resumes WHERE run_id IN
-               (SELECT r.id FROM runs r JOIN plans p ON p.id = r.plan_id WHERE p.project_id = ?1)",
-            params![project_id],
-        )?;
-
-        summary.runs = conn.execute(
-            "DELETE FROM runs WHERE plan_id IN (SELECT id FROM plans WHERE project_id = ?1)",
-            params![project_id],
-        )?;
-
-        summary.scheduled_launches = conn.execute(
-            "DELETE FROM scheduled_launches WHERE plan_id IN (SELECT id FROM plans WHERE project_id = ?1)",
-            params![project_id],
-        )?;
-
-        summary.tasks = conn.execute(
-            "DELETE FROM tasks WHERE plan_id IN (SELECT id FROM plans WHERE project_id = ?1)",
-            params![project_id],
-        )?;
-
-        summary.plans = conn.execute(
-            "DELETE FROM plans WHERE project_id = ?1",
-            params![project_id],
-        )?;
-
-        summary.sessions = conn.execute(
-            "DELETE FROM sessions WHERE project_id = ?1",
-            params![project_id],
-        )?;
-
-        summary.projects =
-            conn.execute("DELETE FROM projects WHERE id = ?1", params![project_id])?;
+        let summary = DeleteProjectSummary {
+            events: conn.execute(
+                "DELETE FROM events WHERE run_or_session_id IN
+                   (SELECT r.id FROM runs r JOIN plans p ON p.id = r.plan_id WHERE p.project_id = ?1)",
+                params![project_id],
+            )?,
+            pending_resumes: conn.execute(
+                "DELETE FROM pending_resumes WHERE run_id IN
+                   (SELECT r.id FROM runs r JOIN plans p ON p.id = r.plan_id WHERE p.project_id = ?1)",
+                params![project_id],
+            )?,
+            runs: conn.execute(
+                "DELETE FROM runs WHERE plan_id IN (SELECT id FROM plans WHERE project_id = ?1)",
+                params![project_id],
+            )?,
+            scheduled_launches: conn.execute(
+                "DELETE FROM scheduled_launches WHERE plan_id IN (SELECT id FROM plans WHERE project_id = ?1)",
+                params![project_id],
+            )?,
+            tasks: conn.execute(
+                "DELETE FROM tasks WHERE plan_id IN (SELECT id FROM plans WHERE project_id = ?1)",
+                params![project_id],
+            )?,
+            plans: conn.execute("DELETE FROM plans WHERE project_id = ?1", params![project_id])?,
+            sessions: conn.execute("DELETE FROM sessions WHERE project_id = ?1", params![project_id])?,
+            projects: conn.execute("DELETE FROM projects WHERE id = ?1", params![project_id])?,
+        };
 
         Ok(summary)
     })();

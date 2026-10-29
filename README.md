@@ -13,6 +13,14 @@ Loopfleet is a native macOS app for **scheduled and continuous task execution**.
 
 Context is kept deliberately small per run, so each agent stays focused on its current task instead of drowning in accumulated history. The app keeps the plan, the runs, and the resulting diffs in one place: scan the fleet, review what changed, and accept or reject tasks without losing the thread.
 
+## Reliable task handoff
+
+Write a normal PRD with tasks and acceptance criteria. Loopfleet supplies the full plan reference and runner instructions automatically.
+
+Agents change files. Loopfleet owns Git snapshots and commits, reruns verification, and marks successful work **Ready for review**. Missing external prerequisites produce a resumable **Blocked** run rather than repeated failed attempts.
+
+Configure mandatory preflight and verification commands once per project in `.loopfleet.json`. See the [execution guide](docs/execution.md) for setup, Docker prerequisites, evidence, and recovery.
+
 ## Live steering
 
 While a run is active, click **Tap** in the run view or press **⌘⇧T**

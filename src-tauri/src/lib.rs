@@ -823,12 +823,10 @@ async fn plan_edit_apply(edit_id: String, state: State<'_, AppState>) -> Result<
         .unwrap()
         .remove(&edit_id)
         .ok_or_else(|| format!("unknown or already-resolved edit: {edit_id}"))?;
-    let result = (|| -> Result<(), String> {
-        loopfleet_core::safe_file::replace(
-            &pending.repo_path, &pending.file_path,
-            pending.original.as_deref(), &pending.proposed,
-        ).map_err(|e| e.to_string())
-    })();
+    let result = loopfleet_core::safe_file::replace(
+        &pending.repo_path, &pending.file_path,
+        pending.original.as_deref(), &pending.proposed,
+    ).map_err(|e| e.to_string());
     if let Err(error) = result {
         state.edits.lock().unwrap().insert(edit_id, pending);
         return Err(error);
@@ -886,6 +884,7 @@ async fn cleanup_plan_edit(state: &AppState, edit_id: &str, repo: PathBuf, path:
 /// and its progress is persisted to the store (status, iterations, events) and
 /// streamed live to the UI (`run_event`/`run_status` Tauri events).
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn launch_run(
     project_id: String,
     plan_id: String,
@@ -934,8 +933,8 @@ async fn repair_run(
         let run = loopfleet_store::load_run(&conn, &run_id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "run not found".to_string())?;
-        if run.status != "failed" || run.accepted {
-            return Err("only failed, unmerged runs can be repaired".into());
+        if !matches!(run.status.as_str(), "failed" | "blocked") || run.accepted {
+            return Err("only failed or blocked, unmerged runs can be resumed".into());
         }
         let project_id = loopfleet_store::project_id_for_run(&conn, &run_id)
             .map_err(|e| e.to_string())?
@@ -946,7 +945,7 @@ async fn repair_run(
             .into_iter()
             .filter(|plan| plan.plan_id == run.plan_id)
             .flat_map(|plan| plan.tasks)
-            .find(|task| task.failed_run_id.as_deref() == Some(&run_id) || task.anchor == run.task_anchor)
+            .find(|task| task.failed_run_id.as_deref() == Some(&run_id) || task.blocked_run_id.as_deref() == Some(&run_id) || task.anchor == run.task_anchor)
             .map(|task| task.anchor)
             .ok_or_else(|| "this task is no longer in the plan".to_string())?;
         (project_id, run.plan_id, task_anchor)
@@ -1113,7 +1112,7 @@ fn spawn_run(
             &data_dir.join("progress").join(source_id).join("progress.md"), 256 * 1024)
             .unwrap_or_default()
     }).unwrap_or_default();
-    let (project, plan_id, task_text, extra_writes, native_automation, repair) = {
+    let (project, plan_id, task_text, plan_context, extra_writes, native_automation, repair) = {
         let conn = db.lock().unwrap();
 
         let settings = loopfleet_store::load_settings(&conn).map_err(|e| e.to_string())?;
@@ -1145,8 +1144,8 @@ fn spawn_run(
                 .ok_or_else(|| "failed run not found".to_string())?;
             let task = plan.tasks.iter().find(|t| t.anchor == task_anchor).unwrap();
             if source.plan_id != plan_id
-                || (source.task_anchor != task_anchor && task.failed_run_id.as_deref() != Some(source_id))
-                || source.accepted || !matches!(source.status.as_str(), "failed" | "limit-reached") {
+                || (source.task_anchor != task_anchor && task.failed_run_id.as_deref() != Some(source_id) && task.blocked_run_id.as_deref() != Some(source_id))
+                || source.accepted || !matches!(source.status.as_str(), "failed" | "blocked" | "limit-reached") {
                 return Err("the failed run no longer belongs to this unfinished task".to_string());
             }
             if matches!(task.status, TaskStatus::InProgress | TaskStatus::CompletedUnaccepted | TaskStatus::Accepted) {
@@ -1178,8 +1177,12 @@ If no failure reason was recorded, inspect the partial work and diagnose the mis
             );
             Ok::<_, String>((source.worktree_path.map(PathBuf::from), refs.first().cloned(), refs.last().cloned(), context))
         }).transpose()?;
-        (project, plan_id, task_text, extra_writes, native_automation, repair)
+        (project, plan_id, task_text, plan.markdown.clone(), extra_writes, native_automation, repair)
     };
+    let execution = loopfleet_core::execution::ExecutionConfig::load(std::path::Path::new(&project.repo_path))?;
+    if plan_context.len() > 512 * 1024 {
+        return Err("The selected plan exceeds the 512 KiB execution context limit. Split the plan before launching.".into());
+    }
 
     // App-managed paths, keyed by run id (outside the repo).
     let run_id = uuid::Uuid::new_v4().to_string();
@@ -1214,6 +1217,11 @@ If no failure reason was recorded, inspect the partial work and diagnose the mis
     params.extra_writes = extra_writes.into_iter().map(PathBuf::from).collect();
     params.native_automation = native_automation;
     let wrapper = confine_prefix(&params, &profile_path).map_err(|e| e.to_string())?;
+
+    loopfleet_core::execution::write_record(&progress_path, "plan.md", &plan_context)
+        .map_err(|e| format!("Cannot capture plan context: {e}"))?;
+    loopfleet_core::execution::write_record(&progress_path, "execution.json", &serde_json::to_string_pretty(&execution).map_err(|e| e.to_string())?)
+        .map_err(|e| format!("Cannot capture execution configuration: {e}"))?;
 
     // Keep the launch inputs for a possible rate-limit re-run (`task_anchor` and
     // `agent` are moved into the run row just below).
@@ -1254,6 +1262,8 @@ If no failure reason was recorded, inspect the partial work and diagnose the mis
         worktree: worktree.path,
         progress_path,
         task_text,
+        plan_context,
+        execution,
         repair_context,
         max_iterations,
         wrapper,
@@ -1790,6 +1800,7 @@ fn notify_run_terminal(app: &AppHandle, task_text: &str, state: RunState) -> boo
     let outcome = match state {
         RunState::Completed => "completed",
         RunState::Failed => "failed",
+        RunState::Blocked => "blocked by an external prerequisite",
         RunState::Stopped => "stopped",
         RunState::LimitReached => "hit a rate limit",
         RunState::Queued | RunState::Running => return false,
@@ -2458,6 +2469,7 @@ fn cancel_scheduled_resume(
 /// time comes. Returns the schedule's row id — the handle
 /// `cancel_scheduled_launch` needs.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 fn schedule_launch(
     plan_id: String,
     task_anchor: String,
@@ -3216,6 +3228,9 @@ async fn merge_and_accept_run(
         let detail = loopfleet_store::load_run(&conn, run_id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("unknown run: {run_id}"))?;
+        if detail.status != "completed" || detail.accepted {
+            return Err("Only verified, completed, unmerged runs can be merged".into());
+        }
         let iterations =
             loopfleet_store::load_iterations(&conn, run_id).map_err(|e| e.to_string())?;
         let pass_count = iterations.len() as u32;

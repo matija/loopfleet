@@ -137,7 +137,7 @@ function RunColumn({
 
       <UseRun
         runId={run.run_id}
-        mergeable={run.final_ref !== null}
+        mergeable={run.status === "completed" && run.final_ref !== null}
         accepted={isMergedRun(run)}
         onAccepted={onAccepted}
         actionsPortal={toolbarActions}

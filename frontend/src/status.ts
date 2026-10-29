@@ -20,8 +20,9 @@ import {
 export const RUN_STATUS_LABEL: Record<RunStatus, string> = {
   queued: "Queued",
   running: "Running",
-  completed: "Completed",
+  completed: "Ready for review",
   failed: "Failed",
+  blocked: "Blocked",
   stopped: "Stopped",
   "limit-reached": "Rate-limited",
 };
@@ -39,6 +40,7 @@ export const RUN_STATUS_ICON: Record<RunStatus, (props: IconProps) => JSX.Elemen
   running: PlayIcon,
   completed: CheckIcon,
   failed: AlertIcon,
+  blocked: ClockIcon,
   stopped: SquareIcon,
   "limit-reached": ClockIcon,
 };

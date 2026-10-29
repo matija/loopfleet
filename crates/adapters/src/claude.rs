@@ -78,6 +78,8 @@ impl AgentAdapter for ClaudeAdapter {
         let mut cmd = crate::base_command(&spec.wrapper, "claude");
         cmd.arg("-p")
             .arg(&spec.prompt)
+            .arg("--append-system-prompt")
+            .arg(loopfleet_core::execution::RUNNER_CONTRACT)
             .args(["--output-format", "stream-json", "--verbose"])
             .arg("--dangerously-skip-permissions");
         if let Some(model) = &spec.model {

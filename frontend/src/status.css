@@ -76,7 +76,8 @@
 
 /* Rate-limited: a stronger warn border than stopped — the run paused on an
  * external limit, not a failure or a user stop. */
-.status-pill--limit-reached {
+.status-pill--limit-reached,
+.status-pill--blocked {
   color: var(--c-warn);
   border-color: var(--c-warn);
 }

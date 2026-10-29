@@ -238,6 +238,10 @@
   flex: none;
 }
 
+.task-status--blocked .task-status__icon {
+  color: var(--c-warn);
+}
+
 .task-status--failed .task-status__icon {
   color: var(--c-danger);
 }

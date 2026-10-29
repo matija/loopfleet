@@ -54,6 +54,7 @@ import type {
 
 export const STATUS_LABEL: Record<TaskStatus, string> = {
   "not-started": "Not started",
+  blocked: "Blocked",
   "in-progress": "In progress",
   "completed-unaccepted": "Needs review",
   accepted: "Accepted",
@@ -61,6 +62,7 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
 
 export const STATUS_ICON: Record<TaskStatus, typeof CheckIcon> = {
   "not-started": DotIcon,
+  blocked: ClockIcon,
   "in-progress": ClockIcon,
   "completed-unaccepted": AlertIcon,
   accepted: CheckIcon,
@@ -507,7 +509,7 @@ function TaskRow({
           projectId={projectId}
           planId={planId}
           taskAnchor={task.anchor}
-          repairRunId={task.failed_run_id}
+          repairRunId={task.failed_run_id ?? task.blocked_run_id}
           installed={installed}
           agentsLoading={agentsLoading}
           onLaunched={onLaunched}
@@ -522,7 +524,7 @@ function TaskRow({
             });
             onLaunch({
               runId,
-              repairOf: task.failed_run_id ?? undefined,
+              repairOf: task.failed_run_id ?? task.blocked_run_id ?? undefined,
               taskText: task.text,
               taskAnchor: task.anchor,
               agent,
@@ -890,7 +892,7 @@ export function LaunchControl({
             ? "Launching…"
             : justLaunched
               ? "Launched"
-              : repairRunId ? "Fix with Agent" : "Run"}
+              : repairRunId ? "Resume with Agent" : "Run"}
       </SplitButton>
       <Popover
         open={menuOpen}
@@ -898,7 +900,7 @@ export function LaunchControl({
         anchorRef={chevronRef}
         placement="bottom-end"
         role={repairRunId ? "dialog" : "menu"}
-        aria-label={repairRunId ? "Fix with Agent" : "Choose agent and passes"}
+        aria-label={repairRunId ? "Resume with Agent" : "Choose agent and passes"}
         className="launch__menu"
       >
         <div
@@ -1023,7 +1025,7 @@ export function LaunchControl({
         </div>
         {repairRunId && (
           <button type="button" className="toolbar-btn" onClick={launch} disabled={noAgents || checking || launching || !agent}>
-            Start repair
+            Resume work
           </button>
         )}
       </Popover>

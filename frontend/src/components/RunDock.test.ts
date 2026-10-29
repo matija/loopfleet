@@ -14,6 +14,7 @@ const ALL_STATUSES: RunStatus[] = [
   "running",
   "completed",
   "failed",
+  "blocked",
   "stopped",
   "limit-reached",
 ];
@@ -26,6 +27,7 @@ describe("finishedRunTone", () => {
   it("marks stopped and rate-limited runs as warn", () => {
     expect(finishedRunTone("stopped")).toBe("warn");
     expect(finishedRunTone("limit-reached")).toBe("warn");
+    expect(finishedRunTone("blocked")).toBe("warn");
   });
 
   it("carries no accent for active or successfully-completed runs", () => {

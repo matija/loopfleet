@@ -54,7 +54,7 @@ impl AgentAdapter for PiAdapter {
     async fn start_run(&self, spec: &RunSpec) -> Result<RunHandle, AdapterError> {
         let can_steer = self.can_steer();
         let mut cmd = crate::base_command(&spec.wrapper, "pi");
-        cmd.args(["--mode", "rpc"]);
+        cmd.args(["--mode", "rpc", "--append-system-prompt", loopfleet_core::execution::RUNNER_CONTRACT]);
         if let Some(model) = &spec.model {
             cmd.arg("--model").arg(model);
         }
@@ -490,7 +490,9 @@ def emit(value):
     print(json.dumps(value), flush=True)
 def reply(request, **fields):
     emit(dict(type='response', id=request['id'], command=request['type'], **fields))
-assert sys.argv[1:] == ['pi', '--mode', 'rpc', '--model', 'test-model']
+assert sys.argv[1:5] == ['pi', '--mode', 'rpc', '--append-system-prompt']
+assert sys.argv[5].startswith('Loopfleet execution contract:')
+assert sys.argv[6:] == ['--model', 'test-model']
 mode = read()
 assert mode == dict(id='0', type='set_steering_mode', mode='one-at-a-time')
 reply(mode, success=True)

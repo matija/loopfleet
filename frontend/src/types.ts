@@ -137,6 +137,7 @@ export type UsageSnapshot = {
 /// Derived per-task state (kebab-case, from `core::TaskStatus`).
 export type TaskStatus =
   | "not-started"
+  | "blocked"
   | "in-progress"
   | "completed-unaccepted"
   | "accepted";
@@ -156,6 +157,7 @@ export type TaskView = {
   /// How many runs are bound to this task.
   run_count: number;
   failed_run_id?: string | null;
+  blocked_run_id?: string | null;
 };
 
 /// One plan rendered for the overview. `core::overview::PlanView`.
@@ -181,6 +183,7 @@ export type RunStatus =
   | "running"
   | "completed"
   | "failed"
+  | "blocked"
   | "stopped"
   /// The agent hit a rate limit and the run ended early to wait it out. Terminal
   /// like the rest; the reset time rides the `rate_limited` event, not the token.

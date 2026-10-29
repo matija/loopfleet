@@ -24,6 +24,7 @@ const ALL_STATUSES: RunStatus[] = [
   "running",
   "completed",
   "failed",
+  "blocked",
   "stopped",
   "limit-reached",
 ];
@@ -102,7 +103,7 @@ describe("isMergedRun", () => {
   });
 
   it("is false for a finished, unaccepted run regardless of terminal status", () => {
-    for (const status of ["failed", "stopped", "limit-reached"] as const) {
+    for (const status of ["failed", "blocked", "stopped", "limit-reached"] as const) {
       expect(isMergedRun({ status, accepted: false })).toBe(false);
     }
   });

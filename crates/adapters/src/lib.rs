@@ -85,6 +85,10 @@ pub(crate) fn stop_agent(child: &mut Child) {
     let _ = child.start_kill();
 }
 
+pub use loopfleet_core::{
+    AdapterError, AgentAdapter, RunHandle, RunSpec, SessionHandle, SessionSeed,
+};
+
 #[cfg(test)]
 mod command_tests {
     use super::*;
@@ -107,13 +111,3 @@ mod command_tests {
         assert!(!cmd.as_std().get_envs().any(|(key, _)| key == "CARGO_HOME"));
     }
 }
-
-// The `AgentAdapter` trait and its launch/handle types live in `core` — next to
-// the run loop that drives them — so `core` can compose over a `&dyn AgentAdapter`
-// without depending on this crate (which depends on `core`, so the reverse would
-// be a cycle). The concrete adapters above `impl` that trait; it is re-exported
-// here so `crate::AgentAdapter` (and friends) resolve for them and for existing
-// consumers of this crate.
-pub use loopfleet_core::{
-    AdapterError, AgentAdapter, RunHandle, RunSpec, SessionHandle, SessionSeed,
-};

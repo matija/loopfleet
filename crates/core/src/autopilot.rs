@@ -18,7 +18,8 @@ use crate::TaskView;
 /// The next task autopilot should launch: the first task in document order
 /// whose derived status is [`TaskStatus::NotStarted`].
 pub fn next_task(tasks: &[TaskView]) -> Option<&TaskView> {
-    tasks.iter().find(|t| t.status == TaskStatus::NotStarted)
+    tasks.iter().take_while(|t| t.status != TaskStatus::Blocked)
+        .find(|t| t.status == TaskStatus::NotStarted)
 }
 
 /// Why auto-advance refuses to chain the plan's next task after an auto-merge.
@@ -206,6 +207,7 @@ mod tests {
     fn task(anchor: &str, status: TaskStatus) -> TaskView {
         TaskView {
             failed_run_id: None,
+            blocked_run_id: None,
             anchor: anchor.into(),
             line_hint: 0,
             text: anchor.into(),
@@ -224,6 +226,8 @@ mod tests {
             task("delta", TaskStatus::NotStarted),
         ];
         assert_eq!(next_task(&tasks).unwrap().anchor, "gamma");
+        let tasks = vec![task("blocked", TaskStatus::Blocked), task("later", TaskStatus::NotStarted)];
+        assert!(next_task(&tasks).is_none());
     }
 
     #[test]

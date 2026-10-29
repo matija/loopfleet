@@ -22,19 +22,13 @@ use std::process::ExitStatus;
 
 use tokio::process::{Child, Command};
 
-/// The run lifecycle state machine: `queued → running → (completed | failed |
-/// stopped | limit-reached)`. `completed` = the bound task's `<STATUS>COMPLETE</STATUS>`
-/// marker appeared within N iterations; `failed` = N reached still incomplete,
-/// or a crash; `stopped` = the user stopped the run; `limit-reached` = the agent
-/// hit a rate limit, so the run ended early to wait it out (the app schedules a
-/// re-run once the limit resets). Acceptance is a separate flag, not a state
-/// (see [`Run`](loopfleet_store)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunState {
     Queued,
     Running,
     Completed,
     Failed,
+    Blocked,
     Stopped,
     LimitReached,
 }
@@ -67,6 +61,7 @@ impl RunState {
             RunState::Running => "running",
             RunState::Completed => "completed",
             RunState::Failed => "failed",
+            RunState::Blocked => "blocked",
             RunState::Stopped => "stopped",
             RunState::LimitReached => "limit-reached",
         }
@@ -80,6 +75,7 @@ impl RunState {
             "running" => RunState::Running,
             "completed" => RunState::Completed,
             "failed" => RunState::Failed,
+            "blocked" => RunState::Blocked,
             "stopped" => RunState::Stopped,
             "limit-reached" => RunState::LimitReached,
             _ => return None,
@@ -90,7 +86,7 @@ impl RunState {
     pub fn is_terminal(self) -> bool {
         matches!(
             self,
-            RunState::Completed | RunState::Failed | RunState::Stopped | RunState::LimitReached
+            RunState::Completed | RunState::Failed | RunState::Blocked | RunState::Stopped | RunState::LimitReached
         )
     }
 
@@ -101,6 +97,7 @@ impl RunState {
             (RunState::Queued, RunState::Running)
                 | (RunState::Running, RunState::Completed)
                 | (RunState::Running, RunState::Failed)
+                | (RunState::Running, RunState::Blocked)
                 | (RunState::Running, RunState::Stopped)
                 | (RunState::Running, RunState::LimitReached)
         )
@@ -179,6 +176,7 @@ mod tests {
             RunState::Running,
             RunState::Completed,
             RunState::Failed,
+            RunState::Blocked,
             RunState::Stopped,
             RunState::LimitReached,
         ] {
@@ -194,6 +192,8 @@ mod tests {
         assert!(Queued.transition(Running).is_ok());
         assert!(Running.transition(Completed).is_ok());
         assert!(Running.transition(Failed).is_ok());
+        assert!(Running.transition(Blocked).is_ok());
+        assert!(Blocked.transition(Running).is_err());
         assert!(Running.transition(Stopped).is_ok());
         assert!(Running.transition(LimitReached).is_ok());
 
@@ -211,6 +211,7 @@ mod tests {
         assert!(!RunState::Running.is_terminal());
         assert!(RunState::Completed.is_terminal());
         assert!(RunState::Failed.is_terminal());
+        assert!(RunState::Blocked.is_terminal());
         assert!(RunState::Stopped.is_terminal());
         assert!(RunState::LimitReached.is_terminal());
     }

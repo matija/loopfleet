@@ -5,8 +5,6 @@
 //! [`GitActor`] cuts a worktree and takes app-owned shadow snapshots, the
 //! `SeatbeltSandbox` renders the per-run boundary, [`confine_prefix`] turns it
 //! into the opaque wrapper prefix the [`ClaudeAdapter`] prepends to its spawn,
-//! and [`run_loop`] drives the passes until the agent writes `<STATUS>COMPLETE</STATUS>`
-//! to its external progress file.
 //!
 //! Ignored by default and macOS-only: it spawns the real `claude` CLI (needs the
 //! binary, network, and credits) under `sandbox-exec`. Run it manually, OUTSIDE
@@ -103,6 +101,8 @@ async fn runs_n_loops_on_a_task_with_claude() {
 
     let cfg = LoopConfig {
         repair_context: None,
+        plan_context: "# Fixture plan".into(),
+        execution: Default::default(),
         run_id: run_id.into(),
         repo: repo.path().into(),
         worktree: worktree.path.clone(),
@@ -127,7 +127,6 @@ async fn runs_n_loops_on_a_task_with_claude() {
     )
     .await;
 
-    // The agent wrote <STATUS>COMPLETE</STATUS> within N passes.
     assert_eq!(
         outcome.state,
         RunState::Completed,

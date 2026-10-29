@@ -28,7 +28,9 @@ if codex:
     reply(request, result=dict(turn=dict(id='turn')))
     emit(dict(method='turn/started', params=dict(threadId='thread', turn=dict(id='turn'))))
 else:
-    assert sys.argv[3:] == ['--mode', 'rpc', '--model', 'test-model']
+    assert sys.argv[3:6] == ['--mode', 'rpc', '--append-system-prompt']
+    assert sys.argv[6].startswith('Loopfleet execution contract:')
+    assert sys.argv[7:] == ['--model', 'test-model']
     request = read()
     assert request == dict(id='0', type='set_steering_mode', mode='one-at-a-time')
     reply(request, success=True)

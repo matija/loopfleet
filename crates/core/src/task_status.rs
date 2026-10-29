@@ -22,6 +22,7 @@ pub enum TaskStatus {
     /// whose only runs failed reads as not-started (nothing running, completed,
     /// or accepted).
     NotStarted,
+    Blocked,
     /// A run is queued or running against this task.
     InProgress,
     /// At least one run completed the task, but none is accepted yet — the
@@ -56,6 +57,8 @@ pub fn derive_status(runs: &[TaskRun], checked: bool) -> TaskStatus {
         .any(|r| matches!(r.state, RunState::Queued | RunState::Running))
     {
         TaskStatus::InProgress
+    } else if runs.last().is_some_and(|r| r.state == RunState::Blocked) {
+        TaskStatus::Blocked
     } else if checked {
         TaskStatus::Accepted
     } else {
@@ -78,6 +81,8 @@ mod tests {
 
     #[test]
     fn only_failed_or_stopped_is_not_started() {
+        assert_eq!(derive_status(&[run(RunState::Blocked, false)], false), TaskStatus::Blocked);
+        assert_eq!(derive_status(&[run(RunState::Blocked, false), run(RunState::Running, false)], false), TaskStatus::InProgress);
         assert_eq!(
             derive_status(
                 &[run(RunState::Failed, false), run(RunState::Stopped, false)],

@@ -53,7 +53,7 @@ pub fn insert_run(conn: &Connection, run: &NewRun) -> rusqlite::Result<()> {
 
 /// Terminal statuses (PRD data model): once a run reaches one of these, it
 /// stops making progress and `finished_at` is stamped.
-const TERMINAL_STATUSES: &[&str] = &["completed", "failed", "stopped", "limit-reached"];
+const TERMINAL_STATUSES: &[&str] = &["completed", "failed", "blocked", "stopped", "limit-reached"];
 
 fn now_millis() -> i64 {
     SystemTime::now()
@@ -586,6 +586,7 @@ mod tests {
             ("r2", "failed"),
             ("r3", "stopped"),
             ("r4", "limit-reached"),
+            ("r5", "blocked"),
         ] {
             insert_run(&conn, &new_run(id, &pid, "task a", "running")).unwrap();
             assert!(finished_at(&conn, id).is_none());
@@ -595,6 +596,8 @@ mod tests {
                 "{status} should stamp finished_at"
             );
         }
+        assert!(!list_sweep_candidates(&conn).unwrap().iter().any(|run| run.id == "r5"));
+        assert_eq!(count_active_runs(&conn).unwrap(), 0);
     }
 
     #[test]

@@ -6,7 +6,8 @@
   "scripts": {
     "release": "bash build/release-all.sh",
     "release:website": "node build/release-website.mjs",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "verify": "npm --prefix frontend run build && npm --prefix frontend test && npm --prefix frontend run check && cargo test --locked --workspace && cargo clippy --locked --workspace --all-targets -- -D warnings"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.10.1"

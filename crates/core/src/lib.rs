@@ -19,6 +19,7 @@ pub mod autopilot;
 pub mod commit_message;
 pub mod compare;
 pub mod event;
+pub mod execution;
 pub mod overview;
 pub mod plan;
 pub mod progress;
@@ -44,9 +45,6 @@ pub use overview::{plan_overview, OverviewError, PlanView, TaskView};
 pub use plan::{
     anchor_for, discover_plans, legacy_anchor_for, parse_plan, parse_plan_file, ParsedPlan,
     ParsedTask, PlanConvention, TaskAnchor,
-};
-pub use progress::{
-    contents_mark_complete, file_marks_complete, watch_for_completion, COMPLETION_MARKER,
 };
 pub use report::{
     plan_report, render_plan_report, render_task_report, task_report, PlanReport, ReportError,

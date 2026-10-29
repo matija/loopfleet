@@ -441,6 +441,7 @@ fn task_status_style(status: TaskStatus) -> (&'static str, &'static str) {
         TaskStatus::InProgress => ("st-accent", "in progress"),
         TaskStatus::CompletedUnaccepted => ("st-warn", "completed \u{b7} unaccepted"),
         TaskStatus::Accepted => ("st-ok", "accepted"),
+        TaskStatus::Blocked => ("st-warn", "blocked"),
     }
 }
 
@@ -451,6 +452,7 @@ fn run_outcome_style(outcome: RunState) -> (&'static str, &'static str) {
         RunState::Running => ("st-accent", "running"),
         RunState::Completed => ("st-ok", "completed"),
         RunState::Failed => ("st-danger", "failed"),
+        RunState::Blocked => ("st-warn", "blocked"),
         RunState::Stopped => ("st-warn", "stopped"),
         RunState::LimitReached => ("st-warn", "limit reached"),
     }

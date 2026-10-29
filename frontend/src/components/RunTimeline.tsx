@@ -93,10 +93,15 @@ export function RunTimeline({
       : null;
   const mergeable = iterations.some((it) => it.shadow_ref !== null);
   const merged = isMergedRun({ status, accepted: run.accepted });
-  const canUse = !isActiveRun(status) && (mergeable || merged);
+  const canUse = (status === "completed" && mergeable) || merged;
   // A rate-limited run gets an explicit banner: what happened, when the limit
   // resets (from the persisted `rate_limited` event), and a way to re-run now.
   const limitReached = status === "limit-reached";
+  const blocker = iterations.flatMap((it) => it.events).map(({ event }) => {
+    if (event.kind === "failed" && event.reason.startsWith("Preflight blocked:")) return event.reason;
+    if (event.kind === "assistant_text" && event.text.startsWith("Blocked:")) return event.text;
+    return null;
+  }).filter((text): text is string => text !== null).at(-1);
   const canRetry = Boolean(onRetry && run.projectId && run.taskAnchor);
   // Clamped events-subtab page: a stale iterPage (after a reload yields fewer
   // iterations) must never index off the end.
@@ -126,7 +131,7 @@ export function RunTimeline({
         </div>
       </header>
 
-      {status === "failed" && !merged && run.projectId && run.taskAnchor && onLaunch && (
+      {(status === "failed" || status === "blocked") && !merged && run.projectId && run.taskAnchor && onLaunch && (
         <LaunchControl
           projectId={run.projectId}
           planId=""
@@ -145,6 +150,15 @@ export function RunTimeline({
           })}
           actionsPortal={toolbarActions}
         />
+      )}
+
+      {status === "blocked" && (
+        <div className="run-view__limit" role="status">
+          <div className="run-view__limit-body">
+            <span className="run-view__limit-head">External prerequisite unavailable</span>
+            <span className="run-view__limit-detail">{blocker ?? "An external prerequisite prevents verification."} Work is preserved. Restore the prerequisite, then resume with an agent.</span>
+          </div>
+        </div>
       )}
 
       {limitReached && (
@@ -246,9 +260,7 @@ export function RunTimeline({
                         })),
                       ),
                     )}
-                    iterLabel={`Iteration ${iterations[page].n} of ${
-                      iterations[iterations.length - 1].n
-                    }`}
+                    iterLabel={iterations[page].n === 0 ? "Preflight" : `Iteration ${iterations[page].n} of ${iterations[iterations.length - 1].n}`}
                     paging={{
                       onPrev: () => setIterPage((p) => Math.max(0, p - 1)),
                       onNext: () =>

@@ -135,6 +135,20 @@ pub fn run_timeline(conn: &Connection, run_id: &str) -> Result<RunTimeline, Time
         });
     }
 
+    if views.is_empty() && events.peek().is_some() {
+        views.push(IterationView {
+            n: 0,
+            shadow_ref: None,
+            diff: None,
+            events: events.map(|e| TimelineEvent {
+                seq: e.seq,
+                ts: e.ts,
+                event: serde_json::from_str(&e.event_json)
+                    .unwrap_or(serde_json::Value::String(e.event_json)),
+            }).collect(),
+        });
+    }
+
     let worktree_path = live_worktree_path(run.worktree_path);
 
     Ok(RunTimeline {
