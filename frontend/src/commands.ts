@@ -191,10 +191,6 @@ export function repairRun(args: {
   return invoke("repair_run", { ...args, model: args.model ?? null });
 }
 
-/// Start a plan's next not-started task (document order), carrying forward the
-/// plan's most recently launched run's agent/model/pass count — falling back to
-/// the app's default agent/iterations if the plan has never had a run. Rejects
-/// if every task in the plan is already started.
 export function continuePlan(args: {
   projectId: string;
   planId: string;

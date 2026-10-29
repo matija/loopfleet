@@ -5,7 +5,7 @@
 // `.status-pill` in status.css, which owns the matching per-status colors.
 
 import type { JSX } from "react";
-import type { Delivery, RunStatus } from "./types";
+import type { Delivery, RunStatus, TaskView } from "./types";
 import {
   AlertIcon,
   CheckIcon,
@@ -87,6 +87,10 @@ export function isMergedRun(run: {
   accepted?: boolean;
 }): boolean {
   return !isActiveRun(run.status) && run.accepted === true;
+}
+
+export function taskRunToResume(task: Pick<TaskView, "blocked_run_id" | "failed_run_id">): string | undefined {
+  return task.blocked_run_id ?? task.failed_run_id ?? undefined;
 }
 
 export const DELIVERY_LABEL: Record<Delivery["kind"], string> = {

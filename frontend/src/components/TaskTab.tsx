@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { agentCatalog } from "../appData";
 import { exportTaskReport, planOverview } from "../commands";
 import { normalizeDisplayText } from "../displayText";
+import { taskRunToResume } from "../status";
 import type { AgentStatus, PlanView as Plan } from "../types";
 import { ExportButton } from "./ExportButton";
 import { AlertIcon } from "./Icon";
@@ -93,14 +94,14 @@ export function TaskTab({
           projectId={projectId}
           planId={planId}
           taskAnchor={task.anchor}
-          repairRunId={task.failed_run_id}
+          repairRunId={taskRunToResume(task)}
           installed={installed}
           agentsLoading={agentsLoading}
           onLaunched={onLaunched}
           onLaunch={(runId, agent, model, maxIterations) =>
             onLaunch({
               runId,
-              repairOf: task.failed_run_id ?? undefined,
+              repairOf: taskRunToResume(task),
               taskText: task.text,
               taskAnchor: task.anchor,
               agent,

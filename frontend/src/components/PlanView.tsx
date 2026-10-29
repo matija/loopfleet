@@ -15,7 +15,7 @@ import {
 import { normalizeDisplayText, taskSummary } from "../displayText";
 import { onRunStatus } from "../events";
 import { preferredAgent, readLaunchPrefs, writeLaunchPrefs } from "../launchPrefs";
-import { isActiveRun, RUN_STATUS_LABEL } from "../status";
+import { isActiveRun, RUN_STATUS_LABEL, taskRunToResume } from "../status";
 import { useTaskExpanded } from "../taskExpand";
 import {
   formatCountdown,
@@ -183,7 +183,7 @@ export function PlanView({
   );
 }
 
-function PlanCard({
+export function PlanCard({
   plan,
   projectId,
   repoName,
@@ -207,9 +207,9 @@ function PlanCard({
   onError: (message: string) => void;
 }) {
   const review = plan.tasks.filter((t) => t.status === "completed-unaccepted");
-  const open = plan.tasks.filter((t) => t.status === "not-started" || t.status === "in-progress");
+  const open = plan.tasks.filter((t) => t.status !== "completed-unaccepted" && t.status !== "accepted");
   const done = plan.tasks.filter((t) => t.status === "accepted");
-  const hasNextTask = plan.tasks.some((t) => t.status === "not-started");
+  const hasNextTask = plan.tasks.some((t) => t.status === "not-started" || t.status === "blocked");
   const renderTask = (task: TaskView) => (
     <TaskRow
       key={task.anchor}
@@ -278,12 +278,6 @@ function PlanCard({
   );
 }
 
-/// Starts the plan's next not-started task with the plan's last-used launch
-/// preferences (or the app defaults, if it's never had a run) — one click to
-/// keep a chain moving without opening a per-task launch menu. Reports the
-/// launched run upward through the same `onLaunch`/`onLaunched` callbacks a
-/// per-task `LaunchControl` uses, so it folds into the global run dock the
-/// same way.
 function ContinuePlanButton({
   projectId,
   planId,
@@ -306,6 +300,7 @@ function ContinuePlanButton({
       const result = await continuePlan({ projectId, planId });
       onLaunch({
         runId: result.run_id,
+        repairOf: result.repair_of ?? undefined,
         taskText: result.task_text,
         taskAnchor: result.task_anchor,
         agent: result.agent,
@@ -325,7 +320,7 @@ function ContinuePlanButton({
       className="btn btn--quiet"
       onClick={run}
       disabled={busy}
-      title="Start the plan's next not-started task, using this plan's last-used agent, model, and pass count"
+      title="Start or resume the next unfinished task, preserving existing work"
     >
       <PlayIcon size={14} className="btn__icon" />
       {busy ? "Starting…" : "Continue plan"}
@@ -509,7 +504,7 @@ function TaskRow({
           projectId={projectId}
           planId={planId}
           taskAnchor={task.anchor}
-          repairRunId={task.failed_run_id ?? task.blocked_run_id}
+          repairRunId={taskRunToResume(task)}
           installed={installed}
           agentsLoading={agentsLoading}
           onLaunched={onLaunched}
@@ -524,7 +519,7 @@ function TaskRow({
             });
             onLaunch({
               runId,
-              repairOf: task.failed_run_id ?? task.blocked_run_id ?? undefined,
+              repairOf: taskRunToResume(task),
               taskText: task.text,
               taskAnchor: task.anchor,
               agent,

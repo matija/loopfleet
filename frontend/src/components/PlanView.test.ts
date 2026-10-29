@@ -10,6 +10,11 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { PlanCard } from "./PlanView";
+import { taskRunToResume } from "../status";
+import type { TaskView } from "../types";
 
 const PLAN_VIEW_SOURCE = readFileSync(
   fileURLToPath(new URL("./PlanView.tsx", import.meta.url)),
@@ -52,6 +57,27 @@ describe("truncated task row: read-the-rest affordance", () => {
     // clipping must stay in CSS so expansion can unwrap the same text.
     expect(button).toContain("{normalizeDisplayText(task.text)}");
     expect(button).not.toContain("taskSummary(");
+
+    const blocked: TaskView = {
+      anchor: "blocked task", line_hint: 1, text: "Preserved blocked task", checked: false,
+      status: "blocked", run_count: 1, blocked_run_id: "preserved-run",
+    };
+    const markup = renderToStaticMarkup(createElement(PlanCard, {
+      plan: { plan_id: "plan", file_path: "/fixture/PRD.md", title: "Fixture", markdown: "", tasks: [blocked], unbound_runs: 0, drifted_runs: 0 },
+      projectId: "project", repoName: "fixture", installed: ["codex"], agentsLoading: false,
+      onLaunched() {}, onLaunch() {}, onCompare() {}, onError() {}, onOpenPrd() {},
+    }));
+    expect(markup).toContain("Preserved blocked task");
+    expect(markup).toContain("Blocked");
+    expect(markup).toContain("Resume with Agent");
+    expect(markup).toContain("Continue plan");
+    expect(markup).not.toContain("Plan complete");
+    expect(taskRunToResume(blocked)).toBe("preserved-run");
+    expect(taskRunToResume({ failed_run_id: "failed-run" })).toBe("failed-run");
+    expect(taskRunToResume({})).toBeUndefined();
+    const tabSource = readFileSync(fileURLToPath(new URL("./TaskTab.tsx", import.meta.url)), "utf8");
+    expect(tabSource).toContain("repairRunId={taskRunToResume(task)}");
+    expect(tabSource).toContain("repairOf: taskRunToResume(task)");
   });
 
   it("carries the full text in the title attribute", () => {

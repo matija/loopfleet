@@ -22,6 +22,10 @@ pub fn next_task(tasks: &[TaskView]) -> Option<&TaskView> {
         .find(|t| t.status == TaskStatus::NotStarted)
 }
 
+pub fn next_task_to_continue(tasks: &[TaskView]) -> Option<&TaskView> {
+    tasks.iter().find(|t| matches!(t.status, TaskStatus::Blocked | TaskStatus::NotStarted))
+}
+
 /// Why auto-advance refuses to chain the plan's next task after an auto-merge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AutoAdvanceBlockedReason {
@@ -228,6 +232,10 @@ mod tests {
         assert_eq!(next_task(&tasks).unwrap().anchor, "gamma");
         let tasks = vec![task("blocked", TaskStatus::Blocked), task("later", TaskStatus::NotStarted)];
         assert!(next_task(&tasks).is_none());
+        assert_eq!(next_task_to_continue(&tasks).unwrap().anchor, "blocked");
+        let mut tasks = tasks;
+        tasks[0].blocked_run_id = Some("preserved-run".into());
+        assert_eq!(next_task_to_continue(&tasks).unwrap().blocked_run_id.as_deref(), Some("preserved-run"));
     }
 
     #[test]

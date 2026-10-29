@@ -977,6 +977,7 @@ async fn repair_run(
 #[derive(serde::Serialize)]
 struct ContinuePlanResult {
     run_id: String,
+    repair_of: Option<String>,
     task_anchor: String,
     task_text: String,
     agent: String,
@@ -984,12 +985,6 @@ struct ContinuePlanResult {
     max_iterations: u32,
 }
 
-/// Start the plan's next not-started task (document order, same rule as
-/// autopilot's own chaining — see [`loopfleet_core::autopilot::next_task`]),
-/// carrying forward the plan's most recently launched run's agent/model/pass
-/// count. A plan with no prior run falls back to the app's default agent and
-/// iteration count. Errors if every task is already started (nothing to
-/// continue).
 #[tauri::command]
 async fn continue_plan(
     project_id: String,
@@ -997,7 +992,7 @@ async fn continue_plan(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<ContinuePlanResult, String> {
-    let (task_anchor, task_text, agent, model, max_iterations) = {
+    let (task_anchor, task_text, agent, model, max_iterations, repair_of) = {
         let conn = state.db.lock().unwrap();
         let project = get_project(&conn, &project_id)?;
         let views = loopfleet_core::plan_overview(&conn, &project).map_err(|e| e.to_string())?;
@@ -1005,8 +1000,8 @@ async fn continue_plan(
             .into_iter()
             .find(|v| v.plan_id == plan_id)
             .ok_or_else(|| "plan not found".to_string())?;
-        let task = loopfleet_core::autopilot::next_task(&plan.tasks)
-            .ok_or_else(|| "every task in this plan is already started".to_string())?;
+        let task = loopfleet_core::autopilot::next_task_to_continue(&plan.tasks)
+            .ok_or_else(|| "No unfinished task is available to start or resume".to_string())?;
         let task_anchor = task.anchor.clone();
         let task_text = task.text.clone();
 
@@ -1019,7 +1014,7 @@ async fn continue_plan(
                 (settings.default_agent, None, settings.default_iterations)
             }
         };
-        (task_anchor, task_text, agent, model, max_iterations)
+        (task_anchor, task_text, agent, model, max_iterations, task.blocked_run_id.clone().or_else(|| task.failed_run_id.clone()))
     };
 
     let run_id = spawn_run(
@@ -1039,12 +1034,13 @@ async fn continue_plan(
         state.scheduled_resumes.clone(),
         state.scheduled_auto_merges.clone(),
         0,
-        None,
+        repair_of.clone(),
     )
     .await?;
 
     Ok(ContinuePlanResult {
         run_id,
+        repair_of,
         task_anchor,
         task_text,
         agent,

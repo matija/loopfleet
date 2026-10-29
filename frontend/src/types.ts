@@ -200,6 +200,7 @@ export type RunSummary = {
 /// What "Continue plan" launched. `lib::ContinuePlanResult`.
 export type ContinuePlanResult = {
   run_id: string;
+  repair_of: string | null;
   task_anchor: string;
   task_text: string;
   agent: string;
