@@ -40,9 +40,9 @@ use notes (`can_steer() == false`).
 ## Download
 
 <!-- download-links:start -->
-**Download Loopfleet 0.3.9** —
-[Apple Silicon](https://github.com/matija/loopfleet/releases/download/0.3.9/Loopfleet_0.3.9_aarch64.dmg)
-· [Intel](https://github.com/matija/loopfleet/releases/download/0.3.9/Loopfleet_0.3.9_x64.dmg)
+**Download Loopfleet 0.3.10** —
+[Apple Silicon](https://github.com/matija/loopfleet/releases/download/0.3.10/Loopfleet_0.3.10_aarch64.dmg)
+· [Intel](https://github.com/matija/loopfleet/releases/download/0.3.10/Loopfleet_0.3.10_x64.dmg)
 <!-- download-links:end -->
 
 Signed and notarized `.dmg` builds; the app updates itself from there.
