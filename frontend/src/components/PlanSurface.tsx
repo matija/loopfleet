@@ -8,6 +8,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { planOverview } from "../commands";
+import type { PlanView as Plan } from "../types";
 import { CreatePrd } from "./CreatePrd";
 import { PlanView, type CompareTarget, type LaunchedRun } from "./PlanView";
 import { PrdView } from "./PrdView";
@@ -57,7 +58,7 @@ export function PlanSurface({
     projectId: string;
     planNonce: number;
     refresh: number;
-    hasPlan?: boolean;
+    plans?: Plan[];
     error?: string;
   } | null>(null);
   const current = availability?.projectId === projectId && availability.planNonce === planNonce && availability.refresh === refresh ? availability : null;
@@ -71,7 +72,7 @@ export function PlanSurface({
     setAvailability(null);
     planOverview(projectId)
       .then((plans) => {
-        if (!obsolete) setAvailability({ projectId, planNonce, refresh, hasPlan: plans.length > 0 });
+        if (!obsolete) setAvailability({ projectId, planNonce, refresh, plans });
       })
       .catch((error) => {
         if (!obsolete) setAvailability({ projectId, planNonce, refresh, error: String(error) });
@@ -118,7 +119,7 @@ export function PlanSurface({
 
   return (
     <>
-      {current?.hasPlan && (toolbarActions ? createPortal(toggle, toolbarActions) : toggle)}
+      {Boolean(current?.plans?.length) && (toolbarActions ? createPortal(toggle, toolbarActions) : toggle)}
       <div className="plan-surface">
         {!current ? (
           <p className="plan__loading">Loading plan…</p>
@@ -127,7 +128,7 @@ export function PlanSurface({
             <p className="panel__error">{current.error}</p>
             <button type="button" className="btn btn--secondary" onClick={() => setRefresh((value) => value + 1)}>Retry</button>
           </div>
-        ) : !current.hasPlan ? (
+        ) : !current.plans?.length ? (
           <>
             <CreatePrd key={projectId} projectId={projectId} onOpenAgentSettings={onOpenAgentSettings} onCreated={() => {
               setMode("tasks");
@@ -144,6 +145,7 @@ export function PlanSurface({
                   <PlanView
                     key={`${projectId}:${planNonce}`}
                     projectId={projectId}
+                    initialPlans={current.plans}
                     onLaunch={onLaunch}
                     onCompare={onCompare}
                     onError={onError}

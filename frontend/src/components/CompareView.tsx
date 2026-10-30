@@ -30,7 +30,7 @@ export function CompareView({
   taskText: string;
   onClose: () => void;
   // Called after a run is accepted so the plan's derived status can refresh.
-  onAccepted: () => void;
+  onAccepted: (runId: string) => void;
   // The toolbar's action-slot DOM node. Each run's Accept ("Use this run")
   // button portals there instead of rendering inline.
   toolbarActions: HTMLElement | null;
@@ -86,8 +86,13 @@ export function CompareView({
                 key={run.run_id}
                 run={run}
                 onAccepted={() => {
-                  reload();
-                  onAccepted();
+                  setCompare((current) => current ? {
+                    ...current,
+                    runs: current.runs.map((candidate) => candidate.run_id === run.run_id
+                      ? { ...candidate, accepted: true }
+                      : candidate),
+                  } : current);
+                  onAccepted(run.run_id);
                 }}
                 toolbarActions={toolbarActions}
               />
@@ -114,13 +119,13 @@ function RunColumn({
     <div className={`compare__run${run.accepted ? " compare__run--accepted" : ""}`}>
       <header className="compare__run-head">
         <span className={`run-view__status status-pill status-pill--${run.status}`}>
-          {RUN_STATUS_LABEL[run.status]}
+          {run.accepted ? "Merged" : RUN_STATUS_LABEL[run.status]}
         </span>
         <span className="compare__run-id" title={run.run_id}>
           {run.run_id.slice(0, 8)}
         </span>
         <span className="compare__run-agent">{run.agent}</span>
-        {run.accepted && <span className="compare__accepted">✓ accepted</span>}
+        {run.accepted && <span className="compare__accepted">✓ merged</span>}
       </header>
 
       {!isActiveRun(run.status) && run.worktree_path === null && (

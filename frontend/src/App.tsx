@@ -149,7 +149,7 @@ type View =
       taskText: string;
     }
   | { kind: "run"; runId: string }
-  | { kind: "compare"; planId: string; taskAnchor: string; taskText: string };
+  | { kind: "compare"; projectId?: string; planId: string; taskAnchor: string; taskText: string };
 
 // Composition root. Loads registered projects into the sidebar (connections
 // analog) and hosts a single main pane whose content follows `view`. The dock
@@ -293,8 +293,7 @@ export default function App() {
   // with no tasks — is visible in the list without clicking into it. Each
   // overview is fetched independently and failures are simply left unclassified
   // (the plan tree reports the error once the project is opened), so one bad
-  // repo can't blank the markers for the rest. Refetches on `planNonce` so
-  // authoring a first task clears the marker along with the tree.
+  // repo can't blank the markers for the rest.
   useEffect(() => {
     let cancelled = false;
     for (const p of projects) {
@@ -308,7 +307,16 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [projects, planNonce]);
+  }, [projects]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    let cancelled = false;
+    planOverview(selectedId).then((plans) => {
+      if (!cancelled) setHealth((current) => ({ ...current, [selectedId]: planHealth(plans) }));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedId, planNonce]);
 
   // The run currently shown in the main pane, read live from event handlers
   // (below) without re-subscribing. A run finishing while it is the open view is
@@ -327,7 +335,7 @@ export default function App() {
         const mergeable = t.iterations.some((it) => it.shadow_ref !== null);
         setRuns((prev) =>
           prev.map((r) =>
-            r.runId === runId ? { ...r, accepted: t.accepted, mergeable } : r,
+            r.runId === runId ? { ...r, accepted: r.accepted || t.accepted, mergeable } : r,
           ),
         );
       })
@@ -339,23 +347,23 @@ export default function App() {
   // also retires the action, per `canMergeFromDock`) and the plan overview
   // refetches, since accepting a run changes what the plan shows. A failure is
   // an app-level command error, so it goes to the toast lane.
+  const markRunAccepted = useCallback((runId: string) => {
+    setRuns((previous) => previous.map((run) => run.runId === runId
+      ? { ...run, accepted: true, autoMergeFailed: undefined }
+      : run));
+    setPlanNonce((n) => n + 1);
+  }, []);
+
   const mergeRunFromDock = useCallback(
     async (runId: string) => {
       try {
         await useRun(runId, null);
-        setRuns((prev) =>
-          prev.map((r) =>
-            r.runId === runId
-              ? { ...r, accepted: true, autoMergeFailed: undefined }
-              : r,
-          ),
-        );
-        setPlanNonce((n) => n + 1);
+        markRunAccepted(runId);
       } catch (e) {
         pushError(String(e));
       }
     },
-    [pushError],
+    [pushError, markRunAccepted],
   );
 
   useEffect(() => {
@@ -392,7 +400,10 @@ export default function App() {
             : r,
         ),
       );
-      if (!isActiveRun(p.status)) refreshRunOutcome(p.run_id);
+      if (!isActiveRun(p.status)) {
+        refreshRunOutcome(p.run_id);
+        setPlanNonce((n) => n + 1);
+      }
     });
     return () => {
       un.then((f) => f());
@@ -752,17 +763,17 @@ export default function App() {
     acknowledgeRuns().catch(() => {});
   }, []);
 
-  // Return to the selected project's plan, or the overview when nothing is
-  // selected. Used by the in-view "← Back" controls.
   const goBack = useCallback(() => {
-    setView((cur) => {
-      // Already on a plan/overview — nothing to go back to.
-      if (cur.kind === "plan" || cur.kind === "overview" || cur.kind === "start") return cur;
-      return selectedId
-        ? { kind: "plan", projectId: selectedId }
-        : { kind: "start" };
-    });
-  }, [selectedId]);
+    if (view.kind === "plan" || view.kind === "overview" || view.kind === "start") return;
+    const projectId = view.kind === "task" ? view.projectId
+      : view.kind === "run" ? runs.find((run) => run.runId === view.runId)?.projectId
+      : view.projectId;
+    const destination = projectId ?? selectedId;
+    setPrdFocusNonce(0);
+    setPendingArchivePlanId(null);
+    setSelectedId(destination);
+    setView(destination ? { kind: "plan", projectId: destination } : { kind: "start" });
+  }, [view, runs, selectedId]);
 
   // A launched run joins the dock, tagged with the project it ran against.
   const onLaunch = useCallback(
@@ -837,6 +848,8 @@ export default function App() {
   // Selecting a project opens its plan in the main pane.
   function selectProject(id: string) {
     setSelectedId(id);
+    setPrdFocusNonce(0);
+    setPendingArchivePlanId(null);
     setView({ kind: "plan", projectId: id });
   }
 
@@ -1220,6 +1233,7 @@ export default function App() {
                       onOpenTask={(t) =>
                         setView({
                           kind: "compare",
+                          projectId: p.id,
                           planId: t.planId,
                           taskAnchor: t.taskAnchor,
                           taskText: t.taskText,
@@ -1345,7 +1359,7 @@ export default function App() {
               stopRun(id).catch((e) => pushError(String(e)));
             }}
             onClose={goBack}
-            onAccepted={() => setPlanNonce((n) => n + 1)}
+            onAccepted={markRunAccepted}
             onRetry={onRetry}
             onLaunch={onLaunch}
             toolbarActions={toolbarActionsEl}
@@ -1358,7 +1372,7 @@ export default function App() {
             taskAnchor={view.taskAnchor}
             taskText={view.taskText}
             onClose={goBack}
-            onAccepted={() => setPlanNonce((n) => n + 1)}
+            onAccepted={markRunAccepted}
             toolbarActions={toolbarActionsEl}
           />
         ) : view.kind === "task" ? (
@@ -1374,6 +1388,7 @@ export default function App() {
             onCompare={(target: CompareTarget) =>
               setView({
                 kind: "compare",
+                projectId: view.projectId,
                 planId: target.planId,
                 taskAnchor: target.taskAnchor,
                 taskText: target.taskText,
@@ -1392,6 +1407,7 @@ export default function App() {
             onCompare={(target: CompareTarget) =>
               setView({
                 kind: "compare",
+                projectId: view.projectId,
                 planId: target.planId,
                 taskAnchor: target.taskAnchor,
                 taskText: target.taskText,
@@ -1508,7 +1524,7 @@ function RunPane({
   runs: ActiveRun[];
   onStop: (runId: string) => void;
   onClose: () => void;
-  onAccepted: () => void;
+  onAccepted: (runId: string) => void;
   onRetry: (run: ActiveRun) => void;
   onLaunch: (run: LaunchedRun) => void;
   toolbarActions: HTMLDivElement | null;
@@ -1560,10 +1576,7 @@ export type Crumb = {
 
 // Pure breadcrumb model for the active view. Runs carry their own project
 // name/id (set at launch, see `onLaunch`), which is how the `run` case finds
-// its project without a projects lookup. `compare` has no projectId on the
-// view itself, so it best-effort recovers one from a run sharing its task
-// anchor; a task opened from the sidebar before it has any runs simply gets
-// the task crumb alone.
+// its project without a projects lookup.
 //
 // Task labels are the compact `taskSummary`, not the full text: the strip is
 // one fixed-height row shared with the filter and action slots, so a full
@@ -1637,9 +1650,13 @@ export function crumbsFor(
       ];
     }
     case "compare": {
-      const r = runs.find((x) => x.taskAnchor === view.taskAnchor);
+      const r = runs.find((x) => x.taskAnchor === view.taskAnchor && (!view.projectId || x.projectId === view.projectId));
+      const project = projects.find((p) => p.id === view.projectId);
       const crumbs: Crumb[] = [];
-      if (r) {
+      if (project) {
+        crumbs.push(projectCrumb(project.id, repoName(project.repo_path)));
+        crumbs.push(planCrumb(project.id));
+      } else if (r) {
         crumbs.push(projectCrumb(r.projectId, r.projectName));
         crumbs.push(planCrumb(r.projectId));
       }

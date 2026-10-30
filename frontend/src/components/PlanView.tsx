@@ -101,19 +101,21 @@ export type CompareTarget = {
 
 export function PlanView({
   projectId,
+  initialPlans,
   onLaunch,
   onCompare,
   onError,
   onOpenPrd,
 }: {
   projectId: string;
+  initialPlans?: Plan[];
   onOpenPrd: () => void;
   onLaunch: (run: LaunchedRun) => void;
   onCompare: (target: CompareTarget) => void;
   /// Surfaces command failures (a failed export) through the app's toasts.
   onError: (message: string) => void;
 }) {
-  const [plans, setPlans] = useState<Plan[] | null>(null);
+  const [plans, setPlans] = useState<Plan[] | null>(initialPlans ?? null);
   const [error, setError] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentStatus[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
@@ -127,10 +129,10 @@ export function PlanView({
 
   // Reset and reload whenever the selected project changes.
   useEffect(() => {
-    setPlans(null);
+    setPlans(initialPlans ?? null);
     setError(null);
-    reload();
-  }, [reload]);
+    if (!initialPlans) reload();
+  }, [reload, initialPlans]);
 
   // The agent menu. Small, stable — fetched once per session, not per mount:
   // discovery spawns a `--version` per agent, and this view remounts on every

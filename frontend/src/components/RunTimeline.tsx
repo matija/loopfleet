@@ -35,7 +35,7 @@ export function RunTimeline({
   onClose: () => void;
   // Called after a run is accepted from here so any open plan can refresh its
   // derived status. Optional — the timeline is reachable without a plan open.
-  onAccepted?: () => void;
+  onAccepted?: (runId: string) => void;
   // Re-launch this run's task (same agent + passes). Backs the rate-limited
   // banner's "Retry now"; a no-op when the run carries no project/task identity.
   onRetry?: (run: ActiveRun) => void;
@@ -92,7 +92,7 @@ export function RunTimeline({
       ? `${passes} ${passes === 1 ? "pass" : "passes"}`
       : null;
   const mergeable = iterations.some((it) => it.shadow_ref !== null);
-  const merged = isMergedRun({ status, accepted: run.accepted });
+  const merged = isMergedRun({ status, accepted: run.accepted || timeline?.accepted });
   const canUse = (status === "completed" && mergeable) || merged;
   // A rate-limited run gets an explicit banner: what happened, when the limit
   // resets (from the persisted `rate_limited` event), and a way to re-run now.
@@ -116,7 +116,7 @@ export function RunTimeline({
         <div className="run-view__ident">
           <span className={`run-view__status status-pill status-pill--${status}`}>
             <StatusIcon size={12} className="status-pill__icon" />
-            {RUN_STATUS_LABEL[status]}
+            {merged ? "Merged" : RUN_STATUS_LABEL[status]}
           </span>
           <span
             className="run-view__task"
@@ -191,7 +191,7 @@ export function RunTimeline({
             runId={run.runId}
             mergeable={mergeable}
             accepted={merged}
-            onAccepted={() => onAccepted?.()}
+            onAccepted={() => onAccepted?.(run.runId)}
             actionsPortal={toolbarActions}
           />
         </div>

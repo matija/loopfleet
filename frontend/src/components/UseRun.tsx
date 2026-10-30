@@ -40,7 +40,8 @@ export function UseRun({
   const [error, setError] = useState<string | null>(null);
 
   const custom = branch.trim() !== "";
-  const useButton = accepted ? (
+  const merged = accepted || result !== null;
+  const useButton = merged ? (
     <span
       className="use-run__merged"
       role="img"
@@ -78,7 +79,7 @@ export function UseRun({
   return (
     <div className="use-run">
       <div className="use-run__row">
-        {!accepted && (
+        {!merged && (
           <input
             className="use-run__branch"
             type="text"
@@ -92,7 +93,7 @@ export function UseRun({
         )}
         {actionsPortal ? createPortal(useButton, actionsPortal) : useButton}
       </div>
-      {!accepted && (
+      {!merged && (
         <p className="use-run__hint">
           {custom ? (
             <>

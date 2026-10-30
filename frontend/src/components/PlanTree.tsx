@@ -37,11 +37,13 @@ export function PlanTree({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setPlans(null);
     setError(null);
     planOverview(projectId)
-      .then(setPlans)
-      .catch((e) => setError(String(e)));
+      .then((plans) => { if (!cancelled) setPlans(plans); })
+      .catch((e) => { if (!cancelled) setError(String(e)); });
+    return () => { cancelled = true; };
   }, [projectId, nonce]);
 
   if (error) return <div className="plan-tree__note">{error}</div>;

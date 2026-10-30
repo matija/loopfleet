@@ -116,8 +116,16 @@ export function setProjectSandboxWrites(
 }
 
 /// The plan overview for a project (derived `TaskStatus` per task).
+const planOverviewRequests = new Map<string, Promise<PlanView[]>>();
+
 export function planOverview(projectId: string): Promise<PlanView[]> {
-  return invoke("plan_overview", { projectId });
+  const existing = planOverviewRequests.get(projectId);
+  if (existing) return existing;
+  const request = invoke<PlanView[]>("plan_overview", { projectId }).finally(() => {
+    if (planOverviewRequests.get(projectId) === request) planOverviewRequests.delete(projectId);
+  });
+  planOverviewRequests.set(projectId, request);
+  return request;
 }
 
 /// The raw markdown of a single plan document, by plan id. Read-only: no store
@@ -300,7 +308,10 @@ export function useRun(
   runId: string,
   targetBranch: string | null,
 ): Promise<UseRunResult> {
-  return invoke("use_run", { runId, targetBranch: targetBranch ?? null });
+  return invoke<UseRunResult>("use_run", { runId, targetBranch: targetBranch ?? null }).then((result) => {
+    planOverviewRequests.clear();
+    return result;
+  });
 }
 
 /// Open an `http(s)` URL in the default browser. Used by the About panel's
