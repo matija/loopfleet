@@ -415,8 +415,9 @@ fn build_prompt(cfg: &LoopConfig, prior: &str, pending: &[Tap], pass: u32) -> St
     };
     format!(
         "{contract}\n\nSelected task:\n{task}\n\n\
-Full plan reference captured at launch (only implement the selected task):\n<plan-reference>\n{plan}\n</plan-reference>\n\n\
+Full plan reference captured at launch (only implement and verify the selected task; other tasks and release-review checks are not requirements of this attempt):\n<plan-reference>\n{plan}\n</plan-reference>\n\n\
 Complete the entire task in this attempt. Do all required tests and checks.\n\
+Verification scope: use the selected task's acceptance criteria and applicable repository checks. Do not invent native UI verification merely because this is a desktop app or another task requests it. Use existing executable tests for the selected behavior. If the selected task explicitly requires native UI interaction, use an available native test tool; do not claim component tests prove native interaction.\n\n\
 The required result is the completed task, not a progress report or a plan.\n\
 If a task requirement remains unfinished, this attempt failed.\n\
 A problem that prevents further work does not make the task completed.\n\
@@ -444,7 +445,6 @@ Obey these rules:\n\
 - Add results to plan files without replacement of the plan.\n\
 - Preserve processes that were active before this attempt.\n\
 - Never quit, kill, or restart the Loopfleet application hosting this run.\n\
-- For native checks, build and launch this worktree's app, not the installed Loopfleet app.\n\
 - Track native app PIDs individually; never quit applications by name or kill by a shared executable path.\n\
 - Before you stop, stop each background process that you started for this attempt.\n\
 - Make sure that each process you stopped exited.\n\n\
@@ -452,8 +452,6 @@ Process inspection:\n\
 The macOS sandbox blocks setuid programs, including `ps` and `top`.\n\
 - Find processes with `pgrep` instead of `ps`.\n\
 - Measure process resources with `libproc` instead of `top`.\n\
-- Inspect the rendered sandbox profile before diagnosing native automation permissions.\n\
-- If it already allows lsopen and appleevent-send, do not claim the project permission is disabled.\n\
 - Do not remove the sandbox or change its permissions.\n\n\
 Record the result:\n\
 1. Add completed work, exact check commands, results, and unfinished requirements to the progress file.\n\

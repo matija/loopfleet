@@ -22,7 +22,6 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, watch};
 
-mod native_runtime;
 mod orphans;
 mod path_env;
 
@@ -561,12 +560,6 @@ fn set_project_sandbox_writes(
 }
 
 #[tauri::command]
-async fn native_automation_status() -> Result<native_runtime::Status, String> {
-    tauri::async_runtime::spawn_blocking(native_runtime::status)
-        .await.map_err(|error| error.to_string())
-}
-
-#[tauri::command]
 fn project_native_automation(
     project_id: String,
     state: State<'_, AppState>,
@@ -760,6 +753,7 @@ async fn propose_plan(
                 rel = rel.display(),
             ),
         };
+        let prompt = format!("{prompt}\n\nExecution environment: Loopfleet runs headless agents in isolated Git worktrees. Define implementation tasks with executable acceptance checks supported by the repository's tools. A native desktop app does not by itself require mouse, keyboard, Apple Events, or Accessibility automation. Do not add manual native interaction to every UI implementation task by default. Put optional human visual and native interaction checks in a separate numbered release-review section, not in executable checkbox tasks. Preserve explicitly requested native automation requirements and identify the actual test tool and prerequisites; do not invent a native UI tool, assume OS consent, or claim component tests prove native interactions.");
         let spec = RunSpec { cwd: worktree.path.clone(), prompt, wrapper, model: None };
         let _ = on_activity.send(format!("Starting {agent}…"));
         let mut handle = adapter.start_run(&spec).await.map_err(|e| e.to_string())?;
@@ -1183,13 +1177,6 @@ If no failure reason was recorded, inspect the partial work and diagnose the mis
         (project, plan_id, task_text, plan.markdown.clone(), extra_writes, native_automation, repair)
     };
     let execution = loopfleet_core::execution::ExecutionConfig::load(std::path::Path::new(&project.repo_path))?;
-    if native_automation {
-        let readiness = tauri::async_runtime::spawn_blocking(native_runtime::status)
-            .await.map_err(|error| error.to_string())?;
-        if !readiness.ready {
-            return Err(readiness.detail);
-        }
-    }
     if plan_context.len() > 512 * 1024 {
         return Err("The selected plan exceeds the 512 KiB execution context limit. Split the plan before launching.".into());
     }
@@ -1227,7 +1214,7 @@ If no failure reason was recorded, inspect the partial work and diagnose the mis
     params.extra_writes = extra_writes.into_iter().map(PathBuf::from).collect();
     params.native_automation = native_automation;
     if native_automation {
-        let guidance = "Native app automation is enabled for this project. For native UI verification, build the worktree's app bundle and launch that exact .app using /usr/bin/open -n, not the raw target/debug executable. Raw executables inherit the agent sandbox and cannot serve as the native verification environment. Do not add app data, logs, WebKit, Keychain, or other host paths to work around a failed raw-executable launch. LaunchServices app launch is explicitly permitted by this project setting. Use the worktree's bundle, not an installed older app. Track and close only the app instance you launch. macOS Automation and Accessibility consent still applies.";
+        let guidance = "The project allows native app launches and Apple Events at the sandbox boundary. This does not supply a UI test driver or grant macOS consent, and does not require native checks for every task. Only when the selected task explicitly requires native UI verification and an appropriate test tool is available, build the worktree's app bundle and launch that exact .app using /usr/bin/open -n, not the raw target/debug executable. Raw executables inherit the agent sandbox and cannot serve as the native verification environment. Do not add app data, logs, WebKit, Keychain, or other host paths to work around a failed raw-executable launch. LaunchServices app launch is explicitly permitted by this project setting. Use the worktree's bundle, not an installed older app. Track and close only the app instance you launch. macOS Automation and Accessibility consent still applies.";
         repair_context.get_or_insert_with(String::new).push_str(&format!("\n\n{guidance}"));
     }
     let wrapper = confine_prefix(&params, &profile_path).map_err(|e| e.to_string())?;
@@ -3825,7 +3812,6 @@ pub fn run() {
             save_settings,
             project_sandbox_writes,
             set_project_sandbox_writes,
-            native_automation_status,
             project_native_automation,
             set_project_native_automation,
             plan_overview,

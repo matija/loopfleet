@@ -316,7 +316,3 @@ export function useRun(
 export function openExternal(url: string): Promise<void> {
   return invoke("open_external", { url });
 }
-
-export function nativeAutomationStatus(): Promise<{ ready: boolean; detail: string }> {
-  return invoke("native_automation_status");
-}
