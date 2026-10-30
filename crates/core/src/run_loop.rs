@@ -417,7 +417,7 @@ fn build_prompt(cfg: &LoopConfig, prior: &str, pending: &[Tap], pass: u32) -> St
         "{contract}\n\nSelected task:\n{task}\n\n\
 Full plan reference captured at launch (only implement and verify the selected task; other tasks and release-review checks are not requirements of this attempt):\n<plan-reference>\n{plan}\n</plan-reference>\n\n\
 Complete the entire task in this attempt. Do all required tests and checks.\n\
-Verification scope: use the selected task's acceptance criteria and applicable repository checks. Do not invent native UI verification merely because this is a desktop app or another task requests it. Use existing executable tests for the selected behavior. If the selected task explicitly requires native UI interaction, use an available native test tool; do not claim component tests prove native interaction.\n\n\
+Verification scope: use the selected task's acceptance criteria and applicable repository checks. Do not invent native UI verification merely because this is a desktop app or another task requests it. Use existing executable tests for the selected behavior. Apply the runner verification policy to manual interaction requirements; record pending human release review separately and do not claim tests prove manual native interaction.\n\n\
 The required result is the completed task, not a progress report or a plan.\n\
 If a task requirement remains unfinished, this attempt failed.\n\
 A problem that prevents further work does not make the task completed.\n\
@@ -445,7 +445,7 @@ Obey these rules:\n\
 - Add results to plan files without replacement of the plan.\n\
 - Preserve processes that were active before this attempt.\n\
 - Never quit, kill, or restart the Loopfleet application hosting this run.\n\
-- Track native app PIDs individually; never quit applications by name or kill by a shared executable path.\n\
+- Track test-owned process PIDs individually; never quit applications by name or kill by a shared executable path.\n\
 - Before you stop, stop each background process that you started for this attempt.\n\
 - Make sure that each process you stopped exited.\n\n\
 Process inspection:\n\
@@ -462,7 +462,7 @@ Record the result:\n\
 6. Loopfleet independently runs verification before marking work ready for review. A completion marker alone never completes the run.\n\
 7. Preserve useful worktree changes. Loopfleet handles snapshots and commits. Do not request Git write access.\n\n\
 --- prior progress ---\n{prior}\n{repair}\n{notes}",
-        contract = execution::RUNNER_CONTRACT,
+        contract = execution::runner_contract(),
         task = cfg.task_text,
         plan = cfg.plan_context,
         progress = cfg.progress_path.display(),
@@ -1181,6 +1181,7 @@ mod tests {
         assert!(prompts[1].contains("pass 1 did work"));
         for prompt in prompts.iter() {
             assert!(prompt.contains("Loopfleet owns all Git mutations"));
+            assert!(prompt.contains(execution::VERIFICATION_POLICY));
             assert!(prompt.contains("Implementation decisions and nested acceptance details"));
             assert!(prompt.contains("result-"));
             assert!(prompt.contains("Loopfleet independently runs verification"));

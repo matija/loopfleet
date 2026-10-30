@@ -13,6 +13,14 @@ Loopfleet is a native macOS app for **scheduled and continuous task execution**.
 
 Context is kept deliberately small per run, so each agent stays focused on its current task instead of drowning in accumulated history. The app keeps the plan, the runs, and the resulting diffs in one place: scan the fleet, review what changed, and accept or reject tasks without losing the thread.
 
+## Verification
+
+Agents verify implementation through executable tests and repository checks. These can include component, interface, browser, end-to-end, and system tests.
+
+Loopfleet does not provide computer-use agents or desktop-control automation. Test harnesses can launch the application under test. Manual clicking and visual inspection belong to human release review.
+
+Generated PRDs keep manual release review outside executable tasks. For existing PRDs, agents record manual checks as pending human review. They must pass required automated checks before task completion. They must not report manual checks as passed.
+
 ## Reliable task handoff
 
 Write a normal PRD with tasks and acceptance criteria. Loopfleet supplies the full plan reference and runner instructions automatically.

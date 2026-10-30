@@ -54,7 +54,8 @@ impl AgentAdapter for PiAdapter {
     async fn start_run(&self, spec: &RunSpec) -> Result<RunHandle, AdapterError> {
         let can_steer = self.can_steer();
         let mut cmd = crate::base_command(&spec.wrapper, "pi");
-        cmd.args(["--mode", "rpc", "--append-system-prompt", loopfleet_core::execution::RUNNER_CONTRACT]);
+        cmd.args(["--mode", "rpc", "--append-system-prompt"])
+            .arg(loopfleet_core::execution::runner_contract());
         if let Some(model) = &spec.model {
             cmd.arg("--model").arg(model);
         }

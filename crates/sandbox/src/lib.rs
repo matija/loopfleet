@@ -44,7 +44,6 @@ pub struct RenderParams {
     /// Per-project write overrides (PRD M6 settings). Additional absolute paths
     /// the run may write. Never include the parent repo's `.git`.
     pub extra_writes: Vec<PathBuf>,
-    pub native_automation: bool,
 }
 
 impl RenderParams {
@@ -56,7 +55,6 @@ impl RenderParams {
             agent_dirs: Vec::new(),
             temp_dirs: default_temp_dirs(),
             extra_writes: Vec::new(),
-            native_automation: false,
         }
     }
 }
@@ -115,11 +113,7 @@ pub fn render(params: &RenderParams) -> Result<String, RenderError> {
         subpaths.push('\n');
     }
 
-    let mut profile = TEMPLATE.replace(WRITE_SUBPATHS_MARKER, subpaths.trim_end());
-    if params.native_automation {
-        profile.push_str("\n(allow lsopen)\n(allow appleevent-send)\n(allow signal)\n");
-    }
-    Ok(profile)
+    Ok(TEMPLATE.replace(WRITE_SUBPATHS_MARKER, subpaths.trim_end()))
 }
 
 /// One `(subpath "…")` line for a validated, escaped path.
@@ -321,20 +315,7 @@ mod tests {
         assert!(profile.contains("(allow signal (target same-sandbox))"));
         assert!(!profile.contains("(allow signal)"));
         assert!(!profile.contains("(allow appleevent-send"));
-    }
-
-    #[test]
-    fn native_automation_requires_explicit_permission() {
-        let mut p = params();
-        let restricted = render(&p).unwrap();
-        assert!(!restricted.contains("(allow lsopen)"));
-        assert!(!restricted.contains("(allow appleevent-send)"));
-        p.native_automation = true;
-        let native = render(&p).unwrap();
-        assert!(native.contains("(allow lsopen)"));
-        assert!(native.contains("(allow appleevent-send)"));
-        assert!(native.contains("(deny default)"));
-        assert!(native.contains("(allow signal (target same-sandbox))"));
+        assert!(!profile.contains("(allow lsopen"));
     }
 
     #[test]

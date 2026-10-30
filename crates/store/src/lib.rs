@@ -17,8 +17,7 @@ pub use projects::{
 
 mod settings;
 pub use settings::{
-    load_settings, project_native_automation, project_sandbox_writes, save_settings,
-    set_project_native_automation, set_project_sandbox_writes, Settings,
+    load_settings, project_sandbox_writes, save_settings, set_project_sandbox_writes, Settings,
 };
 
 mod plans;
@@ -104,6 +103,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
     (
         "0012_run_repair",
         include_str!("migrations/0012_run_repair.sql"),
+    ),
+    (
+        "0013_remove_native_automation",
+        include_str!("migrations/0013_remove_native_automation.sql"),
     ),
 ];
 

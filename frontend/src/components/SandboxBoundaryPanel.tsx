@@ -37,9 +37,8 @@ export function SandboxBoundaryPanel() {
             <p>
               Limited to the run's git worktree and its app-managed progress dir.
               Agent processes cannot write to the parent repo's <code>.git</code>.
-              Commits are app-owned. If you enable native app automation, launched
-              apps run outside this boundary and can write elsewhere. Agents can
-              also signal processes outside the sandbox to stop those apps.
+              Commits are app-owned. Verification runs through executable tests.
+              Desktop control and native app clicking are not part of agent runs.
             </p>
           </div>
         </div>

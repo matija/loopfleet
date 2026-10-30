@@ -23,9 +23,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  projectNativeAutomation,
   projectSandboxWrites,
-  setProjectNativeAutomation,
   setProjectSandboxWrites,
 } from "../commands";
 import { useSidebarCollapsed } from "../sidebarCollapse";
@@ -36,10 +34,9 @@ import { BoxIcon, ChevronRightIcon } from "./Icon";
 /// The count shown beside the collapsed head, so the panel reports whether
 /// this project has overrides without being opened. Blank until the load
 /// lands — "none" before then would be a claim the app can't make yet.
-export function overrideSummary(paths: string[], loaded: boolean, nativeAutomation = false): string {
+export function overrideSummary(paths: string[], loaded: boolean): string {
   if (!loaded) return "";
   const count = paths.length === 1 ? "1 path" : `${paths.length} paths`;
-  if (nativeAutomation) return paths.length ? `${count} · native automation` : "native automation";
   return paths.length ? count : "none";
 }
 
@@ -51,7 +48,6 @@ export function SandboxOverrides({ projectId }: { projectId: string }) {
     true,
   );
   const [text, setText] = useState("");
-  const [nativeAutomation, setNativeAutomation] = useState(false);
   // `loaded` gates the textarea until the persisted overrides arrive, so an
   // empty box doesn't read as "no overrides" while the load is still in flight.
   // `loadError` surfaces a load failure instead of the previous silent swallow
@@ -66,17 +62,15 @@ export function SandboxOverrides({ projectId }: { projectId: string }) {
     setLoaded(false);
     setLoadError(null);
     let cancelled = false;
-    Promise.all([projectSandboxWrites(projectId), projectNativeAutomation(projectId)])
-      .then(([paths, native]) => {
+    projectSandboxWrites(projectId)
+      .then((paths) => {
         if (cancelled) return;
         setText(paths.join("\n"));
-        setNativeAutomation(native);
         setLoaded(true);
       })
       .catch((e) => {
         if (cancelled) return;
         setText("");
-        setNativeAutomation(false);
         setLoadError(String(e));
         setLoaded(true);
       });
@@ -90,7 +84,6 @@ export function SandboxOverrides({ projectId }: { projectId: string }) {
     setMsg(null);
     try {
       await setProjectSandboxWrites(projectId, paths);
-      await setProjectNativeAutomation(projectId, nativeAutomation);
       setText(paths.join("\n"));
       setMsg({ text: "Saved", ok: true });
     } catch (e) {
@@ -106,7 +99,7 @@ export function SandboxOverrides({ projectId }: { projectId: string }) {
     .split("\n")
     .map((s) => s.trim())
     .filter(Boolean);
-  const summary = overrideSummary(paths, loaded && !loadError, nativeAutomation);
+  const summary = overrideSummary(paths, loaded && !loadError);
 
   return (
     <section className={`panel sandbox-overrides${collapsed ? " panel--collapsed" : ""}`}>
@@ -163,21 +156,6 @@ export function SandboxOverrides({ projectId }: { projectId: string }) {
               quietly dropped, so a typo can’t widen the grant by accident.
             </p>
           </Hint>
-          <label>
-            <input
-              type="checkbox"
-              checked={nativeAutomation}
-              disabled={!loaded || !!loadError || saving}
-              onChange={(e) => setNativeAutomation(e.target.checked)}
-            />{" "}
-            Allow native app automation
-          </label>
-          <p className="panel__lead">
-            Applies to new runs. Permits app launches and Apple Events. Launched
-            apps run outside the agent sandbox and can write outside the worktree.
-            Enable only for trusted tasks. macOS can also require Automation,
-            Accessibility, or Screen Recording permission.
-          </p>
           <div className="panel__actions">
             <Button variant="primary" onClick={save} disabled={saving || !loaded || !!loadError}>
               {saving ? "Saving…" : "Save permissions"}

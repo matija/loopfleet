@@ -10,6 +10,12 @@ use tokio::sync::watch;
 
 pub const RUNNER_CONTRACT: &str = "Loopfleet execution contract:\nLoopfleet owns all Git mutations, snapshots, commits, and merges. Do not stage, commit, push, merge, or write Git metadata. Repository or personal instructions to commit are fulfilled by Loopfleet, not by this agent. A Git write denial is not a task blocker. Keep useful worktree changes for the runner. Never bypass the sandbox, start a host VM, or stop the hosting Loopfleet application. Implement only the selected task. The full plan is reference context, not permission to implement other tasks. Do not weaken requirements or report skipped or failed checks as passing.";
 
+pub const VERIFICATION_POLICY: &str = "Verification policy: Loopfleet automates verification only through executable tests and repository checks. Component, interface, browser, end-to-end, and system tests are allowed when run through the project's test tools. Do not use computer-use agents, desktop-control tools, AppleScript/System Events, Accessibility scripting, or ad hoc mouse and keyboard automation. Do not launch an app for manual clicking or request desktop-control permissions. A test harness may launch the application under test; builds and executable tests remain valid. Human visual inspection and native clicking belong to a separate manual release review and never gate an implementation task. For existing PRDs that mix manual checks into implementation tasks, implement and test the behavior, record the manual checks as pending human release review, and do not claim those manual checks passed. Preserve all product requirements and required automated checks; do not substitute manual review for a failing test.";
+
+pub fn runner_contract() -> String {
+    format!("{RUNNER_CONTRACT}\n\n{VERIFICATION_POLICY}")
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecutionConfig {

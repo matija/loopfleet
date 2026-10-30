@@ -559,25 +559,6 @@ fn set_project_sandbox_writes(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn project_native_automation(
-    project_id: String,
-    state: State<'_, AppState>,
-) -> Result<bool, String> {
-    loopfleet_store::project_native_automation(&state.db.lock().unwrap(), &project_id)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn set_project_native_automation(
-    project_id: String,
-    enabled: bool,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    loopfleet_store::set_project_native_automation(&state.db.lock().unwrap(), &project_id, enabled)
-        .map_err(|e| e.to_string())
-}
-
 /// The plan overview for a project: its plan(s) with a derived `TaskStatus`
 /// overlay per task. Syncs plan + tasks into the store as a side effect (so runs
 /// can bind to them); never edits the frozen plan file.
@@ -753,7 +734,7 @@ async fn propose_plan(
                 rel = rel.display(),
             ),
         };
-        let prompt = format!("{prompt}\n\nExecution environment: Loopfleet runs headless agents in isolated Git worktrees. Define implementation tasks with executable acceptance checks supported by the repository's tools. A native desktop app does not by itself require mouse, keyboard, Apple Events, or Accessibility automation. Do not add manual native interaction to every UI implementation task by default. Put optional human visual and native interaction checks in a separate numbered release-review section, not in executable checkbox tasks. Preserve explicitly requested native automation requirements and identify the actual test tool and prerequisites; do not invent a native UI tool, assume OS consent, or claim component tests prove native interactions.");
+        let prompt = format!("{prompt}\n\n{}\n\nWrite implementation tasks with executable test commands. Put human visual and native interaction checks in a separate numbered manual release-review section, not in executable checkbox tasks. Do not introduce desktop-control requirements or mix human review into automated task completion. Preserve all requested product behavior and cover it with the repository's automated tests.", loopfleet_core::execution::VERIFICATION_POLICY);
         let spec = RunSpec { cwd: worktree.path.clone(), prompt, wrapper, model: None };
         let _ = on_activity.send(format!("Starting {agent}…"));
         let mut handle = adapter.start_run(&spec).await.map_err(|e| e.to_string())?;
@@ -1109,7 +1090,7 @@ fn spawn_run(
             &data_dir.join("progress").join(source_id).join("progress.md"), 256 * 1024)
             .unwrap_or_default()
     }).unwrap_or_default();
-    let (project, plan_id, task_text, plan_context, extra_writes, native_automation, repair) = {
+    let (project, plan_id, task_text, plan_context, extra_writes, repair) = {
         let conn = db.lock().unwrap();
 
         let settings = loopfleet_store::load_settings(&conn).map_err(|e| e.to_string())?;
@@ -1132,8 +1113,6 @@ fn spawn_run(
         if matches.next().is_some() { return Err("ambiguous task anchor in selected plan".into()); }
         let (plan_id, task_text) = (plan.plan_id.clone(), task.text.clone());
         let extra_writes = loopfleet_store::project_sandbox_writes(&conn, &project_id)
-            .map_err(|e| e.to_string())?;
-        let native_automation = loopfleet_store::project_native_automation(&conn, &project_id)
             .map_err(|e| e.to_string())?;
         let repair = repair_of.as_deref().map(|source_id| {
             let source = loopfleet_store::load_run(&conn, source_id)
@@ -1174,7 +1153,7 @@ If no failure reason was recorded, inspect the partial work and diagnose the mis
             );
             Ok::<_, String>((source.worktree_path.map(PathBuf::from), refs.first().cloned(), refs.last().cloned(), context))
         }).transpose()?;
-        (project, plan_id, task_text, plan.markdown.clone(), extra_writes, native_automation, repair)
+        (project, plan_id, task_text, plan.markdown.clone(), extra_writes, repair)
     };
     let execution = loopfleet_core::execution::ExecutionConfig::load(std::path::Path::new(&project.repo_path))?;
     if plan_context.len() > 512 * 1024 {
@@ -1191,7 +1170,7 @@ If no failure reason was recorded, inspect the partial work and diagnose the mis
     std::fs::create_dir_all(&progress_dir).map_err(|e| e.to_string())?;
 
     // Cut the per-run worktree through the serialized git actor.
-    let (worktree, mut repair_context) = match repair {
+    let (worktree, repair_context) = match repair {
         Some((source_path, first_ref, last_ref, context)) => (
             git.worktree_fork(
                 PathBuf::from(&project.repo_path), worktrees_root, run_id.clone(),
@@ -1212,11 +1191,6 @@ If no failure reason was recorded, inspect the partial work and diagnose the mis
     let mut params = RenderParams::new(&worktree.path, &progress_dir);
     params.agent_dirs = agent_dirs();
     params.extra_writes = extra_writes.into_iter().map(PathBuf::from).collect();
-    params.native_automation = native_automation;
-    if native_automation {
-        let guidance = "The project allows native app launches and Apple Events at the sandbox boundary. This does not supply a UI test driver or grant macOS consent, and does not require native checks for every task. Only when the selected task explicitly requires native UI verification and an appropriate test tool is available, build the worktree's app bundle and launch that exact .app using /usr/bin/open -n, not the raw target/debug executable. Raw executables inherit the agent sandbox and cannot serve as the native verification environment. Do not add app data, logs, WebKit, Keychain, or other host paths to work around a failed raw-executable launch. LaunchServices app launch is explicitly permitted by this project setting. Use the worktree's bundle, not an installed older app. Track and close only the app instance you launch. macOS Automation and Accessibility consent still applies.";
-        repair_context.get_or_insert_with(String::new).push_str(&format!("\n\n{guidance}"));
-    }
     let wrapper = confine_prefix(&params, &profile_path).map_err(|e| e.to_string())?;
 
     loopfleet_core::execution::write_record(&progress_path, "plan.md", &plan_context)
@@ -3812,8 +3786,6 @@ pub fn run() {
             save_settings,
             project_sandbox_writes,
             set_project_sandbox_writes,
-            project_native_automation,
-            set_project_native_automation,
             plan_overview,
             plan_document,
             plan_edit,

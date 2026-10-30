@@ -153,7 +153,7 @@ async fn drive(
                         send(&mut stdin, json!({"method":"initialized"})).await?;
                         send(&mut stdin, json!({"id":2,"method":"thread/start","params":{
                             "model":spec.model,"cwd":spec.cwd,"approvalPolicy":"never","sandbox":"danger-full-access",
-                            "developerInstructions":loopfleet_core::execution::RUNNER_CONTRACT
+                            "developerInstructions":loopfleet_core::execution::runner_contract()
                         }})).await?;
                     }
                     2 => {
