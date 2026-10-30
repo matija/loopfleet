@@ -19,10 +19,12 @@ export function RunSubtabs({
   active,
   onSelect,
   counts,
+  idPrefix,
 }: {
   active: RunSubtab;
   onSelect: (t: RunSubtab) => void;
   counts: Partial<Record<RunSubtab, number | null>>;
+  idPrefix: string;
 }) {
   const shown = ITEMS.filter((it) => it.key in counts);
   return (
@@ -31,9 +33,21 @@ export function RunSubtabs({
         <button
           key={it.key}
           role="tab"
+          id={`${idPrefix}-${it.key}-tab`}
+          aria-controls={`${idPrefix}-${it.key}-panel`}
           aria-selected={active === it.key}
+          tabIndex={active === it.key ? 0 : -1}
           className={`run-subtab${active === it.key ? " run-subtab--active" : ""}`}
           onClick={() => onSelect(it.key)}
+          onKeyDown={(event) => {
+            if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) return;
+            const index = shown.findIndex((item) => item.key === it.key);
+            const next = event.key === "Home" ? 0 : event.key === "End" ? shown.length - 1 : event.key === "ArrowRight" ? (index + 1) % shown.length : event.key === "ArrowLeft" ? (index + shown.length - 1) % shown.length : null;
+            if (next === null) return;
+            event.preventDefault();
+            onSelect(shown[next].key);
+            document.getElementById(`${idPrefix}-${shown[next].key}-tab`)?.focus();
+          }}
         >
           {it.label}
           {typeof counts[it.key] === "number" && (

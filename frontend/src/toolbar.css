@@ -6,14 +6,13 @@
   position: sticky;
   top: 0;
   z-index: 5;
-  background: var(--c-surface);
+  background: transparent;
   flex: none;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   height: var(--toolbar-h);
-  padding: 0 var(--space-4);
-  border-bottom: 1px solid var(--c-border);
+  padding: 0 var(--space-3);
   user-select: none;
 }
 
@@ -22,7 +21,7 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   font-size: var(--text-base);
   color: var(--c-text);
   overflow: hidden;
@@ -42,7 +41,7 @@
 }
 
 .toolbar__filter:not(:empty) {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
 }
 
 .toolbar__status {
@@ -81,7 +80,7 @@
 
 .toolbar__agent--on {
   color: var(--c-ok);
-  background: var(--c-ok-quiet);
+  background: transparent;
 }
 
 .toolbar__agent--off {
@@ -92,7 +91,7 @@
 .toolbar__actions {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
   flex: none;
 }
 
@@ -100,6 +99,10 @@
   display: flex;
   align-items: center;
   flex: none;
+  gap: var(--space-1);
+  margin-left: var(--space-1);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--c-border-strong);
 }
 
 /* Breadcrumb segments: project / plan / task-run-compare. Non-final segments
@@ -111,6 +114,10 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+}
+
+.toolbar__crumb-group:has(.toolbar__crumb--current) {
+  flex: 1 1 0;
 }
 
 .toolbar__crumb-sep {
@@ -142,6 +149,7 @@ button.toolbar__crumb:hover {
 
 .toolbar__crumb--current {
   color: var(--c-text);
+  font-weight: 500;
 }
 
 .toolbar__crumb-icon {
@@ -235,12 +243,6 @@ button.toolbar__crumb:hover {
   text-overflow: ellipsis;
 }
 
-/* --- toolbar buttons ---
- * Shared vocabulary for toolbar-class actions (Button.tsx): a hairline pill
- * at --control-h-lg, transparent until hovered so the strip stays quiet at
- * rest. Border width and padding never change on :hover — only the fill —
- * so a button never shifts the layout under the pointer.
- */
 
 .toolbar-btn {
   display: inline-flex;
@@ -251,12 +253,13 @@ button.toolbar__crumb:hover {
   padding: 0 var(--space-3);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: var(--c-control);
   color: var(--c-text);
   font: inherit;
   font-size: var(--text-sm);
   font-weight: 500;
   white-space: nowrap;
+  box-shadow: var(--shadow-control);
 }
 
 .toolbar-btn:hover:not(:disabled):not([aria-pressed="true"]):not([aria-expanded="true"]) {
@@ -264,9 +267,10 @@ button.toolbar__crumb:hover {
 }
 
 .toolbar-btn:is([aria-pressed="true"], [aria-expanded="true"]) {
-  background: var(--c-accent-quiet);
-  border-color: var(--c-accent-border);
-  color: var(--c-accent-text);
+  background: var(--c-surface-3);
+  border-color: var(--c-border);
+  color: var(--c-text);
+  box-shadow: var(--shadow-chip-pressed);
 }
 
 .toolbar-btn:disabled {
@@ -274,14 +278,14 @@ button.toolbar__crumb:hover {
   cursor: default;
 }
 
-/* Icon-only: same control height, but a square hit target with no border
- * box — for the toolbar's trailing slot (overflow, panel toggle), where a
- * bare glyph reads lighter than a bordered pill. */
 .toolbar-btn--icon {
   gap: 0;
   width: var(--control-h-lg);
   padding: 0;
   border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--c-text-muted);
 }
 
 /* Split: a labeled action fused to a chevron segment. The two segments
@@ -302,6 +306,24 @@ button.toolbar__crumb:hover {
   height: auto;
   border: none;
   border-radius: 0;
+  box-shadow: none;
+}
+
+.toolbar-btn:active:not(:disabled),
+.toolbar-split:active {
+  box-shadow: var(--shadow-chip-pressed);
+}
+
+@media (max-width: 1050px) {
+  .toolbar__ago {
+    display: none;
+  }
+}
+
+@media (max-width: 800px) {
+  .toolbar__agent {
+    display: none;
+  }
 }
 
 .toolbar-split__main {

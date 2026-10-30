@@ -4,7 +4,7 @@
  * padding so the stream reads as a log, per DESIGN.md's event-log rule. */
 
 .data-grid {
-  --grid-cols: 6em minmax(0, 1fr) 6.5em;
+  --grid-cols: 6em minmax(0, 1fr) 9em;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   /* Contain the grid's internal reflow so streaming rows don't relayout the
@@ -72,6 +72,7 @@
   color: var(--c-text-muted);
   text-align: right;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* --- enum labels: one stable tone per normalized-event type --- */

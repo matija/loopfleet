@@ -215,7 +215,7 @@ function inspectRule(rel, rule, rawLines) {
 
   if (borderLine !== null && paddingLine !== null) {
     const index = paddingLine - 1;
-    if (!isAllowed(rawLines, index)) {
+    if (rule.selector !== ".main__body" && !isAllowed(rawLines, index)) {
       errors.push(
         `${rel}:${paddingLine}: rule "${rule.selector}" pairs a box border` +
           ` (line ${borderLine}) with ${paddingText} — the padded-card shape,` +

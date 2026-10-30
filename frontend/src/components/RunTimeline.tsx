@@ -212,6 +212,7 @@ export function RunTimeline({
       ) : (
         <>
           <RunSubtabs
+            idPrefix="run-timeline"
             active={subtab}
             onSelect={setSubtab}
             counts={{
@@ -223,6 +224,9 @@ export function RunTimeline({
           <div className="run-view__panels">
             <div
               className="run-view__stream run-view__stream--events"
+              role="tabpanel"
+              id="run-timeline-events-panel"
+              aria-labelledby="run-timeline-events-tab"
               hidden={subtab !== "events"}
               aria-label="Run events"
             >
@@ -275,6 +279,9 @@ export function RunTimeline({
 
             <div
               className="run-view__stream"
+              role="tabpanel"
+              id="run-timeline-diff-panel"
+              aria-labelledby="run-timeline-diff-tab"
               hidden={subtab !== "diff"}
               aria-label="Run diffs"
             >

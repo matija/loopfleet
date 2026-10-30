@@ -21,6 +21,7 @@ import { CommandBar } from "./CommandBar";
 import { Elapsed } from "./Elapsed";
 import { currentMessageRows, DataGrid, formatDuration, rowsDuration, GridFooter, type GridRow } from "./DataGrid";
 import { RunSubtabs, type RunSubtab } from "./RunSubtabs";
+import { FilesIcon, PlayIcon, SquareIcon } from "./Icon";
 import type { ActiveRun } from "./RunDock";
 
 export function LiveRunView({
@@ -180,6 +181,7 @@ export function LiveRunView({
               onClick={() => onStop(run.runId)}
               title="Stop at the next pass boundary"
             >
+              <SquareIcon size={12} />
               Stop
             </button>
           </>,
@@ -206,6 +208,7 @@ export function LiveRunView({
       />
 
       <RunSubtabs
+        idPrefix="live-run"
         active={subtab}
         onSelect={setSubtab}
         counts={{ events: events.length, files: files.length }}
@@ -214,16 +217,20 @@ export function LiveRunView({
       <div className="run-view__panels">
         <div
           className="run-view__stream run-view__stream--events"
+          role="tabpanel"
+          id="live-run-events-panel"
+          aria-labelledby="live-run-events-tab"
           hidden={subtab !== "events"}
           aria-label="Run events"
         >
           <div className="run-view__grid-scroll" ref={listRef} onScroll={onStreamScroll}>
             {events.length === 0 ? (
-              <p className="run-view__empty">
-                {active
-                  ? "Waiting for events… they stream in as the agent works. Click Tap or press ⌘⇧T / Ctrl+Shift+T to open the composer. Capable agents can receive live steering during a pass; other agents queue notes for the next pass. Check the tap status for delivery."
-                  : "No events streamed while this view was open."}
-              </p>
+              <div className="run-view__waiting">
+                <span className="run-view__waiting-icon"><PlayIcon size={20} /></span>
+                <h3>{active ? "Waiting for activity" : "No live events"}</h3>
+                <p>{active ? "Events appear here as the agent works." : "No events streamed while this view was open."}</p>
+                {active && <p>Use Tap to send guidance. Delivery status appears with each note.</p>}
+              </div>
             ) : (
               <DataGrid rows={events} />
             )}
@@ -236,6 +243,9 @@ export function LiveRunView({
 
         <div
           className="run-view__files"
+          role="tabpanel"
+          id="live-run-files-panel"
+          aria-labelledby="live-run-files-tab"
           hidden={subtab !== "files"}
           aria-label="Changed files"
         >
@@ -244,10 +254,11 @@ export function LiveRunView({
             <span className="run-view__files-count">{files.length}</span>
           </div>
           {files.length === 0 ? (
-            <p className="run-view__empty">
-              No file changes observed yet. The app watches the worktree, so this
-              catches shell edits too.
-            </p>
+            <div className="run-view__waiting">
+              <span className="run-view__waiting-icon"><FilesIcon size={20} /></span>
+              <h3>No file changes yet</h3>
+              <p>Changes appear here as files are edited in the worktree.</p>
+            </div>
           ) : (
             <ul className="file-list">
               {files.map((path) => (
