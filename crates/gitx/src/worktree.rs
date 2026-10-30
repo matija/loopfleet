@@ -124,21 +124,25 @@ pub fn fork(
         Some(rev) => git(repo, &["rev-parse", "--verify", &format!("{rev}^{{commit}}^")])?,
         None => git(source_path.unwrap_or(repo), &["rev-parse", "HEAD"])?,
     };
-    let seed = match source_path {
-        Some(path) => Some(
-            crate::shadow::snapshot(repo, path, run_id, 0)
-                .map_err(|e| WorktreeError::Git(e.to_string()))?
-                .commit,
-        ),
-        None => last_ref.map(str::to_owned),
-    };
     let worktree = add_at(repo, worktrees_root, run_id, &base)?;
-    if let Some(seed) = seed {
-        if let Err(e) = git(&worktree.path, &["read-tree", "--reset", "-u", &seed]) {
-            let _ = remove(repo, &worktree.path);
-            let _ = delete_branch(repo, &worktree.branch);
-            return Err(e);
+    let seeded = (|| {
+        let seed = match source_path {
+            Some(path) => Some(
+                crate::shadow::snapshot(repo, path, run_id, 0)
+                    .map_err(|e| WorktreeError::Git(e.to_string()))?
+                    .commit,
+            ),
+            None => last_ref.map(str::to_owned),
+        };
+        if let Some(seed) = seed {
+            git(&worktree.path, &["read-tree", "--reset", "-u", &seed])?;
         }
+        Ok(())
+    })();
+    if let Err(e) = seeded {
+        let _ = remove(repo, &worktree.path);
+        let _ = delete_branch(repo, &worktree.branch);
+        return Err(e);
     }
     Ok(worktree)
 }
