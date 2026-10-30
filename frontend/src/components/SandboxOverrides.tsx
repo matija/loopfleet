@@ -173,7 +173,9 @@ export function SandboxOverrides({ projectId }: { projectId: string }) {
             Allow native app automation
           </label>
           <p className="panel__lead">
-            Applies to new runs. Permits app launches and Apple Events. Launched
+            Applies to new runs. Permits app launches and Apple Events. For Tauri
+            projects, also permits the configured app's data, logs, preferences,
+            caches, and WebKit storage. Launched
             apps run outside the agent sandbox and can write outside the worktree.
             Enable only for trusted tasks. macOS can also require Automation,
             Accessibility, or Screen Recording permission.

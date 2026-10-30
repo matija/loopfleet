@@ -22,6 +22,7 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, watch};
 
+mod native_runtime;
 mod orphans;
 mod path_env;
 
@@ -1176,6 +1177,15 @@ If no failure reason was recorded, inspect the partial work and diagnose the mis
         (project, plan_id, task_text, plan.markdown.clone(), extra_writes, native_automation, repair)
     };
     let execution = loopfleet_core::execution::ExecutionConfig::load(std::path::Path::new(&project.repo_path))?;
+    let native_paths = if native_automation {
+        let home = std::env::var_os("HOME").ok_or("Native automation requires HOME")?;
+        native_runtime::storage_paths(
+            std::path::Path::new(&project.repo_path),
+            std::path::Path::new(&home),
+        )?
+    } else {
+        Vec::new()
+    };
     if plan_context.len() > 512 * 1024 {
         return Err("The selected plan exceeds the 512 KiB execution context limit. Split the plan before launching.".into());
     }
@@ -1190,7 +1200,7 @@ If no failure reason was recorded, inspect the partial work and diagnose the mis
     std::fs::create_dir_all(&progress_dir).map_err(|e| e.to_string())?;
 
     // Cut the per-run worktree through the serialized git actor.
-    let (worktree, repair_context) = match repair {
+    let (worktree, mut repair_context) = match repair {
         Some((source_path, first_ref, last_ref, context)) => (
             git.worktree_fork(
                 PathBuf::from(&project.repo_path), worktrees_root, run_id.clone(),
@@ -1212,6 +1222,11 @@ If no failure reason was recorded, inspect the partial work and diagnose the mis
     params.agent_dirs = agent_dirs();
     params.extra_writes = extra_writes.into_iter().map(PathBuf::from).collect();
     params.native_automation = native_automation;
+    if native_automation {
+        params.extra_writes.extend(native_paths);
+        let guidance = "Native app automation is enabled for this project. The runner grants the configured Tauri app's storage directories. For native UI verification, build the worktree's app bundle and launch that exact .app using /usr/bin/open -n, not the raw target/debug executable. Raw executables inherit the agent sandbox and can fail WebKit or Keychain access even with storage grants. LaunchServices app launch is explicitly permitted by this project setting. Use the worktree's bundle, not an installed older app. Track and close only the app instance you launch. macOS Automation and Accessibility consent still applies.";
+        repair_context.get_or_insert_with(String::new).push_str(&format!("\n\n{guidance}"));
+    }
     let wrapper = confine_prefix(&params, &profile_path).map_err(|e| e.to_string())?;
 
     loopfleet_core::execution::write_record(&progress_path, "plan.md", &plan_context)
