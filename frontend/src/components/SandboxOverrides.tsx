@@ -23,6 +23,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  nativeAutomationStatus,
   projectNativeAutomation,
   projectSandboxWrites,
   setProjectNativeAutomation,
@@ -52,6 +53,33 @@ export function SandboxOverrides({ projectId }: { projectId: string }) {
   );
   const [text, setText] = useState("");
   const [nativeAutomation, setNativeAutomation] = useState(false);
+  const [readiness, setReadiness] = useState<{ ready: boolean; detail: string } | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  async function checkReadiness() {
+    setChecking(true);
+    try {
+      setReadiness(await nativeAutomationStatus());
+    } catch (error) {
+      setReadiness({ ready: false, detail: String(error) });
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!nativeAutomation) {
+      setReadiness(null);
+      return;
+    }
+    let cancelled = false;
+    nativeAutomationStatus().then((status) => {
+      if (!cancelled) setReadiness(status);
+    }).catch((error) => {
+      if (!cancelled) setReadiness({ ready: false, detail: String(error) });
+    });
+    return () => { cancelled = true; };
+  }, [nativeAutomation, projectId]);
   // `loaded` gates the textarea until the persisted overrides arrive, so an
   // empty box doesn't read as "no overrides" while the load is still in flight.
   // `loadError` surfaces a load failure instead of the previous silent swallow
@@ -173,13 +201,22 @@ export function SandboxOverrides({ projectId }: { projectId: string }) {
             Allow native app automation
           </label>
           <p className="panel__lead">
-            Applies to new runs. Permits app launches and Apple Events. For Tauri
-            projects, also permits the configured app's data, logs, preferences,
-            caches, and WebKit storage. Launched
+            Applies to new runs. Permits app launches and Apple Events. Launched
             apps run outside the agent sandbox and can write outside the worktree.
             Enable only for trusted tasks. macOS can also require Automation,
-            Accessibility, or Screen Recording permission.
+            Accessibility, or Screen Recording permission. Native UI readiness is
+            checked before starting an agent for this project.
           </p>
+          {nativeAutomation && (
+            <div>
+              <p className="panel__lead" role="status">
+                {readiness?.detail ?? "Checking native UI readiness…"}
+              </p>
+              <Button onClick={checkReadiness} disabled={checking}>
+                {checking ? "Checking…" : "Check native readiness"}
+              </Button>
+            </div>
+          )}
           <div className="panel__actions">
             <Button variant="primary" onClick={save} disabled={saving || !loaded || !!loadError}>
               {saving ? "Saving…" : "Save permissions"}

@@ -1,84 +1,102 @@
-use std::path::{Path, PathBuf};
+#[derive(serde::Serialize)]
+pub struct Status {
+    pub ready: bool,
+    pub detail: String,
+}
 
-pub fn storage_paths(repo: &Path, home: &Path) -> Result<Vec<PathBuf>, String> {
-    let config = repo.join("src-tauri/tauri.conf.json");
-    let text = match std::fs::read_to_string(&config) {
-        Ok(text) => text,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(format!("Cannot read native app configuration: {error}")),
-    };
-    let config: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|error| format!("Invalid native app configuration: {error}"))?;
-    let id = config["identifier"]
-        .as_str()
-        .filter(|id| {
-            !id.is_empty()
-                && id.split('.').all(|part| !part.is_empty())
-                && id
-                    .bytes()
-                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'-'))
-        })
-        .ok_or("Native app configuration requires a valid identifier")?;
-    let library = home.join("Library");
-    let mut paths: Vec<_> = [
-        "Application Support",
-        "Caches",
-        "WebKit",
-        "Logs",
-        "HTTPStorages",
-    ]
-    .into_iter()
-    .map(|folder| library.join(folder).join(id))
-    .collect();
-    paths.push(library.join("Preferences").join(format!("{id}.plist")));
-    paths.push(
-        library
-            .join("Saved Application State")
-            .join(format!("{id}.savedState")),
-    );
-    let manifest = repo.join("src-tauri/Cargo.toml");
-    let output = std::process::Command::new("cargo")
-        .args([
-            "metadata",
-            "--offline",
-            "--no-deps",
-            "--format-version",
-            "1",
-            "--manifest-path",
-        ])
-        .arg(&manifest)
-        .output()
-        .map_err(|error| format!("Cannot identify native app binaries: {error}"))?;
-    if !output.status.success() {
-        return Err("Cannot identify native app binaries with cargo metadata".into());
+#[cfg(target_os = "macos")]
+pub fn status() -> Status {
+    #[repr(C, packed(2))]
+    struct Descriptor {
+        kind: u32,
+        data: *mut std::ffi::c_void,
     }
-    let metadata: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .map_err(|error| format!("Invalid native app metadata: {error}"))?;
-    if let Some(packages) = metadata["packages"].as_array() {
-        for package in packages {
-            if package["manifest_path"].as_str() != manifest.to_str() {
-                continue;
-            }
-            if let Some(targets) = package["targets"].as_array() {
-                for target in targets {
-                    if target["kind"]
-                        .as_array()
-                        .is_some_and(|kinds| kinds.iter().any(|kind| kind == "bin"))
-                    {
-                        if let Some(name) = target["name"].as_str().filter(|name| {
-                            !name.is_empty()
-                                && *name != "."
-                                && *name != ".."
-                                && !name.contains(['/', '\\'])
-                        }) {
-                            for folder in ["Caches", "WebKit", "HTTPStorages"] {
-                                paths.push(library.join(folder).join(name));
-                            }
-                        }
-                    }
+
+    #[link(name = "ApplicationServices", kind = "framework")]
+    extern "C" {
+        fn AXIsProcessTrusted() -> bool;
+    }
+    #[link(name = "CoreServices", kind = "framework")]
+    extern "C" {
+        fn AECreateDesc(kind: u32, data: *const u8, size: isize, result: *mut Descriptor) -> i16;
+        fn AEDisposeDesc(desc: *mut Descriptor) -> i16;
+        fn AEDeterminePermissionToAutomateTarget(
+            target: *const Descriptor,
+            event_class: u32,
+            event_id: u32,
+            ask: u8,
+        ) -> i32;
+    }
+
+    let accessibility = unsafe { AXIsProcessTrusted() };
+    let mut descriptor = Descriptor {
+        kind: 0,
+        data: std::ptr::null_mut(),
+    };
+    let target = b"com.apple.systemevents";
+    let created = unsafe {
+        AECreateDesc(
+            u32::from_be_bytes(*b"bund"),
+            target.as_ptr(),
+            target.len() as isize,
+            &mut descriptor,
+        )
+    };
+    let automation = if created == 0 {
+        let probe = || unsafe {
+            AEDeterminePermissionToAutomateTarget(
+                &descriptor,
+                u32::from_be_bytes(*b"****"),
+                u32::from_be_bytes(*b"****"),
+                0,
+            )
+        };
+        let mut result = probe();
+        if result == -600 {
+            let launched = std::process::Command::new("/usr/bin/open")
+                .args(["-g", "-a", "/System/Library/CoreServices/System Events.app"])
+                .status()
+                .is_ok_and(|status| status.success());
+            if launched {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+                while result == -600 && std::time::Instant::now() < deadline {
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                    result = probe();
                 }
             }
         }
+        unsafe {
+            AEDisposeDesc(&mut descriptor);
+        }
+        result
+    } else {
+        i32::from(created)
+    };
+    let mut missing = Vec::new();
+    if !accessibility {
+        missing.push("Loopfleet needs Accessibility (Device Control and Data Access) in macOS System Settings > Privacy & Security".to_string());
     }
-    Ok(paths)
+    if automation != 0 {
+        missing.push(match automation {
+            -600 => "System Events could not start; check native readiness again".to_string(),
+            -1743 | -1744 => "Loopfleet needs Automation > System Events in macOS System Settings > Privacy & Security".to_string(),
+            code => format!("Cannot verify System Events automation permission (macOS error {code})"),
+        });
+    }
+    Status {
+        ready: missing.is_empty(),
+        detail: if missing.is_empty() {
+            "Native UI automation is ready on this Mac.".into()
+        } else {
+            format!("Native UI setup required. {}. No agent run was started. Permissions belong to this Loopfleet installation, not individual PRDs. Check again after setup; replacing or re-signing Loopfleet may require renewed consent.", missing.join(". "))
+        },
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn status() -> Status {
+    Status {
+        ready: false,
+        detail: "Native UI automation is supported only on macOS.".into(),
+    }
 }
