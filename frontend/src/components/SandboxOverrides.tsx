@@ -13,14 +13,6 @@
 // disclosure (see sidebarCollapse.ts), so someone who does keep it open
 // keeps it open across reloads and project switches.
 //
-// Presented in the shared panel vocabulary: a glyph-led `panel__head`, one
-// `panel__lead` line, and a single `panel__actions` row whose Save is a
-// `Button` with an explicit variant rather than a hand-written `.btn` class.
-// The reason a path list needs care — that the parent `.git` must never be on
-// it — is three sentences long, so it rides a `Hint` beside the field like the
-// settings that need more than a label do, instead of a paragraph that pushes
-// the textarea down the panel.
-
 import { useEffect, useState } from "react";
 import {
   projectSandboxWrites,
@@ -28,7 +20,6 @@ import {
 } from "../commands";
 import { useSidebarCollapsed } from "../sidebarCollapse";
 import { Button } from "./Button";
-import { Hint } from "./Hint";
 import { BoxIcon, ChevronRightIcon } from "./Icon";
 
 /// The count shown beside the collapsed head, so the panel reports whether
@@ -120,10 +111,6 @@ export function SandboxOverrides({ projectId }: { projectId: string }) {
       </div>
       {!collapsed && (
         <>
-          <p className="panel__lead">
-            Extra absolute paths added to this project's per-run write grant, one per
-            line.
-          </p>
           {loadError ? (
             <p className="panel__error">
               Couldn’t load permissions: {loadError}. Reload this project before saving.
@@ -133,29 +120,13 @@ export function SandboxOverrides({ projectId }: { projectId: string }) {
           ) : null}
           <textarea
             className="overrides__ta"
+            aria-label="Extra writable paths, one absolute path per line"
             value={text}
             disabled={!loaded || !!loadError || saving}
             onChange={(e) => setText(e.target.value)}
             placeholder="/absolute/path/per/line"
             spellCheck={false}
           />
-          {/* The summary carries the rule; the reason it matters — which is the
-            * whole sandbox argument in miniature — sits behind the affordance. */}
-          <Hint
-            summary="Never list the parent repo’s .git."
-            label="sandbox write overrides"
-          >
-            <p>
-              Commits are app-owned: Loopfleet writes them through the parent repo
-              itself, so no run ever needs write access to <em>.git</em>. Granting it
-              would let an agent rewrite history outside its own worktree — the one
-              thing this boundary exists to prevent.
-            </p>
-            <p>
-              Paths must be absolute; a relative one is rejected on save rather than
-              quietly dropped, so a typo can’t widen the grant by accident.
-            </p>
-          </Hint>
           <div className="panel__actions">
             <Button variant="primary" onClick={save} disabled={saving || !loaded || !!loadError}>
               {saving ? "Saving…" : "Save permissions"}

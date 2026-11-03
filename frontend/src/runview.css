@@ -683,17 +683,6 @@
   color: var(--c-ok);
 }
 
-.use-run__hint {
-  margin: var(--space-1) 0 0;
-  font-size: var(--text-xs);
-  color: var(--c-text-faint);
-}
-
-.use-run__hint code {
-  color: var(--c-text-muted);
-  font-family: var(--font-mono);
-}
-
 .use-run__result {
   margin: var(--space-2) 0 0;
   font-size: var(--text-sm);

@@ -467,9 +467,7 @@ export function PrdView({
                   onChange={(e) => setInstruction(e.target.value)}
                   disabled={busy}
                   spellCheck={false}
-                  placeholder={`Describe the edit for ${
-                    agent ? agent.label : "the agent"
-                  } to make — e.g. "add an acceptance-criteria section to each task".`}
+                  placeholder="What should change?"
                   aria-label="Edit instruction"
                 />
                 {editError && <p className="panel__error">{editError}</p>}
@@ -477,10 +475,6 @@ export function PrdView({
             ) : editing && phase === "running" ? (
               <div className="prd-doc__review prd-doc__review--running">
                 <PrdActivity title={`Editing with ${agent?.label ?? "agent"}`} activity={activity} />
-                <p className="prd-doc__running-note">
-                  Running one pass in an isolated worktree. The document is
-                  untouched until you accept.
-                </p>
               </div>
             ) : editing && phase === "review" && proposal ? (
               <div className="prd-doc__review">
@@ -505,8 +499,7 @@ export function PrdView({
                   </>
                 ) : (
                   <p className="timeline__no-diff">
-                    {proposal.agent} made no changes. Discard to return to the
-                    document.
+                    {proposal.agent} made no changes.
                   </p>
                 )}
                 {editError && <p className="panel__error">{editError}</p>}

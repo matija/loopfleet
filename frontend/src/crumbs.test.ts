@@ -33,9 +33,9 @@ const run: ActiveRun = {
 const runs: ActiveRun[] = [run];
 
 describe("crumbsFor", () => {
-  it("overview: a single inert crumb", () => {
-    const crumbs = crumbsFor({ kind: "overview" }, projects, runs);
-    expect(crumbs).toEqual([{ label: "Overview" }]);
+  it("settings: a single inert crumb", () => {
+    const crumbs = crumbsFor({ kind: "settings" }, projects, runs);
+    expect(crumbs).toEqual([{ label: "Settings" }]);
   });
 
   it("plan: project crumb (clickable) + inert Plan crumb", () => {

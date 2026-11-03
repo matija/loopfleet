@@ -1,39 +1,3 @@
-// Global app settings: default agent, default iteration count, concurrency
-// cap, worktree retention.
-//
-// Laid out as labelled sections (run defaults / worktrees / appearance), each
-// led by a glyph so a group is findable by shape before its title is read.
-// Within a section, controls are sized to what they hold — an hour count is a
-// few digits wide, an agent name a word — and related fields share a row, so
-// the panel reads as a handful of decisions rather than one long column.
-// Loaded on mount, saved through the unchanged `get_settings`/`save_settings`
-// commands. The launch control (a later M7 task) reads these defaults.
-//
-// The two settings that need more than a label to explain them — worktree
-// retention and theme — carry a `Hint` rather than a paragraph, so their
-// explanations sit behind an info affordance instead of pushing the controls
-// under them down the panel.
-//
-// Each section's head carries a quiet Reset that puts that section's defaults
-// (settingsDefaults.ts, mirroring `store::Settings::default`) back into the
-// form without saving — the user reads the restored values next to everything
-// else and presses Save to commit them, so a mis-aimed Reset costs nothing.
-// It's per section rather than one panel-wide button because sections are what
-// a user thinks in here, and it's disabled while the section already holds its
-// defaults, so it never claims there's something to undo when there isn't.
-//
-// Theme is the one field here that is *not* backend state: it's a per-device
-// display preference App owns and persists to localStorage, so it applies on
-// pick rather than on Save. It lives in this panel anyway because this is
-// where a user looks for app-wide preferences.
-//
-// Because there's no Save to undo a theme, the picker is paired with a live
-// miniature of the app (ThemePreview.tsx) that paints whichever option the
-// dropdown is highlighting — so "what does Rosé Pine Moon look like?" is
-// answered by looking rather than by picking it and picking back. With the
-// popup closed the miniature shows the applied theme, which makes it a
-// standing sample of the current one rather than a box that goes blank.
-
 import { useEffect, useState } from "react";
 import { appSettings, saveAppSettings } from "../appData";
 import { sweepWorktreesNow } from "../commands";
@@ -62,10 +26,9 @@ import {
 } from "../themes";
 import { Button } from "./Button";
 import { Select } from "./Select";
-import { Hint } from "./Hint";
 import { NumberField } from "./NumberField";
 import { ThemePreview } from "./ThemePreview";
-import { AgentIcon, DotIcon, FolderIcon, PlayIcon, SettingsIcon } from "./Icon";
+import { AgentIcon, DotIcon, FolderIcon, PlayIcon } from "./Icon";
 
 // The v1 agent keys (matches the adapters' discovery set). A small stable list;
 // no need to derive it from `agent_status` here.
@@ -237,7 +200,7 @@ export function SettingsPanel({
   function resetRunDefaults() {
     setSettings({ ...settings, ...DEFAULT_RUN_DEFAULTS });
     setMsg(null);
-    setResetNote("Run defaults restored — review, then save.");
+    setResetNote("Unsaved changes");
   }
 
   function resetWorktrees() {
@@ -245,13 +208,13 @@ export function SettingsPanel({
     setRetentionHours(DEFAULT_WORKTREES.hours);
     setCleanupAfterMerge(DEFAULT_WORKTREES.cleanupAfterMerge);
     setMsg(null);
-    setResetNote("Worktree defaults restored — review, then save.");
+    setResetNote("Unsaved changes");
   }
 
   function resetAutopilot() {
     setSettings({ ...settings, ...DEFAULT_AUTOPILOT });
     setMsg(null);
-    setResetNote("Autopilot defaults restored — review, then save.");
+    setResetNote("Unsaved changes");
   }
 
   // Appearance is the exception: theme isn't part of what Save writes, so its
@@ -282,10 +245,6 @@ export function SettingsPanel({
 
   return (
     <section className="panel settings-panel" aria-label="Settings">
-      <div className="panel__head">
-        <SettingsIcon size={16} className="icon panel__icon" />
-        <h3>Settings</h3>
-      </div>
       {loadError ? (
         <p className="panel__error">
           Couldn’t load settings: {loadError}. Showing defaults — saving will
@@ -306,7 +265,7 @@ export function SettingsPanel({
         </div>
         <div className="settings-row">
           <label className="field">
-            <span>Default agent</span>
+            <span>Agent</span>
             <Select
               className="control--name"
               value={settings.default_agent}
@@ -318,7 +277,7 @@ export function SettingsPanel({
         </div>
         <div className="settings-row">
           <label className="field">
-            <span>Default iterations</span>
+            <span>Iterations</span>
             <NumberField
               className="control--count"
               min={1}
@@ -335,7 +294,7 @@ export function SettingsPanel({
           </label>
           <label className="field">
             <span>
-              Concurrency cap <em>(0 = unlimited)</em>
+              Concurrent runs (0 = unlimited)
             </span>
             <NumberField
               className="control--count"
@@ -400,25 +359,6 @@ export function SettingsPanel({
             </label>
           )}
         </div>
-        {/* All three modes spelled out, not just the selected one, so the
-          * trade-off (disk vs. being able to revisit a finished run) is
-          * legible without cycling the dropdown. That's four sentences, which
-          * is why it's disclosed rather than printed inline: at full length it
-          * would push the Appearance section and the action row down the
-          * panel. */}
-        <Hint
-          summary="Measured from when a run finished."
-          label="worktree deletion"
-        >
-          <p>
-            <em>Immediately</em> reclaims disk as soon as a run ends;{" "}
-            <em>after a delay</em> keeps the worktree that many hours so you can
-            still open the diff; <em>never</em> keeps it indefinitely.
-          </p>
-          <p>
-            Accepted runs are always swept — their diff has already landed.
-          </p>
-        </Hint>
         <div className="settings-row">
           <label className="field field--checkbox">
             <input
@@ -430,11 +370,6 @@ export function SettingsPanel({
             <span>Delete worktree and branch after merge</span>
           </label>
         </div>
-        <p className="field-note">
-          When a run is accepted, its worktree and <code>agent/…</code> branch
-          are deleted. The run's history, diffs and reports are kept either
-          way.
-        </p>
       </section>
 
       <section className="panel-section">
@@ -460,17 +395,12 @@ export function SettingsPanel({
                 })
               }
             />
-            <span>Auto-advance to the next plan step</span>
+            <span>Start the next task automatically</span>
           </label>
         </div>
-        <p className="field-note">
-          Default: on. When a run finishes ready to continue, the plan's next
-          task launches on its own after a countdown, instead of waiting for
-          you to start it.
-        </p>
         <div className="settings-row">
           <label className="field">
-            <span>Auto-advance delay (seconds)</span>
+            <span>Start delay (seconds)</span>
             <NumberField
               className="control--count"
               min={1}
@@ -486,10 +416,6 @@ export function SettingsPanel({
             />
           </label>
         </div>
-        <p className="field-note">
-          Default: 5 seconds. How long the countdown waits before advancing,
-          giving you a window to cancel it.
-        </p>
         <div className="settings-row">
           <label className="field field--checkbox">
             <input
@@ -503,16 +429,12 @@ export function SettingsPanel({
                 })
               }
             />
-            <span>Auto-merge accepted runs</span>
+            <span>Merge accepted runs automatically</span>
           </label>
         </div>
-        <p className="field-note">
-          Default: on. Once you accept a run, its branch merges on its own
-          after a countdown, instead of waiting for you to merge it.
-        </p>
         <div className="settings-row">
           <label className="field">
-            <span>Auto-merge countdown (seconds)</span>
+            <span>Merge delay (seconds)</span>
             <NumberField
               className="control--count"
               min={1}
@@ -528,10 +450,6 @@ export function SettingsPanel({
             />
           </label>
         </div>
-        <p className="field-note">
-          Default: 10 seconds. How long the countdown waits before merging,
-          giving you a window to cancel it.
-        </p>
       </section>
 
       <section className="panel-section">
@@ -565,23 +483,6 @@ export function SettingsPanel({
           </label>
           <ThemePreview themeId={previewThemeId(highlightedTheme, themeId)} />
         </div>
-        {/* The summary carries the part a user acts on — there's no Save to
-          * press for this one — and the reason why sits behind the affordance. */}
-        <Hint
-          summary="Applies immediately, on this device only."
-          label="the theme setting"
-        >
-          <p>
-            Theme is a per-device display preference rather than part of the
-            settings above, so it takes effect the moment you pick it and
-            “Save settings” doesn’t affect it.
-          </p>
-          <p>
-            The sample beside the list previews whichever theme you’re
-            hovering or arrowing over, so you can judge one without switching
-            to it.
-          </p>
-        </Hint>
       </section>
 
       <section className="panel-section">
@@ -589,11 +490,6 @@ export function SettingsPanel({
           <FolderIcon size={16} className="icon panel-section__icon" />
           <h4 className="panel-section__title">Storage cleanup</h4>
         </div>
-        <p className="field-note">
-          Remove merged and expired worktrees, abandoned drafts, unused progress
-          files, sandbox profiles, unused branches and orphan logs. Uses saved retention settings.
-          Active runs, scheduled resumes and pending drafts are kept.
-        </p>
         <label className="field field--checkbox">
           <input
             type="checkbox"
@@ -601,11 +497,10 @@ export function SettingsPanel({
             disabled={sweeping || !loaded}
             onChange={(e) => setClearMergedLogs(e.target.checked)}
           />
-          <span>Also clear merged-run logs</span>
+          <span>Permanently delete merged-run logs</span>
         </label>
         <p className="field-note">
-          Permanently removes detailed activity and usage from merged runs and
-          their reports. Run records and diffs are kept.
+          Deletes activity and usage from reports. Keeps run records and diffs.
         </p>
         <Button
           variant="quiet"

@@ -54,7 +54,6 @@ import { ProjectStart } from "./components/ProjectStart";
 import { AgentStatusPanel } from "./components/AgentStatusPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SandboxBoundaryPanel } from "./components/SandboxBoundaryPanel";
-import { SurfaceCard, SurfaceCardGrid } from "./components/SurfaceCard";
 import type { CompareTarget, LaunchedRun } from "./components/PlanView";
 import { PlanSurface } from "./components/PlanSurface";
 import { PlanTree } from "./components/PlanTree";
@@ -71,15 +70,12 @@ import { CrumbMenu, type CrumbMenuOption } from "./components/CrumbMenu";
 import { Button, IconButton } from "./components/Button";
 import { Popover } from "./components/Popover";
 import {
-  AgentIcon,
-  BoxIcon,
   ChevronRightIcon,
   DiffIcon,
   FolderIcon,
   PanelBottomIcon,
   PanelLeftIcon,
   PlayIcon,
-  SettingsIcon,
   TrashIcon,
   type IconProps,
 } from "./components/Icon";
@@ -134,12 +130,11 @@ function readDockCollapsed(): boolean {
 // selected project's plan (or the overview when no project is selected). The
 // sidebar's plan tree and the bottom run dock are the always-present navigators.
 
-// The overview's three machine-level surfaces, each an entry-point tile.
-type OverviewSection = "agents" | "defaults" | "sandbox";
+type SettingsSection = "agents" | "defaults" | "sandbox";
 
 type View =
   | { kind: "start" }
-  | { kind: "overview" }
+  | { kind: "settings" }
   | { kind: "plan"; projectId: string }
   | {
       kind: "task";
@@ -165,11 +160,8 @@ export default function App() {
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>({ kind: "start" });
-  // Which overview card is expanded — lifted out of the Overview component so
-  // the ⌘,/Ctrl-, shortcut can force "Run defaults" open (see
-  // `paletteOpenOverview`) without a click.
-  const [overviewExpanded, setOverviewExpanded] =
-    useState<OverviewSection | null>(null);
+  const [settingsSection, setSettingsSection] =
+    useState<SettingsSection>("defaults");
   // Set by the command palette's "Archive plan" action: the plan to jump
   // straight into the archive confirmation for once PlanSurface/PrdView have
   // switched to the PRD view for its project. Cleared once consumed.
@@ -682,7 +674,7 @@ export default function App() {
           break;
         case "openSettings":
           e.preventDefault();
-          paletteOpenOverview("defaults");
+          openSettings("defaults");
           break;
       }
     }
@@ -764,7 +756,7 @@ export default function App() {
   }, []);
 
   const goBack = useCallback(() => {
-    if (view.kind === "plan" || view.kind === "overview" || view.kind === "start") return;
+    if (view.kind === "plan" || view.kind === "settings" || view.kind === "start") return;
     const projectId = view.kind === "task" ? view.projectId
       : view.kind === "run" ? runs.find((run) => run.runId === view.runId)?.projectId
       : view.projectId;
@@ -931,12 +923,9 @@ export default function App() {
       })
       .catch((e) => pushError(String(e)));
   }, [pushError]);
-  // `expand` forces the named card open (used by the ⌘,/Ctrl-, shortcut to
-  // land straight on "Run defaults" instead of making the user click the
-  // card); omitted, it leaves whatever section was already expanded alone.
-  const paletteOpenOverview = useCallback((expand?: OverviewSection) => {
-    setView({ kind: "overview" });
-    if (expand) setOverviewExpanded(expand);
+  const openSettings = useCallback((section?: SettingsSection) => {
+    setView({ kind: "settings" });
+    if (section) setSettingsSection(section);
   }, []);
   // Opens the same remove-project confirmation as the sidebar's trash icon,
   // anchored to that project's own (always-mounted) sidebar row button.
@@ -966,7 +955,7 @@ export default function App() {
 
   return (
     <AppShell
-      onOpenSettings={paletteOpenOverview}
+      onOpenSettings={() => openSettings()}
       sidebarHidden={sidebarHidden}
       notice={null}
       dock={
@@ -1078,7 +1067,7 @@ export default function App() {
             </div>
           ) : projects.length === 0 ? (
             <div className="sidebar__empty">
-              No projects yet. Add a git repo to launch runs against its plan.
+              No projects
             </div>
           ) : visibleProjects.length === 0 ? (
             <div className="sidebar__empty">
@@ -1342,10 +1331,10 @@ export default function App() {
               action={<Button onClick={() => void loadProjects()}>Retry</Button>}
             />
           ) : (
-            <ProjectStart hasProjects={projects.length > 0}>
+            <ProjectStart>
               {projects.map((p) => (
                 <Button key={p.id} icon={FolderIcon} title={p.repo_path} onClick={() => selectProject(p.id)}>
-                  {repoName(p.repo_path)}
+                  <span className="project-start__name">{repoName(p.repo_path)}</span>
                 </Button>
               ))}
               <AddProject onAdded={onAdded} />
@@ -1398,7 +1387,7 @@ export default function App() {
           />
         ) : view.kind === "plan" ? (
           <PlanSurface
-            onOpenAgentSettings={() => paletteOpenOverview("agents")}
+            onOpenAgentSettings={() => openSettings("agents")}
             projectId={view.projectId}
             planNonce={planNonce}
             onPlanChanged={() => setPlanNonce((nonce) => nonce + 1)}
@@ -1419,13 +1408,11 @@ export default function App() {
             onPendingArchiveHandled={() => setPendingArchivePlanId(null)}
           />
         ) : (
-          <Overview
+          <SettingsView
             themeId={themeId}
             onThemeChange={setThemeId}
-            expanded={overviewExpanded}
-            onToggle={(section) =>
-              setOverviewExpanded((cur) => (cur === section ? null : section))
-            }
+            section={settingsSection}
+            onSelect={setSettingsSection}
           />
         )}
       </div>
@@ -1440,7 +1427,7 @@ export default function App() {
         onOpenTask={paletteOpenTask}
         onOpenRun={paletteOpenRun}
         onAddProject={paletteAddProject}
-        onOpenOverview={paletteOpenOverview}
+        onOpenSettings={() => openSettings()}
         onRemoveProject={paletteRemoveProject}
         onArchivePlan={paletteArchivePlan}
       />
@@ -1448,59 +1435,37 @@ export default function App() {
   );
 }
 
-// The no-project main pane: a surface-card grid over the machine-level panels.
-// Each card toggles its panel open beneath the grid — one section at a time,
-// clicking the open card's tile again collapses it. The panels themselves
-// (agent chips, settings form, sandbox rules) are unchanged; the cards only
-// gate when they mount. `expanded` is lifted to App so a shortcut
-// (⌘,/Ctrl-,) can force the "Run defaults" card open without a click.
-function Overview({
+function SettingsView({
   themeId,
   onThemeChange,
-  expanded,
-  onToggle,
+  section,
+  onSelect,
 }: {
   themeId: ThemeId;
   onThemeChange: (id: ThemeId) => void;
-  expanded: OverviewSection | null;
-  onToggle: (section: OverviewSection) => void;
+  section: SettingsSection;
+  onSelect: (section: SettingsSection) => void;
 }) {
   return (
-    <div className="overview">
-      <header className="overview__head">
-        <h1>Workspace settings</h1>
-        <p>Set up your agents, run preferences, and sandbox.</p>
-      </header>
-      <SurfaceCardGrid>
-        <SurfaceCard
-          icon={<AgentIcon />}
-          title="Agents"
-          description="Agent CLIs on this machine, with version drift"
-          selected={expanded === "agents"}
-          onClick={() => onToggle("agents")}
-        />
-        <SurfaceCard
-          icon={<SettingsIcon />}
-          title="Preferences"
-          description="Run defaults, automation, and appearance"
-          selected={expanded === "defaults"}
-          onClick={() => onToggle("defaults")}
-        />
-        <SurfaceCard
-          icon={<BoxIcon />}
-          title="Sandbox boundary"
-          description="What every run's OS sandbox does and doesn't confine"
-          selected={expanded === "sandbox"}
-          onClick={() => onToggle("sandbox")}
-        />
-      </SurfaceCardGrid>
-      {expanded === "agents" ? (
+    <div className="settings-view">
+      <nav className="settings-view__nav" aria-label="Settings categories">
+        {([
+          ["defaults", "Preferences"],
+          ["agents", "Agents"],
+          ["sandbox", "Sandbox"],
+        ] as const).map(([value, label]) => (
+          <Button key={value} variant="quiet" aria-pressed={section === value} onClick={() => onSelect(value)}>
+            {label}
+          </Button>
+        ))}
+      </nav>
+      {section === "agents" ? (
         <AgentStatusPanel />
-      ) : expanded === "defaults" ? (
+      ) : section === "defaults" ? (
         <SettingsPanel themeId={themeId} onThemeChange={onThemeChange} />
-      ) : expanded === "sandbox" ? (
+      ) : (
         <SandboxBoundaryPanel />
-      ) : null}
+      )}
     </div>
   );
 }
@@ -1623,8 +1588,8 @@ export function crumbsFor(
   switch (view.kind) {
     case "start":
       return [{ label: "Projects" }];
-    case "overview":
-      return [{ label: "Overview" }];
+    case "settings":
+      return [{ label: "Settings" }];
     case "plan": {
       const p = projects.find((x) => x.id === view.projectId);
       return [

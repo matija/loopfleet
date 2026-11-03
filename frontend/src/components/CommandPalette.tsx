@@ -55,7 +55,7 @@ export type CommandPaletteProps = {
   onOpenTask: (task: PaletteOpenTask) => void;
   onOpenRun: (runId: string) => void;
   onAddProject: () => void;
-  onOpenOverview: () => void;
+  onOpenSettings: () => void;
   /// Opens the sidebar's remove-project confirmation for the given project,
   /// mirroring the trash icon on its sidebar row.
   onRemoveProject: (projectId: string) => void;
@@ -69,15 +69,11 @@ type Item = {
   group: string;
   title: string;
   subtitle?: string;
-  hint?: string;
   run: () => void;
   /// Overrides the group's default icon (e.g. a per-project "Remove
   /// project" row still living in the Projects group, but drawn with a
   /// trash glyph so it doesn't read as another way to open the project).
   icon?: typeof FolderIcon;
-  /// Set with the reason it's inert (e.g. "No plan to archive") — the row
-  /// still renders and is readable, but Enter/click no-op and the reason
-  /// shows in place of the hint.
   disabledReason?: string;
   keepOpen?: boolean;
 };
@@ -106,7 +102,7 @@ export function CommandPalette({
   onOpenTask,
   onOpenRun,
   onAddProject,
-  onOpenOverview,
+  onOpenSettings,
   onRemoveProject,
   onArchivePlan,
 }: CommandPaletteProps) {
@@ -213,7 +209,6 @@ export function CommandPalette({
       group: "Runs",
       title: taskSummary(r.taskText),
       subtitle: `${RUN_STATUS_LABEL[r.status]} · ${r.agent} · ${r.projectName}`,
-      hint: "tap",
       keepOpen: true,
       run: () => setComposerRunId(r.runId),
     }));
@@ -222,8 +217,6 @@ export function CommandPalette({
         id: "act:tap",
         group: "Actions",
         title: "Tap into run…",
-        subtitle: "Send guidance to an active run across projects",
-        hint: activeRuns.length ? "choose run" : "No active runs",
         disabledReason: activeRuns.length ? undefined : "No active runs",
         keepOpen: true,
         run: () => { setTapMode(true); setQuery(""); setSelected(0); },
@@ -232,24 +225,18 @@ export function CommandPalette({
         id: "act:add",
         group: "Actions",
         title: "Add project…",
-        subtitle: "Pick a git repo to register",
-        hint: "folder picker",
         run: onAddProject,
       },
       {
-        id: "act:overview",
+        id: "act:settings",
         group: "Actions",
-        title: "Go to overview",
-        subtitle: "Agents, settings, sandbox boundary",
-        hint: "home",
-        run: onOpenOverview,
+        title: "Settings",
+        run: onOpenSettings,
       },
       {
         id: "act:archive-plan",
         group: "Actions",
         title: "Archive plan",
-        subtitle: archiveTarget.disabledReason ?? "Move the current plan into prds/",
-        hint: archiveTarget.disabledReason ?? "archive",
         disabledReason: archiveTarget.disabledReason,
         run: () => {
           if (archiveTarget.disabledReason || !currentProjectId || !archiveTarget.planId) return;
@@ -262,7 +249,6 @@ export function CommandPalette({
       group: "Projects",
       title: repoName(p.repo_path),
       subtitle: p.repo_path,
-      hint: "project",
       run: () => onOpenProject(p.id),
     }));
     const removeProjectItems: Item[] = projects.map((p) => ({
@@ -270,7 +256,6 @@ export function CommandPalette({
       group: "Projects",
       title: `Remove ${repoName(p.repo_path)}…`,
       subtitle: p.repo_path,
-      hint: "remove",
       icon: TrashIcon,
       run: () => onRemoveProject(p.id),
     }));
@@ -279,7 +264,6 @@ export function CommandPalette({
       group: "Tasks",
       title: taskSummary(t.text),
       subtitle: t.planLabel,
-      hint: "task",
       run: () =>
         onOpenTask({
           projectId: t.projectId,
@@ -293,7 +277,6 @@ export function CommandPalette({
       group: "Runs",
       title: taskSummary(r.taskText),
       subtitle: `${RUN_STATUS_LABEL[r.status]} · ${r.agent} · ${r.projectName}`,
-      hint: r.status,
       run: () => onOpenRun(r.runId),
     }));
     return [...actions, ...projectItems, ...removeProjectItems, ...taskItems, ...runItems];
@@ -305,7 +288,7 @@ export function CommandPalette({
     archiveTarget,
     currentProjectId,
     onAddProject,
-    onOpenOverview,
+    onOpenSettings,
     onArchivePlan,
     onOpenProject,
     onRemoveProject,
@@ -444,9 +427,7 @@ export function CommandPalette({
                           <span className="palette__row-sub">{item.subtitle}</span>
                         )}
                       </span>
-                      {item.hint && (
-                        <span className="palette__row-hint">{item.hint}</span>
-                      )}
+                      {item.disabledReason && <span className="palette__row-reason">{item.disabledReason}</span>}
                     </button>
                   );
                 })}

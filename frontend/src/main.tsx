@@ -16,7 +16,6 @@ import "./palette.css";
 import "./about.css";
 import "./toolbar.css";
 import "./popover.css";
-import "./hint.css";
 import "./select.css";
 import "./number-field.css";
 // After status.css and dock.css: the theme preview reuses their run-status

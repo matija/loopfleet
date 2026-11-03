@@ -10,11 +10,6 @@
 // every surface quotes the same figure; the wording and bucketing are
 // `usage.ts`'s. This file only refreshes and renders.
 //
-// The panel opens in the shared vocabulary — `panel__head` led by the same
-// glyph the overview card carries, then one `panel__lead` line saying what the
-// chips are for — so Agents, Settings and the sandbox panel all start the same
-// way rather than each opening in its own dialect.
-
 import { useEffect, useState } from "react";
 import { refreshAgentUsage, useAgentUsage } from "../agentUsage";
 import { refreshAgentCatalog } from "../appData";
@@ -63,11 +58,6 @@ export function AgentStatusPanel() {
         <AgentIcon size={16} className="icon panel__icon" />
         <h3>Agents</h3>
       </div>
-      <p className="panel__lead">
-        The agent CLIs installed on this machine. A run whose CLI is missing is
-        refused at launch, so this is the first thing to check when one won’t
-        start.
-      </p>
       {error ? (
         <p className="panel__error">{error}</p>
       ) : !loaded ? (
@@ -108,7 +98,7 @@ function AgentChip({
     <div className={`agent-chip agent-chip--${state}`}>
       <span className="agent-chip__dot" />
       <span className="agent-chip__name">{agent.display}</span>
-      <span>{agent.can_steer ? "Live steering" : "No live steering · Tap sends notes for the next pass"}</span>
+      <span>{agent.can_steer ? "Live steering" : "Notes for next pass"}</span>
       <span className="agent-chip__ver">
         {agent.installed
           ? (agent.version ?? "installed")

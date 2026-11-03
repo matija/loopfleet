@@ -806,17 +806,6 @@
   color: var(--c-text);
 }
 
-/* --- sandbox-boundary trust panel ---
- * PRD calls this "a trust feature, not a footnote": state the boundary plainly,
- * do not overstate "sandboxed".
- *
- * The card, its head, its lead line and its closing note are the shared panel
- * vocabulary (.panel, .panel__head, .panel__lead, .panel__foot in panels.css)
- * — this panel used to carry its own byte-identical copies under
- * .sandbox-panel__*, which meant a change to how panels open only reached two
- * of the three overview surfaces. What's left here is what is genuinely this
- * panel's own: the confined/open rule rows. */
-
 .sandbox-rules {
   display: grid;
   gap: var(--space-2);

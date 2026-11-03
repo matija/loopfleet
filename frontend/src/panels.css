@@ -53,9 +53,6 @@
   cursor: pointer;
 }
 
-/* The count of overrides in effect, so a closed panel still reports whether
- * this project has any. Quiet and right-aligned like `.panel__tag`: it's a
- * state note beside the title, not part of it. */
 .panel__count {
   margin-left: auto;
   font-size: var(--text-xs);
@@ -72,24 +69,6 @@
   color: var(--c-text-faint);
 }
 
-/* Names the underlying mechanism (e.g. the sandbox panel's "sandbox-exec ·
- * Seatbelt"). Monospaced and at the far end of the head rule: it's a
- * provenance note, not part of the title. */
-.panel__tag {
-  margin-left: auto;
-  font-size: var(--text-xs);
-  font-family: var(--font-mono);
-  color: var(--c-text-muted);
-  background: var(--c-surface-2);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-sm);
-  padding: 1px var(--space-2); /* tokens-allow: hairline tag inset, below the space scale */
-}
-
-/* The one orienting line under the head, and the one closing note under the
- * body. Anything longer than a line belongs behind a Hint (hint.css) rather
- * than in either of these — a paragraph here pushes the panel's controls
- * down as it grows. */
 .panel__lead {
   margin: 0 0 var(--space-3);
   font-size: var(--text-sm);
@@ -97,14 +76,7 @@
   line-height: var(--leading-normal);
 }
 
-.panel__foot {
-  margin: var(--space-4) 0 0;
-  font-size: var(--text-sm);
-  color: var(--c-text-muted);
-}
-
-.panel__lead code,
-.panel__foot code {
+.panel__lead code {
   color: var(--c-text);
 }
 
@@ -328,16 +300,6 @@
   font-style: normal;
 }
 
-/* Multi-line explanation under a control (worktree retention's three modes).
- * A block span rather than a <p>: it lives inside a <label>, whose content
- * model is phrasing only. */
-.field__hint {
-  display: block;
-  margin-top: var(--space-1);
-  color: var(--c-text-faint);
-  line-height: var(--leading-normal);
-}
-
 .field select,
 .field input,
 .overrides__ta {
@@ -396,8 +358,6 @@
   height: var(--space-4);
 }
 
-/* Sits under the toggle it explains, at hint weight, without needing the
- * disclosure Hint uses for the longer retention explanation above it. */
 .field-note {
   margin: var(--space-1) 0 0;
   font-size: var(--text-sm);
@@ -562,136 +522,29 @@
   box-shadow: var(--shadow-1);
 }
 
-/* --- surface cards --- */
-
-.surface-grid {
-  display: grid;
-  gap: var(--space-3);
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-}
-
-.surface-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  /* density-allow: .surface-card is the overview tile primitive — DESIGN.md's Cards keep a 12-16px inset */
-  padding: var(--space-4);
-  text-align: left;
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  color: var(--c-text);
-}
-
-button.surface-card:hover {
-  background: var(--c-surface-hover);
-  border-color: var(--c-border-strong);
-}
-
-/* Icons in cards run one step larger than the 16px app default, so the glyph
- * anchors the tile without needing a filled backdrop. */
-.surface-card__icon,
-.surface-card__icon svg {
-  width: 20px;
-  height: 20px; /* tokens-allow: fixed 20px card glyph, off the space scale */
-}
-
-.surface-card__icon {
-  display: inline-flex;
-  color: var(--c-text-muted);
-}
-
-.surface-card__title {
-  font-size: var(--text-md);
-  font-weight: 600;
-  line-height: var(--leading-tight);
-  letter-spacing: var(--tracking-tight);
-}
-
-/* A card's description is a sentence, so it gets two lines to be one in.
- * Clamping a single nowrap line cut these mid-word ("with version dri…",
- * "concurrency c…"), which reads as a rendering fault rather than as elision.
- * The clamp wraps at word boundaries and puts the browser's own ellipsis at
- * the end of the second line, so a description that doesn't fit still ends on
- * a whole word. The two-line box is reserved whether or not the text fills
- * it, so a one-line card and a two-line card keep their glyphs and titles on
- * the same baselines across the grid. */
-.surface-card__desc {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  max-width: 100%;
-  overflow: hidden;
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
-  min-height: calc(2 * var(--text-sm) * var(--leading-normal));
-  color: var(--c-text-muted);
-}
-
-/* Disabled: the tile recedes (dimmed glyph and hairline, no hover) but the
- * text steps down the ramp instead of taking a blanket opacity — muted for the
- * title and faint for the body both clear AA on the base field — and the card
- * states its reason rather than just greying out. */
-.surface-card--disabled {
-  border-color: var(--c-border);
-  box-shadow: none;
-}
-
-.surface-card--disabled .surface-card__icon {
-  opacity: 0.45;
-}
-
-.surface-card--disabled .surface-card__title {
-  color: var(--c-text-muted);
-}
-
-.surface-card--disabled .surface-card__desc {
-  color: var(--c-text-faint);
-}
-
-.surface-card__reason {
-  font-size: var(--text-sm);
-  color: var(--c-text-faint);
-  font-style: italic;
-}
-
-/* --- overview stack --- */
-
-.overview {
+.settings-view {
   max-width: var(--content-w);
   margin-inline: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-5);
 }
 
-.overview__head h1 {
-  font-size: var(--text-xl);
+.settings-view__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--c-border);
 }
 
-.overview__head p {
-  margin: var(--space-2) 0 0;
-  color: var(--c-text-muted);
-}
-
-.surface-card[aria-pressed="true"] {
-  border-color: var(--c-accent);
-  background: var(--c-accent-quiet);
+.settings-view__nav .btn[aria-pressed="true"] {
+  color: var(--c-text);
+  background: var(--c-surface-3);
 }
 
 .settings-panel {
   max-width: var(--form-w);
-}
-
-.settings-panel .panel__head h3 {
-  font-size: var(--text-lg);
-}
-
-.settings-panel .panel__head {
-  margin-bottom: var(--space-5);
 }
 
 .settings-panel .settings-row {

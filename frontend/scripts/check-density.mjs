@@ -22,9 +22,6 @@
 //
 //   padding: var(--space-5); /* density-allow: reason */
 //
-// The three card surfaces that deliberately keep their frame (.empty-state,
-// .prd-doc, .surface-card) carry such comments on their padding lines (or on
-// the line directly above).
 
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -41,7 +38,6 @@ const PROSE_SURFACES = new Set([
   ".empty-state", // no-content note card, centered at a reading measure (52ch)
   ".empty-prompt__title", // no-project prompt heading (44ch)
   ".empty-prompt__subtitle", // no-project prompt copy (48ch)
-  ".hint__detail", // expanded hint prose — "a few sentences break naturally" (42ch)
   ".launch__result", // launch-result popover message cap (24ch)
   ".launch__blocked", // blocked-launch prompt message cap (30ch)
   ".main__placeholder", // pane placeholder paragraph (60ch)

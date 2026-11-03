@@ -519,7 +519,7 @@ function RunChip({
           title={
             merging ? "Merging…" : "Merge this run into your current branch"
           }
-          aria-label={merging ? "Merging run" : "Use this run"}
+          aria-label={merging ? "Merging run" : "Merge run"}
         >
           <CheckIcon size={14} />
           {merging ? "Merging…" : "Merge"}

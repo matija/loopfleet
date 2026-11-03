@@ -258,7 +258,6 @@ export function PlanCard({
               <div className="review-banner" role="status">
                 <AlertIcon size={16} className="review-banner__icon" />
                 <strong>{review.length} ready for review</strong>
-                <span>Choose a run to merge.</span>
               </div>
               <ul className="task-list">{review.map(renderTask)}</ul>
             </section>

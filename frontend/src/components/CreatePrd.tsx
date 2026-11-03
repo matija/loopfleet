@@ -142,45 +142,34 @@ export function CreatePrd({
   return (
     <section className="prd-doc prd-create" aria-labelledby="prd-create-title">
       <header className="prd-create__head">
-        <h1 id="prd-create-title" ref={reviewHeading} tabIndex={-1}>{proposal ? "Review your plan" : busy ? "Drafting your plan" : "What should we build next?"}</h1>
-        <p>Turn your brief into a plan you can review and run.</p>
-        <ol className="prd-create__steps" aria-label="Planning steps">
-          <li aria-current={proposal ? undefined : "step"}><span>1</span>Describe</li>
-          <li aria-current={proposal ? "step" : undefined}><span>2</span>Review</li>
-          <li><span>3</span>Run tasks</li>
-        </ol>
+        <h1 id="prd-create-title" ref={reviewHeading} tabIndex={-1}>{proposal ? "Review plan" : busy ? "Drafting plan…" : "New plan"}</h1>
       </header>
-      <p role="status" aria-live="polite">{busy && !proposal ? `Drafting with ${selectedAgent?.display ?? agent}` : ""}</p>
       {error && <p className="panel__error" role="alert">{error}</p>}
       {proposal ? (
         <>
-          <p className="prd-doc__running-note">Draft by {agents?.find((status) => status.key === proposal.agent)?.display ?? proposal.agent}. Save to create the new plan.</p>
-          <p className="prd-create__destination">Destination: <code>{proposal.path}</code></p>
+          <p className="prd-create__destination"><code>{proposal.path}</code></p>
           <div className="prd-doc__body">{renderMarkdown(proposal.proposed)}</div>
           <div className="prd-doc__actions prd-create__actions" aria-busy={pending !== null}>
-            <button type="button" className="btn btn--primary" disabled={busy} onClick={accept}>{pending === "save" ? "Saving…" : "Save PRD.md"}</button>
+            <button type="button" className="btn btn--primary" disabled={busy} onClick={accept}>{pending === "save" ? "Saving…" : "Save plan"}</button>
             <button type="button" className="btn" disabled={busy} onClick={discard}>{pending === "discard" ? "Discarding…" : "Discard draft"}</button>
           </div>
         </>
       ) : (
         <form className="prd-doc__instruct" onSubmit={(event) => { event.preventDefault(); void generate(); }}>
           {busy && <PrdActivity title={`Drafting with ${agents?.find((status) => status.key === agent)?.display ?? agent}`} activity={activity} />}
-          <label htmlFor="prd-create-instruction">Project brief</label>
+          <label htmlFor="prd-create-instruction">Brief</label>
           <textarea
             ref={brief}
             id="prd-create-instruction"
             className="prd-doc__instruction"
-            placeholder="Describe what you want to build, who it’s for, and what a good result looks like…"
-            aria-describedby="prd-create-hint"
+            placeholder="What do you want to build?"
             value={instruction}
             onChange={(event) => setInstruction(event.target.value)}
             disabled={busy}
             required
           />
-          <p id="prd-create-hint" className="prd-create__hint">Include any requirements or constraints your agent should know.</p>
           <div className="prd-create__controls">
             <label className="field prd-create__agent">
-              <span>Draft with</span>
               <Select
                 aria-label="Draft with"
                 value={agent}
@@ -202,9 +191,7 @@ export function CreatePrd({
             </div>
           ) : agents?.length === 0 ? (
             <p className="prd-doc__running-note">No installed agent. Check availability in Agents settings. {onOpenAgentSettings && <button type="button" className="btn" onClick={onOpenAgentSettings}>Open agent settings</button>}</p>
-          ) : (
-            <p className="prd-doc__running-note">You’ll review the draft before saving it as PRD.md.</p>
-          )}
+          ) : null}
         </form>
       )}
     </section>

@@ -114,9 +114,6 @@ export function isAutopilotAtDefault(draft: AutopilotDraft): boolean {
   );
 }
 
-/// The "Appearance" section holds one field, and unlike the sections above it
-/// isn't backend state — resetting it applies at once rather than waiting for
-/// Save (see the section's own hint).
 export function isThemeAtDefault(themeId: ThemeId): boolean {
   return themeId === DEFAULT_THEME_ID;
 }

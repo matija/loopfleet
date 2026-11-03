@@ -1,10 +1,3 @@
-// "Use this run": land a run's produced output without judging it. By default it
-// merges the run's final state into the repo's currently checked-out branch under
-// a descriptive commit; a named branch (created if absent) lands it elsewhere.
-// The run is marked accepted on success. Shared by the compare view (one column
-// per run) and the run timeline (apply the run you're already looking at, no
-// detour through compare). Consumes only the pre-existing `use_run` command.
-
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useRun } from "../commands";
@@ -28,10 +21,6 @@ export function UseRun({
   /// it again.
   accepted: boolean;
   onAccepted: () => void;
-  /// When set, the "Use this run" button (or the merged marker, once landed)
-  /// portals there instead of rendering inline — the toolbar's action slot
-  /// (RunTimeline's "Use run", CompareView's "Accept"). The branch input,
-  /// hint, result, and error stay inline.
   actionsPortal?: HTMLElement | null;
 }) {
   const [branch, setBranch] = useState("");
@@ -57,7 +46,7 @@ export function UseRun({
       disabled={!mergeable || busy}
       title={!mergeable ? "No snapshot to merge" : undefined}
     >
-      {busy ? "Merging…" : "Use this run"}
+      {busy ? "Merging…" : "Merge run"}
     </button>
   );
 
@@ -83,7 +72,7 @@ export function UseRun({
           <input
             className="use-run__branch"
             type="text"
-            placeholder="current branch (optional)"
+            placeholder="Current branch"
             value={branch}
             disabled={!mergeable || busy}
             onChange={(e) => setBranch(e.target.value)}
@@ -93,17 +82,6 @@ export function UseRun({
         )}
         {actionsPortal ? createPortal(useButton, actionsPortal) : useButton}
       </div>
-      {!merged && (
-        <p className="use-run__hint">
-          {custom ? (
-            <>
-              Merges into <code>{branch.trim()}</code>.
-            </>
-          ) : (
-            <>Merges into your current branch.</>
-          )}
-        </p>
-      )}
       {result && (
         <p className="use-run__result">
           Merged into <code>{result.target_branch}</code>{" "}
