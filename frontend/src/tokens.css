@@ -119,7 +119,7 @@
 }
 
 :root {
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Readex Pro", sans-serif;
+  --font-sans: "Readex Pro", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
   --text-2xs: 10px;
   --text-xs: 11px;
