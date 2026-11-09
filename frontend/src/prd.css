@@ -435,9 +435,9 @@
 .prd-create__controls {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: var(--space-3);
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
   margin-top: var(--space-1);
   padding-top: var(--space-2);
   border-top: 1px solid var(--c-border);
@@ -462,12 +462,19 @@
 
 .plan-surface {
   width: 100%;
-  max-width: var(--content-w);
   margin-inline: auto;
 }
 
-.plan-surface:has(.prd-create) {
-  max-width: var(--form-w);
+.plan-surface--create {
+  display: grid;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.plan-surface--create > .prd-create {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
 }
 
 .prd-create__head {
@@ -483,7 +490,7 @@
 }
 
 .prd-create .prd-doc__instruction {
-  min-height: 6rem;
+  min-height: calc(var(--space-8) * 4);
   padding: var(--space-3);
   font-size: var(--text-base);
   background: var(--c-surface);
@@ -501,7 +508,7 @@
 }
 
 .prd-create__agent {
-  flex: 0 1 220px;
+  flex: 0 1 180px;
   min-width: 0;
   max-width: 100%;
 }
@@ -509,7 +516,7 @@
 .prd-create__controls > .btn {
   max-width: 100%;
   white-space: normal;
-  min-height: calc(var(--control-h) + var(--space-2));
+  min-height: var(--control-h);
   padding-inline: var(--space-4);
   font-size: var(--text-base);
 }
@@ -530,4 +537,32 @@
 
 .sandbox-overrides .panel__disclosure:hover {
   color: var(--c-text);
+}
+
+.plan-surface--create > .sandbox-overrides {
+  min-width: 0;
+}
+
+.plan-surface--create .sandbox-overrides .panel__actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+@container (min-width: 880px) {
+  .plan-surface--create {
+    grid-template-columns: minmax(0, 1fr) var(--sidebar-w);
+  }
+
+  .plan-surface--create > .sandbox-overrides {
+    padding-left: var(--space-5);
+    border-left: 1px solid var(--c-border);
+  }
+
+  .plan-surface--create .sandbox-overrides .panel__head {
+    flex-wrap: wrap;
+  }
+
+  .plan-surface--create .sandbox-overrides .panel__disclosure {
+    font-size: var(--text-sm);
+  }
 }

@@ -120,7 +120,7 @@ export function PlanSurface({
   return (
     <>
       {Boolean(current?.plans?.length) && (toolbarActions ? createPortal(toggle, toolbarActions) : toggle)}
-      <div className="plan-surface">
+      <div className={`plan-surface${current?.plans?.length === 0 ? " plan-surface--create" : ""}`}>
         {!current ? (
           <p className="plan__loading">Loading plan…</p>
         ) : current.error !== undefined ? (

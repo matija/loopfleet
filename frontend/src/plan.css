@@ -28,7 +28,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--c-border);
 }
 
@@ -196,11 +196,6 @@
   white-space: pre;
 }
 
-/* The row's right cluster — run count, derived status, launch control — is a
- * fixed column so its cells line up down the list (Story 17). The run-count
- * slot below is what holds the left edge stable: always present at a fixed
- * width (empty on rows that have never been run), it keeps the status cell and
- * the launch control at the same x on every row. */
 .task-row__meta {
   flex: none;
   display: flex;
@@ -208,13 +203,14 @@
   gap: var(--space-2);
 }
 
-/* Reserved for the compare button's full at-rest width ("N runs · compare" —
- * the cue is visibility-hidden but keeps its width in the sum), so the
- * cluster's geometry never changes when a row gains or loses runs. */
 .task-row__runs {
   flex: none;
-  display: inline-flex;
+  display: none;
   justify-content: flex-end;
+}
+
+.task-list:has(.task-row__compare) .task-row__runs {
+  display: inline-flex;
   min-width: 100px;
 }
 
@@ -800,12 +796,12 @@
   background: var(--c-surface-hover);
 }
 
-@media (max-width: 900px) {
+@container (max-width: 760px) {
   .task-row__meta {
     gap: var(--space-1);
   }
 
-  .task-row__runs {
+  .task-list:has(.task-row__compare) .task-row__runs {
     min-width: 0;
   }
 
@@ -814,11 +810,37 @@
   }
 }
 
-.task-row__full,
-.task-row__text[aria-expanded="true"] .task-row__preview {
-  display: none;
-}
+@container (max-width: 640px) {
+  .plan-card__head {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
 
-.task-row__text[aria-expanded="true"] .task-row__full {
-  display: inline;
+  .plan-card__identity {
+    flex-basis: 100%;
+  }
+
+  .task-row,
+  .task-row:has(.task-row__text[aria-expanded="true"]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    height: auto;
+    gap: var(--space-1) var(--space-2);
+    padding: var(--space-2);
+    contain-intrinsic-size: auto calc(var(--row-h) * 2);
+  }
+
+  .task-row__text {
+    grid-column: 1 / -1;
+  }
+
+  .task-row__checked {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .task-row__meta {
+    grid-column: 2;
+    grid-row: 2;
+  }
 }

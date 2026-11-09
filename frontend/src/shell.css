@@ -4,13 +4,13 @@
 .app-shell {
   position: relative;
   display: grid;
-  grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   height: 100%;
 }
 
 .app-shell--sidebar-hidden {
-  grid-template-columns: 0 1fr;
+  grid-template-columns: 0 minmax(0, 1fr);
 }
 
 .sidebar__top {
@@ -621,6 +621,7 @@
 
 .main {
   position: relative;
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -641,7 +642,7 @@
   min-height: 0;
   overflow-y: auto;
   margin: 0 var(--space-2) var(--space-2) 0;
-  padding: var(--space-5);
+  padding: var(--space-4);
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-lg);
@@ -891,10 +892,6 @@
 }
 
 @media (max-width: 900px) {
-  .main__body {
-    padding: var(--space-5);
-  }
-
   .main__body--run {
     padding: var(--space-3) var(--space-4);
   }

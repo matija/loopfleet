@@ -390,7 +390,6 @@ function TaskRow({
   useEffect(() => () => clearTimeout(leaveTimer.current), []);
   useEffect(() => setComposerRunId(null), [lastRun?.runId, active]);
   const [expanded, toggleExpanded] = useTaskExpanded(`${planId}:${task.anchor}`);
-  const preview = taskSummary(task.text);
 
   // Track the launched run's terminal transition so the hover card can show
   // a finished duration instead of freezing on "running".
@@ -455,8 +454,7 @@ function TaskRow({
         onClick={toggleExpanded}
         title={normalizeDisplayText(task.text)}
       >
-        <span className="task-row__preview">{preview}</span>
-        <span className="task-row__full">{normalizeDisplayText(task.text)}</span>
+        {normalizeDisplayText(task.text)}
       </button>
       {task.checked && (
         <span
